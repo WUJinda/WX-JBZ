@@ -351,3 +351,94 @@ describe('steps.trend / user.stats action 挂载与 home 趋势结构（F4）', 
     expect(statsSrc).toMatch(/buildStats/);
   });
 });
+
+describe('rank action 挂载与 requireUser（G1）', () => {
+  it('rank/index.js 的 handlers 表挂载 personal/dept/deptMembers（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/rank/index.js');
+    expect(src).toMatch(/\bpersonal\s*:\s*async/);
+    expect(src).toMatch(/\bdept\s*:\s*async/);
+    expect(src).toMatch(/\bdeptMembers\s*:\s*async/);
+    // 纯函数模块被 require
+    expect(src).toMatch(/require\(['"]\.\/rankQuery['"]\)/);
+  });
+
+  it('rank.personal/dept/deptMembers 走 requireUser（需 OPENID，缺则抛 AUTH_NO_OPENID）', () => {
+    const src = readSource('cloudfunctions/rank/index.js');
+    expect(src).toMatch(/requireUser/);
+    expect(src).toMatch(/REQUIRE_USER_ACTIONS/);
+    expect(src).toMatch(/personal:\s*true/);
+    expect(src).toMatch(/dept:\s*true/);
+    expect(src).toMatch(/deptMembers:\s*true/);
+  });
+
+  it('rankQuery.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/rank/rankQuery.js')),
+      '缺少 rankQuery.js'
+    ).toBe(true);
+  });
+
+  it('rank 查询投影不下发 _openid / phone / sync_count（grep 实证）', () => {
+    const src = readSource('cloudfunctions/rank/rankQuery.js');
+    // projectPersonal / projectDept 函数中不应把敏感字段加入返回对象
+    expect(src).toMatch(/projectPersonal/);
+    expect(src).toMatch(/projectDept/);
+    // 投影函数体中不下发敏感字段（不应出现 _openid: / phone: / sync_count: 赋值）
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
+});
+
+describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
+  it('tasks/index.js 的 handlers 表挂载 rankAggregate/dailyLock（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/tasks/index.js');
+    expect(src).toMatch(/\brankAggregate\s*:\s*async/);
+    expect(src).toMatch(/\bdailyLock\s*:\s*async/);
+    // 纯函数模块被 require
+    expect(src).toMatch(/require\(['"]\.\/rankAggregate['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/dailyLock['"]\)/);
+  });
+
+  it('tasks.rankAggregate/dailyLock 为系统级：入口不调 authMiddleware / 不 requireUser', () => {
+    const src = readSource('cloudfunctions/tasks/index.js');
+    // 系统级定时任务：不应出现 authMiddleware 调用与 requireUser 机制
+    expect(src).not.toMatch(/authMiddleware/);
+    expect(src).not.toMatch(/requireUser/);
+    expect(src).not.toMatch(/REQUIRE_USER_ACTIONS/);
+  });
+
+  it('rankAggregate.js / dailyLock.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/rankAggregate.js')),
+      '缺少 rankAggregate.js'
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/dailyLock.js')),
+      '缺少 dailyLock.js'
+    ).toBe(true);
+  });
+
+  it('tasks 纯函数不调真实云 API（grep 实证：无 wx-server-sdk/cloud.callFunction/database 副作用）', () => {
+    const aggSrc = readSource('cloudfunctions/tasks/rankAggregate.js');
+    const lockSrc = readSource('cloudfunctions/tasks/dailyLock.js');
+    expect(aggSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(lockSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(aggSrc).not.toMatch(/cloud\.callFunction/);
+    expect(lockSrc).not.toMatch(/cloud\.callFunction/);
+    // 不直接调 cloud.database()（与 handler 解耦）
+    expect(aggSrc).not.toMatch(/cloud\.database\(\)/);
+    expect(lockSrc).not.toMatch(/cloud\.database\(\)/);
+  });
+});
+
+describe('mask.js 脱敏纯函数挂载（G1）', () => {
+  it('common/mask.js 纯函数模块存在且导出 maskNickname', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/common/mask.js')),
+      '缺少 mask.js'
+    ).toBe(true);
+    const src = readSource('cloudfunctions/common/mask.js');
+    expect(src).toMatch(/function maskNickname/);
+    expect(src).toMatch(/module\.exports.*maskNickname/);
+  });
+});
