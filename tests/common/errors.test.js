@@ -11,11 +11,18 @@ describe('errors 模块', () => {
     expect(String(CODE.AUTH_NOT_ADMIN)).toMatch(/^1\d{3}$/);
     // 2xxx 业务
     expect(String(CODE.BIZ_NOT_IN_WHITELIST)).toMatch(/^2\d{3}$/);
+    expect(String(CODE.BIZ_PARAM_MISSING)).toMatch(/^2\d{3}$/);
     // 3xxx 步数
     expect(String(CODE.STEP_DECRYPT_FAILED)).toMatch(/^3\d{3}$/);
     // 5xxx 系统
     expect(String(CODE.SYS_DB_ERROR)).toMatch(/^5\d{3}$/);
     expect(String(CODE.SYS_NOT_IMPLEMENTED)).toMatch(/^5\d{3}$/);
+  });
+
+  it('BIZ_PARAM_MISSING 码值为 2005（参数缺失，区别于活动结束 3004）', () => {
+    expect(CODE.BIZ_PARAM_MISSING).toBe(2005);
+    // 与 STEP_ACTIVITY_CLOSED(3004) 区分，避免语义错配
+    expect(CODE.BIZ_PARAM_MISSING).not.toBe(CODE.STEP_ACTIVITY_CLOSED);
   });
 
   it('BizError 构造出带 code 的 Error', () => {

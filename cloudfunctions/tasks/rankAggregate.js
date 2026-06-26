@@ -287,7 +287,7 @@ async function aggregateRanking(params) {
   const { store, activityId } = p;
   if (!activityId) {
     const { CODE, BizError } = require('../common/errors');
-    throw BizError(CODE.STEP_ACTIVITY_CLOSED, 'rankAggregate: activityId required');
+    throw BizError(CODE.BIZ_PARAM_MISSING, 'rankAggregate: activityId required');
   }
   if (!store || !Array.isArray(store.StepRecord)) {
     const { CODE, BizError } = require('../common/errors');

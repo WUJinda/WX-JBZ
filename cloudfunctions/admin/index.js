@@ -176,6 +176,12 @@ const handlers = {
 /**
  * 载入集合全部文档（云轨真实库，照 tasks/index.js 范式）。
  * 本地轨/单测不经此 handler，直接调纯函数注入 store。
+ *
+ * TODO 云轨优化：当前全量拉集合（含 _openid / phone / sync_count 等敏感字段）入内存，
+ *   StepRecord / User 量大时有 OOM 风险。对查询类 action 改用 DB 端 `.field()` 投影
+ *   （仅取必要字段）+ `.where()` 过滤，避免全量拉敏感集合入内存；
+ *   当前全量拉取仅为本地轨（store 注入）/早期简化，后续按 action 精细化投影。
+ *
  * @param {object} cloudSdk
  * @param {string} name
  * @returns {Promise<object[]>}
@@ -221,7 +227,8 @@ async function upsertWhitelistToCloud(cloudSdk, whitelist, now) {
         await db.collection('Whitelist').add({ data: { phone: w.phone, imported_at: now } });
       }
     } catch (err) {
-      // 单条失败不阻断（幂等可重跑）。
+      // 单条失败不阻断（幂等可重跑），仅留痕。
+      console.warn('[写回失败]', 'Whitelist(' + w.phone + ')', (err && err.message) || err);
     }
   }
 }
@@ -236,7 +243,8 @@ async function updateUserDeptToCloud(cloudSdk, userId, deptId, updatedAt) {
       data: { dept_id: deptId, updated_at: updatedAt }
     });
   } catch (err) {
-    // 忽略单条失败（幂等可重跑）。
+    // 单条失败不阻断（幂等可重跑），仅留痕。
+    console.warn('[写回失败]', 'User.dept_id(' + userId + ')', (err && err.message) || err);
   }
 }
 
@@ -247,10 +255,14 @@ async function applyVerdictToCloud(cloudSdk, recordId, action, now) {
   const db = cloudSdk.database();
   const data = { abnormal: false, synced_at: now };
   if (action === 'zero') data.steps = 0;
+  // 裁定留痕（与 verdict.js 一致）：区分「同步为 0」与「裁定置 0」。
+  data.verdict_action = action;
+  if (now) data.verdict_at = now;
   try {
     await db.collection('StepRecord').doc(recordId).update({ data });
   } catch (err) {
-    // 忽略单条失败（幂等可重跑）。
+    // 单条失败不阻断（幂等可重跑），仅留痕。
+    console.warn('[写回失败]', 'StepRecord.verdict(' + recordId + ')', (err && err.message) || err);
   }
 }
 
@@ -266,7 +278,8 @@ async function writeDeptToCloud(cloudSdk, department, deptId) {
   try {
     await db.collection('Department').add({ data });
   } catch (err) {
-    // 忽略单条失败（幂等可重跑）。
+    // 单条失败不阻断（幂等可重跑），仅留痕。
+    console.warn('[写回失败]', 'Department.add(' + deptId + ')', (err && err.message) || err);
   }
 }
 
@@ -278,7 +291,8 @@ async function updateDeptToCloud(cloudSdk, deptId, name) {
   try {
     await db.collection('Department').where({ dept_id: deptId }).update({ data: { name } });
   } catch (err) {
-    // 忽略单条失败。
+    // 单条失败不阻断（幂等可重跑），仅留痕。
+    console.warn('[写回失败]', 'Department.update(' + deptId + ')', (err && err.message) || err);
   }
 }
 
@@ -290,7 +304,8 @@ async function removeDeptToCloud(cloudSdk, deptId) {
   try {
     await db.collection('Department').where({ dept_id: deptId }).remove();
   } catch (err) {
-    // 忽略单条失败。
+    // 单条失败不阻断（幂等可重跑），仅留痕。
+    console.warn('[写回失败]', 'Department.remove(' + deptId + ')', (err && err.message) || err);
   }
 }
 

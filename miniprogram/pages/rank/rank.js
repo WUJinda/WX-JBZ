@@ -15,6 +15,7 @@ const {
   formatUpdatedAt,
   DEFAULT_PAGE_SIZE
 } = require('./rankCalc');
+const { hasMore } = require('../../../utils/pagination');
 
 const ACTIVITY_ID = 'a_demo_001';
 
@@ -171,7 +172,7 @@ Page({
         this.setData({
           personalList: merged,
           personalPage: page + 1,
-          personalHasMore: list.length >= this.data.personalPageSize,
+          personalHasMore: hasMore(list.length, this.data.personalPageSize),
           myRank,
           myNeighbors: neighbors,
           updatedAt: formatUpdatedAt(d.updatedAt),
@@ -234,7 +235,7 @@ Page({
         this.setData({
           deptList: merged,
           deptPage: page + 1,
-          deptHasMore: list.length >= this.data.deptPageSize,
+          deptHasMore: hasMore(list.length, this.data.deptPageSize),
           myDeptRank,
           myDeptContribution,
           updatedAt: formatUpdatedAt(d.updatedAt),
@@ -290,7 +291,7 @@ Page({
         this.setData({
           memberList: merged,
           memberPage: page + 1,
-          memberHasMore: list.length >= this.data.memberPageSize,
+          memberHasMore: hasMore(list.length, this.data.memberPageSize),
           updatedAt: formatUpdatedAt(d.updatedAt),
           loading: false,
           loadingMore: false,

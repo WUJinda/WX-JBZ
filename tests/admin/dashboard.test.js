@@ -6,7 +6,7 @@
  *   - dailyActive（近 trendDays 天，缺日补 0）；
  *   - deptRank 复用 RankCache（不重算）。
  */
-const { buildDashboard, isValidRecord } = require('../../cloudfunctions/admin/dashboard');
+const { buildDashboard, isValidRecord, buildDailyActiveTrend, projectDeptRank } = require('../../cloudfunctions/admin/dashboard');
 
 const ACT = 'a1';
 // 北京时间 06-26 12:00 = UTC 06-26 04:00
@@ -233,5 +233,109 @@ describe('isValidRecord 口径与 rankAggregate/stepsQuery 一致', () => {
     expect(isValidRecord({ locked: false, date: today }, today)).toBe(true);
     expect(isValidRecord({ locked: false, date: '2026-06-25' }, today)).toBe(false);
     expect(isValidRecord({ locked: false, date: '' }, today)).toBe(false);
+  });
+});
+
+describe('buildDailyActiveTrend（独立断言：日期升序 / 缺日补 0 / 空数据 / 非法）', () => {
+  it('输出按日期升序（从 trendDays-1 天前到 today）', () => {
+    const dailyMap = new Map([['2026-06-26', new Set(['u1', 'u2'])]]);
+    const trend = buildDailyActiveTrend(dailyMap, '2026-06-26', 3);
+    expect(trend.map((x) => x.date)).toEqual(['2026-06-24', '2026-06-25', '2026-06-26']);
+  });
+
+  it('缺日补 0（无数据日期 count=0）', () => {
+    const dailyMap = new Map([['2026-06-26', new Set(['u1'])]]);
+    const trend = buildDailyActiveTrend(dailyMap, '2026-06-26', 3);
+    const byDate = {};
+    trend.forEach((x) => { byDate[x.date] = x.count; });
+    expect(byDate['2026-06-24']).toBe(0); // 缺日
+    expect(byDate['2026-06-25']).toBe(0); // 缺日
+    expect(byDate['2026-06-26']).toBe(1);
+  });
+
+  it('空 dailyMap → 全补 0，长度仍为 trendDays', () => {
+    const trend = buildDailyActiveTrend(new Map(), '2026-06-26', 5);
+    expect(trend).toHaveLength(5);
+    expect(trend.every((x) => x.count === 0)).toBe(true);
+    expect(trend[4].date).toBe('2026-06-26'); // 末尾为今天
+  });
+
+  it('trendDays=1 → 仅今天', () => {
+    const trend = buildDailyActiveTrend(new Map([['2026-06-26', new Set(['u1'])]]), '2026-06-26', 1);
+    expect(trend).toEqual([{ date: '2026-06-26', count: 1 }]);
+  });
+
+  it('trendDays 缺省/非法 → 兜底默认（DEFAULT_TREND_DAYS=30）', () => {
+    const trendDefault = buildDailyActiveTrend(new Map(), '2026-06-26');
+    expect(trendDefault).toHaveLength(30);
+    const trendNan = buildDailyActiveTrend(new Map(), '2026-06-26', NaN);
+    expect(trendNan).toHaveLength(30);
+    // 实现用 Number(trendDays) || DEFAULT：0 为 falsy → 兜底 30（不是 1）。
+    const trendZero = buildDailyActiveTrend(new Map(), '2026-06-26', 0);
+    expect(trendZero).toHaveLength(30);
+  });
+
+  it('today 非法日期（无法解析为三段数字）→ 返回空数组（不抛错）', () => {
+    expect(buildDailyActiveTrend(new Map(), 'not-a-date', 3)).toEqual([]);
+    expect(buildDailyActiveTrend(new Map(), '', 3)).toEqual([]);
+    expect(buildDailyActiveTrend(new Map(), '2026-06', 3)).toEqual([]); // 仅两段
+  });
+
+  it('today 为可解析三段数字（含非零填充如 2026-6-1）→ 正常构造（输出端零填充规范）', () => {
+    // 实现仅校验 split('-') 后三段均为有限数，不校验输入零填充；输出端 padStart 规范为 YYYY-MM-DD。
+    const trend = buildDailyActiveTrend(new Map(), '2026-6-1', 1);
+    expect(trend).toEqual([{ date: '2026-06-01', count: 0 }]);
+  });
+
+  it('跨月 / 跨年回退正确（2026-01-03 回退含 2025-12 末）', () => {
+    const trend = buildDailyActiveTrend(new Map(), '2026-01-03', 5);
+    expect(trend.map((x) => x.date)).toEqual([
+      '2025-12-30', '2025-12-31', '2026-01-01', '2026-01-02', '2026-01-03'
+    ]);
+  });
+});
+
+describe('projectDeptRank（独立断言：字段白名单 + small_sample 标记）', () => {
+  it('返回白名单字段：rank/dept_id/total_steps/avg_steps/member_count/small_sample/dept_name', () => {
+    const out = projectDeptRank({
+      rank: 1, dept_id: 'd_1', total_steps: 1000, avg_steps: 250,
+      member_count: 4, small_sample: false, dept_name: '一部'
+    });
+    expect(out).toEqual({
+      rank: 1, dept_id: 'd_1', total_steps: 1000, avg_steps: 250,
+      member_count: 4, small_sample: false, dept_name: '一部'
+    });
+  });
+
+  it('不下发敏感字段（_openid / phone / sync_count）', () => {
+    const out = projectDeptRank({
+      rank: 1, dept_id: 'd_1', total_steps: 1000,
+      _openid: 'op', phone: '13800000000', sync_count: 9
+    });
+    expect(out).not.toHaveProperty('_openid');
+    expect(out).not.toHaveProperty('phone');
+    expect(out).not.toHaveProperty('sync_count');
+  });
+
+  it('small_sample 标记透传：true → true，假值 → false（强制布尔）', () => {
+    expect(projectDeptRank({ small_sample: true }).small_sample).toBe(true);
+    expect(projectDeptRank({ small_sample: false }).small_sample).toBe(false);
+    expect(projectDeptRank({ small_sample: 0 }).small_sample).toBe(false);
+    expect(projectDeptRank({ small_sample: undefined }).small_sample).toBe(false);
+    expect(projectDeptRank({ small_sample: 1 }).small_sample).toBe(true);
+  });
+
+  it('空输入兜底（row 缺失 → 全默认值，不抛错）', () => {
+    const out = projectDeptRank(null);
+    expect(out).toEqual({
+      rank: undefined, dept_id: undefined, total_steps: undefined,
+      avg_steps: undefined, member_count: undefined,
+      small_sample: false, dept_name: ''
+    });
+  });
+
+  it('dept_name 缺失 → 空串', () => {
+    expect(projectDeptRank({ rank: 1 }).dept_name).toBe('');
+    expect(projectDeptRank({ rank: 1, dept_name: null }).dept_name).toBe('');
   });
 });

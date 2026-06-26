@@ -11,7 +11,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { maskPhone } = require('../../miniprogram/utils/format');
+const { maskPhone } = require('../common/mask');
 
 /**
  * 从 wxContext 解析身份（OPENID / UNIONID）。

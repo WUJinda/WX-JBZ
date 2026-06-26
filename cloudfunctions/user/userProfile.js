@@ -9,7 +9,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { maskPhone } = require('../../miniprogram/utils/format');
+const { maskPhone } = require('../common/mask');
 
 /**
  * 累计步数投影：当前阶段步数为占位（真实聚合在 E/G 阶段）。

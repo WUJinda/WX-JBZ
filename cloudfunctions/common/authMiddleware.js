@@ -54,12 +54,21 @@ function authMiddleware(options) {
 
   // TODO: requireUser / requireAdmin 的 DB 校验逻辑留给后续轮次。
   // 本轮只保证能可信地拿到 openid，绝不引入任何 token 概念。
+  //
+  // 占位说明（当前行为）：
+  //   - requireUser / requireAdmin 当前为占位空骨架，传 true 不做任何 DB 校验；
+  //   - User 存在性由各 handler 内按 _openid 查库保证（见 user/index.js 的 getProfile、
+  //     rank/index.js 的 personal/dept 查询等，查不到即抛 AUTH_USER_NOT_FOUND）；
+  //   - 管理员权限由 admin/index.js 内的 assertAdmin(store, openid) 承担
+  //     （非 is_admin===true 抛 AUTH_NOT_ADMIN）；
+  //   - 云轨联调如需在入口统一校验（而非每个 handler 各自查库），再在此实现：
+  //       requireUser → db.collection('User').where({_openid: openid}).get() 校验存在；
+  //       requireAdmin → 在 requireUser 基础上校验 user.is_admin === true。
   if (opts.requireUser) {
-    // 后续：const user = await db.collection('User').where({_openid: openid}).get();
-    // if (!user) throw BizError(CODE.AUTH_USER_NOT_FOUND, 'user not found');
+    // 占位：见上方说明，当前不在此查库。
   }
   if (opts.requireAdmin) {
-    // 后续：校验 user.is_admin === true，否则 throw BizError(CODE.AUTH_NOT_ADMIN, ...)
+    // 占位：见上方说明，管理员校验由各 handler 的 assertAdmin 承担。
   }
 
   return context;

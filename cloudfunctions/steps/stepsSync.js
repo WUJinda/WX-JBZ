@@ -127,7 +127,7 @@ async function syncSteps(params) {
 
   if (!openid) throw BizError(CODE.AUTH_NO_OPENID, 'sync: openid required');
   if (!userId) throw BizError(CODE.AUTH_USER_NOT_FOUND, 'sync: userId required');
-  if (!activityId) throw BizError(CODE.STEP_ACTIVITY_CLOSED, 'sync: activityId required');
+  if (!activityId) throw BizError(CODE.BIZ_PARAM_MISSING, 'sync: activityId required');
   if (!store || !Array.isArray(store.StepRecord)) {
     throw BizError(CODE.SYS_DB_ERROR, 'sync: store.StepRecord is required');
   }

@@ -31,7 +31,7 @@ const { buildTrend } = require('./stepsTrend');
  * @returns {Promise<{openid:string, sessionKey:string}>}
  */
 async function code2Session(cloudSdk, jsCode) {
-  if (!cloudSdk || !cloudSdk.openapi || typeof cloudSdk.openapi.auth !== 'function') {
+  if (!cloudSdk || !cloudSdk.openapi || !cloudSdk.openapi.auth || typeof cloudSdk.openapi.auth.code2Session !== 'function') {
     throw BizError(CODE.SYS_EXTERNAL_ERROR, 'code2Session: cloud openapi not available');
   }
   if (!jsCode) {
@@ -120,6 +120,12 @@ const handlers = {
 /**
  * 载入集合全部文档（云轨真实库）。
  * 本地轨/单测不经此 handler，直接调纯函数注入 store。
+ *
+ * TODO 云轨优化：当前全量拉集合（含 _openid / phone / sync_count 等敏感字段）入内存，
+ *   StepRecord 量大时有 OOM 风险。对查询类 action（today/history/trend）改用 DB 端
+ *   `.field()` 投影（仅取必要字段）+ `.where()` 过滤（按 user_id / activity_id / date），
+ *   避免全量拉敏感集合入内存；当前全量拉取仅为本地轨/早期简化。
+ *
  * @param {object} cloudSdk
  * @param {string} name
  * @returns {Promise<object[]>}

@@ -93,9 +93,27 @@ describe('getHistory 区间查询（E3，仅 locked/今日有效）', () => {
     expect(out.list[0]).not.toHaveProperty('sync_count');
   });
 
-  it('缺 activityId → STEP_ACTIVITY_CLOSED', async () => {
+  it('缺 activityId → BIZ_PARAM_MISSING（参数缺失，非活动结束）', async () => {
     await expect(
       getHistory({ store: { StepRecord: [] }, userId: USER_ID, now: NOW })
-    ).rejects.toMatchObject({ code: CODE.STEP_ACTIVITY_CLOSED });
+    ).rejects.toMatchObject({ code: CODE.BIZ_PARAM_MISSING });
+  });
+});
+
+describe('getToday 缺参（E3，参数缺失错误码）', () => {
+  it('缺 activityId → BIZ_PARAM_MISSING（today 路径，非 STEP_ACTIVITY_CLOSED）', async () => {
+    await expect(
+      getToday({ store: { StepRecord: [] }, userId: USER_ID, now: NOW })
+    ).rejects.toMatchObject({ code: CODE.BIZ_PARAM_MISSING });
+  });
+
+  it('缺 activityId 错误码 ≠ STEP_ACTIVITY_CLOSED（语义分离：参数缺失 vs 活动结束）', async () => {
+    let err;
+    try {
+      await getHistory({ store: { StepRecord: [] }, userId: USER_ID, now: NOW });
+    } catch (e) {
+      err = e;
+    }
+    expect(err.code).not.toBe(CODE.STEP_ACTIVITY_CLOSED);
   });
 });

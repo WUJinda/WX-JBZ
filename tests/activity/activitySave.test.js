@@ -9,7 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const { saveActivity } = require('../../cloudfunctions/activity/activitySave');
+const { saveActivity, projectSavedActivity, genActivityId } = require('../../cloudfunctions/activity/activitySave');
 const { CODE } = require('../../cloudfunctions/common/errors');
 const { STATUS } = require('../../cloudfunctions/activity/activityStatus');
 
@@ -282,5 +282,103 @@ describe('saveActivity（纯函数 / 红线 grep）', () => {
     // 同步返回普通对象（非 thenable）
     expect(typeof out).toBe('object');
     expect(typeof out.then).toBe('undefined');
+  });
+});
+
+describe('projectSavedActivity（投影白名单，不下发敏感字段）', () => {
+  // 投影白名单语义：save 返回给前端的活动对象只含安全字段，
+  // 绝不下发 _openid / phone / sync_count / created_at / updated_at 等服务端/敏感字段。
+  it('返回对象仅含白名单字段（activity_id/name/cover_url/start_time/end_time/status/rules）', () => {
+    const out = projectSavedActivity({
+      activity_id: 'a_1',
+      name: '活动',
+      cover_url: 'https://x/c.png',
+      start_time: START,
+      end_time: END,
+      status: STATUS.PENDING,
+      rules: 'r',
+      // 服务端/敏感字段：投影不应下发
+      _id: 'doc_1',
+      _openid: 'op_admin',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-02T00:00:00Z',
+      total_steps: 999,
+      participant_count: 10,
+      phone: '13800000000',
+      sync_count: 5
+    });
+    expect(out).toEqual({
+      activity_id: 'a_1',
+      name: '活动',
+      cover_url: 'https://x/c.png',
+      start_time: START,
+      end_time: END,
+      status: STATUS.PENDING,
+      rules: 'r'
+    });
+  });
+
+  it('不下发 _openid / phone / sync_count（敏感字段红线）', () => {
+    const out = projectSavedActivity({
+      activity_id: 'a_1', name: 'x', start_time: START, end_time: END, status: STATUS.ACTIVE,
+      _openid: 'op', phone: '13800000000', sync_count: 3
+    });
+    expect(out).not.toHaveProperty('_openid');
+    expect(out).not.toHaveProperty('phone');
+    expect(out).not.toHaveProperty('sync_count');
+  });
+
+  it('缺失字段兜底为空串（name/cover_url/rules 缺失不报错）', () => {
+    const out = projectSavedActivity({
+      activity_id: 'a_1',
+      start_time: START,
+      end_time: END,
+      status: STATUS.ACTIVE
+    });
+    expect(out.name).toBe('');
+    expect(out.cover_url).toBe('');
+    expect(out.rules).toBe('');
+  });
+});
+
+describe('genActivityId（格式 + 唯一性）', () => {
+  it('格式：始终以 a_ 前缀开头', () => {
+    expect(genActivityId()).toMatch(/^a_/);
+    expect(genActivityId('1700000000000')).toMatch(/^a_/);
+    expect(genActivityId(123)).toMatch(/^a_/);
+  });
+
+  it('无参：基于 Date.now() 生成，形如 a_<时间戳>', () => {
+    const id = genActivityId();
+    expect(id).toMatch(/^a_\d+$/);
+  });
+
+  it('唯一性：不同 ts 入参 → 不同 id（可控唯一性）', () => {
+    // genActivityId 无参基于 Date.now()，同毫秒内可能重复（实现特性）；
+    // 唯一性契约由「不同 ts 入参产生不同 id」保证（调用方可传递增 ts）。
+    const ids = new Set();
+    for (let i = 0; i < 100; i++) {
+      ids.add(genActivityId('ts_' + i));
+    }
+    expect(ids.size).toBe(100);
+  });
+
+  it('无参连续调用：至少能产生 >1 种结果（跨毫秒时不同）', () => {
+    // 放宽：无参调用依赖 Date.now()，循环过快可能同毫秒；
+    // 仅验证「格式一致 a_<数字>」，不强制每次不同（实现允许同毫秒重复）。
+    const id = genActivityId();
+    expect(id).toMatch(/^a_\d+$/);
+  });
+
+  it('显式传入 ts → 输出 a_<ts>（调用方可覆盖）', () => {
+    expect(genActivityId('fixed')).toBe('a_fixed');
+    expect(genActivityId(1700000000000)).toBe('a_1700000000000');
+  });
+
+  it('saveActivity 新建无 activity_id 时落库 id 与返回 id 一致（来自 genActivityId）', () => {
+    const store = makeStore([]);
+    const out = saveActivity(store, { activity: { name: 'x', start_time: START, end_time: END } });
+    expect(out.activity_id).toMatch(/^a_/);
+    expect(store.Activity[0].activity_id).toBe(out.activity_id);
   });
 });

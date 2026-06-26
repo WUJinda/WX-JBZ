@@ -44,7 +44,7 @@ async function getToday(params) {
   const p = params || {};
   const { store, userId, activityId } = p;
   if (!userId) throw BizError(CODE.AUTH_USER_NOT_FOUND, 'today: userId required');
-  if (!activityId) throw BizError(CODE.STEP_ACTIVITY_CLOSED, 'today: activityId required');
+  if (!activityId) throw BizError(CODE.BIZ_PARAM_MISSING, 'today: activityId required');
   if (!store || !Array.isArray(store.StepRecord)) {
     throw BizError(CODE.SYS_DB_ERROR, 'today: store.StepRecord is required');
   }
@@ -86,7 +86,7 @@ async function getHistory(params) {
   const p = params || {};
   const { store, userId, activityId } = p;
   if (!userId) throw BizError(CODE.AUTH_USER_NOT_FOUND, 'history: userId required');
-  if (!activityId) throw BizError(CODE.STEP_ACTIVITY_CLOSED, 'history: activityId required');
+  if (!activityId) throw BizError(CODE.BIZ_PARAM_MISSING, 'history: activityId required');
   if (!store || !Array.isArray(store.StepRecord)) {
     throw BizError(CODE.SYS_DB_ERROR, 'history: store.StepRecord is required');
   }

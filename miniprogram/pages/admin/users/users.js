@@ -158,6 +158,8 @@ Page({
         const options = buildDeptOptions(d);
         const range = ['全部'].concat(options.map((o) => o.name));
         this.setData({ deptOptions: options, deptPickerRange: range });
+        // 部门选项就绪后，回补已加载列表的 dept_name（若列表先于选项返回）。
+        this.attachDeptName();
       })
       .catch(() => {
         // 本地轨：dept 云函数未部署 → 静默空选项。
@@ -196,9 +198,13 @@ Page({
       .then((data) => {
         const d = data || {};
         const list = Array.isArray(d.list) ? d.list : [];
-        // 为每条记录附加状态文案（phone_masked 直接用后端下发脱敏值，不再二次掩码）。
+        // 为每条记录附加状态文案 + 部门名（phone_masked 直接用后端下发脱敏值，不再二次掩码）。
+        const deptOptions = this.data.deptOptions;
         list.forEach((u) => {
           u.joinStatusText = formatJoinStatus(u.join_status);
+          // 按 dept_id 查 deptOptions 补部门名（选项未就绪则留空，wxml 兜底显示 dept_id）。
+          const dept = u.dept_id ? deptOptions.find((o) => o.dept_id === u.dept_id) : null;
+          u.dept_name = dept ? dept.name : '';
         });
         const merged = reset ? list : this.data.list.concat(list);
         const totalCount = Number(d.totalCount) || merged.length;
@@ -221,5 +227,29 @@ Page({
           totalCount: reset ? 0 : this.data.totalCount
         });
       });
+  },
+
+  /**
+   * 部门选项就绪后，回补已加载列表每条记录的 dept_name。
+   * 场景：loadUsers 先于 loadDeptOptions 返回时，列表里 dept_name 为空，
+   *      选项到位后调用此方法补齐展示（wxml 兜底显示 dept_id，不白屏）。
+   */
+  attachDeptName() {
+    const options = this.data.deptOptions;
+    if (!options || options.length === 0) return;
+    const list = this.data.list;
+    if (!Array.isArray(list) || list.length === 0) return;
+    let changed = false;
+    const next = list.map((u) => {
+      if (!u || !u.dept_id) return u;
+      const dept = options.find((o) => o.dept_id === u.dept_id);
+      const name = dept ? dept.name : '';
+      if (u.dept_name !== name) {
+        changed = true;
+        return Object.assign({}, u, { dept_name: name });
+      }
+      return u;
+    });
+    if (changed) this.setData({ list: next });
   }
 });

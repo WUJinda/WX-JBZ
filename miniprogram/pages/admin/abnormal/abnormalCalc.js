@@ -1,8 +1,9 @@
 /**
  * 后台异常裁定页前端纯函数（对齐 PRD F8 R8.4，开发计划阶段 H3）。
  *
- * 把裁定文案、步数格式化、分页 hasMore 判定抽成纯函数，
+ * 把裁定文案、步数格式化抽成纯函数，
  * 便于在 Node 下单测，不耦合 wx 运行时。
+ * 分页 hasMore 判定已抽到公共 utils/pagination.js，本页直接复用。
  *
  * 红线：
  *   - 入参仅消费后端 admin.abnormalList 下发的白名单字段
@@ -10,20 +11,9 @@
  *   - 不依赖 wx API、不调云函数（数据由 abnormal.js 拉取后传入）。
  */
 
-const DEFAULT_PAGE_SIZE = 50;
+const { hasMore } = require('../../../utils/pagination');
 
-/**
- * 分页 hasMore 判定：本次返回条数 < pageSize → 还有更多（照 rankCalc 口径）。
- * @param {number} returnedCount 本次返回条数
- * @param {number} pageSize 每页条数
- * @returns {boolean}
- */
-function hasMore(returnedCount, pageSize) {
-  const cnt = Number(returnedCount) || 0;
-  const size = Number(pageSize);
-  const ps = !Number.isFinite(size) || size < 1 ? DEFAULT_PAGE_SIZE : Math.floor(size);
-  return cnt >= ps;
-}
+const DEFAULT_PAGE_SIZE = 50;
 
 /**
  * 裁定按钮文案（ignore/zero）。

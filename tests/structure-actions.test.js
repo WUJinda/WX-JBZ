@@ -470,9 +470,53 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
 
   it('admin/index.js 全部 7 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
-    // assertAdmin 至少出现 7 次（每个 handler 一次）
-    const count = (src.match(/assertAdmin\(/g) || []).length;
-    expect(count).toBeGreaterThanOrEqual(7);
+    // 语义说明：每个管理员 handler 必须在入口调用 assertAdmin 做管理员守卫，
+    // 漏一个 handler 会导致非管理员可绕过鉴权调用该 action。
+    // admin 共 7 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage），
+    // 故 assertAdmin 语句调用必须精确出现 7 次（每个 handler 内 1 次）。
+    const actions = [
+      'whitelistImport', 'users', 'changeDept',
+      'abnormalList', 'verdict', 'dashboard', 'deptManage'
+    ];
+    // 结构化断言：每个 handler 块内都含 assertAdmin（按 handler 名切分源码块）。
+    for (const act of actions) {
+      // 定位 handler 块（action: async (event, context) => { ... } 区间，至下一个 handler 或文件尾）。
+      const startIdx = src.indexOf(act + ':');
+      expect(startIdx, `admin handler ${act} 未找到`).toBeGreaterThan(-1);
+      // 取该 handler 到下一个 ', <name>:' 或 loadCollection 之间的片段（保守截取 800 字符足够覆盖单 handler）。
+      const slice = src.slice(startIdx, startIdx + 800);
+      expect(
+        slice.includes('assertAdmin('),
+        `admin handler "${act}" 块内未调用 assertAdmin（守卫缺失）`
+      ).toBe(true);
+    }
+    // 精确计数兜底：只数「语句调用」（行首缩进 + assertAdmin(store，排除注释/require 解构）。
+    // 注释里也可能出现 assertAdmin( 文本，故用行首缩进式调用形态锁定真实调用。
+    const callCount = (src.match(/^\s+assertAdmin\(store/gm) || []).length;
+    expect(callCount).toBe(actions.length);
+  });
+
+  it('activity.save handler 调用 assertAdmin（管理员守卫，与 admin 7 action 同口径）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    // save 是唯一需要管理员守卫的 activity action，语句调用必须精确出现 1 次。
+    const callCount = (src.match(/^\s+assertAdmin\(store/gm) || []).length;
+    expect(callCount).toBe(1);
+    // save handler 块内含 assertAdmin
+    const saveIdx = src.indexOf('save:');
+    expect(saveIdx).toBeGreaterThan(-1);
+    expect(src.slice(saveIdx, saveIdx + 800).includes('assertAdmin(')).toBe(true);
+  });
+
+  it('assertAdmin 全仓调用总数 = 8（admin 7 + activity.save 1），锁定无遗漏', () => {
+    // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
+    // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
+    const adminSrc = readSource('cloudfunctions/admin/index.js');
+    const activitySrc = readSource('cloudfunctions/activity/index.js');
+    const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
+    const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
+    expect(adminCount).toBe(7);
+    expect(activityCount).toBe(1);
+    expect(adminCount + activityCount).toBe(8);
   });
 
   it('admin 纯函数模块文件存在（8 个）', () => {
@@ -767,7 +811,8 @@ describe('admin 后台前端页面结构与红线（H3：users / abnormal / dept
     ).toBe(true);
     const src = readSource('miniprogram/pages/admin/users/usersCalc.js');
     expect(src).toMatch(/function buildDeptOptions/);
-    expect(src).toMatch(/function hasMore/);
+    // hasMore 已抽到公共 utils/pagination.js，本页 require 转发后在 module.exports 暴露
+    expect(src).toMatch(/hasMore/);
     expect(src).toMatch(/function formatJoinStatus/);
   });
 
@@ -822,7 +867,8 @@ describe('admin 后台前端页面结构与红线（H3：users / abnormal / dept
     const src = readSource('miniprogram/pages/admin/abnormal/abnormalCalc.js');
     expect(src).toMatch(/function verdictLabel/);
     expect(src).toMatch(/function formatSteps/);
-    expect(src).toMatch(/function hasMore/);
+    // hasMore 已抽到公共 utils/pagination.js，本页 require 转发后在 module.exports 暴露
+    expect(src).toMatch(/hasMore/);
   });
 
   // ===== dept 页（部门管理）=====

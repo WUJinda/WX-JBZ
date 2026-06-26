@@ -12,7 +12,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { maskPhone } = require('../../miniprogram/utils/format');
+const { maskPhone } = require('../common/mask');
 
 /**
  * 手机号合法性校验（11 位数字）。

@@ -47,7 +47,7 @@
         <view class="meta">
           <text class="phone">{{item.phone_masked}}</text>
           <text class="dot">·</text>
-          <text>{{item.dept_id}}</text>
+          <text>{{item.dept_name || item.dept_id}}</text>
         </view>
         <view class="meta">
           <text class="join-status">{{item.joinStatusText}}</text>

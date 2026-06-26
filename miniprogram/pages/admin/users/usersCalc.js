@@ -1,14 +1,17 @@
 /**
  * 后台用户管理页前端纯函数（对齐 PRD F8 R8.3，开发计划阶段 H3）。
  *
- * 把部门选项构造、分页 hasMore 判定、报名状态格式化抽成纯函数，
+ * 把部门选项构造、报名状态格式化抽成纯函数，
  * 便于在 Node 下单测，不耦合 wx 运行时。
+ * 分页 hasMore 判定已抽到公共 utils/pagination.js，本页直接复用。
  *
  * 红线：
  *   - 入参仅消费后端 admin.users / dept.list 下发的脱敏字段
  *     （dept_id/name/phone_masked/join_status 等），不下发 _openid / 完整 phone。
  *   - 不依赖 wx API、不调云函数（数据由 users.js 拉取后传入）。
  */
+
+const { hasMore } = require('../../../utils/pagination');
 
 const DEFAULT_PAGE_SIZE = 50;
 
@@ -27,19 +30,6 @@ function buildDeptOptions(deptListOrRes) {
   return arr
     .map((d) => (d && typeof d === 'object' ? { dept_id: d.dept_id || '', name: d.name || '' } : null))
     .filter((d) => d && d.dept_id);
-}
-
-/**
- * 分页 hasMore 判定：本次返回条数 < pageSize → 还有更多（照 rankCalc 口径）。
- * @param {number} returnedCount 本次返回条数
- * @param {number} pageSize 每页条数
- * @returns {boolean}
- */
-function hasMore(returnedCount, pageSize) {
-  const cnt = Number(returnedCount) || 0;
-  const size = Number(pageSize);
-  const ps = !Number.isFinite(size) || size < 1 ? DEFAULT_PAGE_SIZE : Math.floor(size);
-  return cnt >= ps;
 }
 
 /**

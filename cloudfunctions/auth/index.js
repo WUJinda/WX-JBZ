@@ -32,6 +32,15 @@ const handlers = {
     const db = cloud.database();
     // 本地轨：phone 由调用方传入「已解密的完整手机号」。
     // 真实 getPhoneNumber / encryptedData 解密链路在云轨接入。
+    //
+    // === 云轨 TODO（联调强制项）===
+    // 当前直接读 event.phone 明文，仅为本地轨联调占位。
+    // 云轨联调必须改为：从前端 open-type=getPhoneNumber 回调拿 code，
+    // 调 cloud.openapi.phonenumber.getPhoneNumber({ code }) 由微信侧解密返回真实手机号，
+    // 禁止把前端明文 phone 作为信任源（否则任何前端可伪造任意手机号绕过白名单）。
+    // 改造点示例：
+    //   const phoneRes = await cloud.openapi.phonenumber.getPhoneNumber({ code: event.code });
+    //   const phone = phoneRes && phoneRes.phoneInfo && phoneRes.phoneInfo.phoneNumber;
     const phone = event && event.phone;
     return verifyPhone({ openid, phone, db });
   }

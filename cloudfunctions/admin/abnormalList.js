@@ -13,6 +13,7 @@
 const DEFAULT_PAGE_SIZE = 50;
 
 // 投影白名单：逐字段枚举，绝不下发 _openid / sync_count。
+// verdict_action/verdict_at 用于展示裁定留痕（区分同步为0 vs 裁定置0）。
 const ABNORMAL_FIELDS = [
   '_id',
   'user_id',
@@ -20,7 +21,9 @@ const ABNORMAL_FIELDS = [
   'steps',
   'synced_at',
   'abnormal',
-  'locked'
+  'locked',
+  'verdict_action',
+  'verdict_at'
 ];
 
 /**

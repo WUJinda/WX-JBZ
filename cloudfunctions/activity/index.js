@@ -45,7 +45,7 @@ const handlers = {
   current: async (event) => {
     const openid = safeOpenid(cloud.getWXContext);
     // 游客 join_status 恒为 pending（本地轨 mock；真实 user.join 留 D1）
-    const joinStatus = openid ? 'pending' : 'pending';
+    const joinStatus = 'pending';
     return getCurrent({
       openid,
       joinStatus,
@@ -86,6 +86,11 @@ const handlers = {
 /**
  * 载入集合全部文档（云轨真实库，照 tasks/index.js 范式）。
  * 本地轨/单测不经此 handler，直接调纯函数注入 store。
+ *
+ * TODO 云轨优化：当前全量拉集合（含 _openid / phone 等敏感字段）入内存，
+ *   User 量大时有 OOM 风险。对查询类 action 改用 DB 端 `.field()` 投影（仅取必要字段）
+ *   + `.where()` 过滤，避免全量拉敏感集合入内存；当前全量拉取仅为本地轨/早期简化。
+ *
  * @param {object} cloudSdk
  * @param {string} name
  * @returns {Promise<object[]>}
@@ -142,7 +147,8 @@ async function upsertActivityToCloud(cloudSdk, activity, activityId, now) {
       await db.collection('Activity').add({ data: payload });
     }
   } catch (err) {
-    // 单条失败不阻断（幂等可重跑）。
+    // 单条失败不阻断（幂等可重跑），仅留痕。
+    console.warn('[写回失败]', 'Activity.upsert(' + activityId + ')', (err && err.message) || err);
   }
 }
 

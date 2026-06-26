@@ -3,8 +3,8 @@
 // 展示脱敏手机号 / 部门 / 累计步数（步数为占位，真实聚合留后续阶段）。
 // 红线：本页只展示后端下发的脱敏字段，绝不展示完整手机号 / openid。
 
-const { createApi } = require('../../utils/request');
-const api = createApi(wx.cloud);
+// api 实例从 getApp().api 取（与其余页一致，避免模块级 createApi 在本地轨发起真实 callFunction）。
+// 实际调用处在函数内取 app.api 并守卫。
 
 Page({
   data: {
@@ -28,6 +28,13 @@ Page({
   loadProfile() {
     const self = this;
     self.setData({ loading: true, errorMsg: '' });
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      // 无云能力 → 占位空态，不崩（adminVisible 保持 false）。
+      self.setData({ loading: false, errorMsg: '云能力未就绪', adminVisible: false });
+      return;
+    }
     api
       .call('user', { action: 'profile' })
       .then((data) => {

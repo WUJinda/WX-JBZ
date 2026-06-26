@@ -3,8 +3,8 @@
 // 流程：wx.login + getUserProfile 授权 → 手机号验证（open-type=getPhoneNumber）。
 // 拒绝授权时引导 openSetting 重新授权。授权状态机见 authFlow.js（纯函数单测）。
 
-const { createApi } = require('../../utils/request');
-const api = createApi(wx.cloud);
+// api 实例从 getApp().api 取（与其余页一致，避免模块级 createApi 在本地轨发起真实 callFunction）。
+// 实际调用处在函数内取 app.api 并守卫。
 
 Page({
   data: {
@@ -72,6 +72,13 @@ Page({
     // 本地轨占位：实际手机号由云轨 getPhoneNumber 解密得到。
     // 这里以 e.detail.phone 作为已解密手机号（mock 注入），生产请改用 code。
     const phone = e.detail.phone || '';
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      // 无云能力 → 停留在手机号验证态，提示重试（占位，不崩）。
+      self.setData({ phoneDenied: true });
+      return;
+    }
     api
       .call('auth', { action: 'phone', phone })
       .then((data) => {

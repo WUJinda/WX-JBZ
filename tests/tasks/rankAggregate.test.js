@@ -12,6 +12,7 @@ const {
   overwriteRankCache
 } = require('../../cloudfunctions/tasks/rankAggregate');
 const { maskNickname } = require('../../cloudfunctions/common/mask');
+const { CODE } = require('../../cloudfunctions/common/errors');
 
 const ACTIVITY_ID = 'a_demo_001';
 // 北京时间 07-03 12:00 = UTC 07-03 04:00
@@ -373,8 +374,10 @@ describe('aggregateRanking 幂等（覆盖写 RankCache）', () => {
 });
 
 describe('aggregateRanking 缺参校验', () => {
-  it('缺 activityId 抛错', async () => {
-    await expect(aggregateRanking({ store: { StepRecord: [] } })).rejects.toThrow();
+  it('缺 activityId → BIZ_PARAM_MISSING（参数缺失，非 STEP_ACTIVITY_CLOSED）', async () => {
+    await expect(aggregateRanking({ store: { StepRecord: [] } })).rejects.toMatchObject({
+      code: CODE.BIZ_PARAM_MISSING
+    });
   });
   it('缺 store.StepRecord 抛错', async () => {
     await expect(aggregateRanking({ activityId: ACTIVITY_ID, store: {} })).rejects.toThrow();
