@@ -1,3 +1,138 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+<!-- pages/rank/rank.wxml
+  排行榜页（F5 个人榜 / F6 部门榜 / 部门明细）。
+  红线：只渲染后端脱敏字段（nickname 已脱敏），不渲染 _openid/完整 phone/sync_count。
+-->
+<view class="rank-page">
+
+  <!-- 顶部 Tab：个人榜 / 部门榜 -->
+  <view class="tab-bar" wx:if="{{viewMode === 'list'}}">
+    <view class="tab-item {{tab === 'personal' ? 'tab-active' : ''}}" data-tab="personal" bindtap="onTabSwitch">个人榜</view>
+    <view class="tab-item {{tab === 'dept' ? 'tab-active' : ''}}" data-tab="dept" bindtap="onTabSwitch">部门榜</view>
+  </view>
+
+  <!-- ============ 个人榜 ============ -->
+  <block wx:if="{{tab === 'personal' && viewMode === 'list'}}">
+    <view class="list-wrap">
+      <block wx:if="{{personalList.length > 0}}">
+        <view class="rank-row" wx:for="{{personalList}}" wx:key="user_id">
+          <view class="rank-no">{{item.rank}}</view>
+          <view class="avatar">{{item.nickname ? item.nickname[0] : '?'}}</view>
+          <view class="info">
+            <view class="name">{{item.nickname || '匿名'}}</view>
+            <view class="dept">{{item.dept_name || '未分组'}}</view>
+          </view>
+          <view class="steps">{{item.total_steps}} 步</view>
+        </view>
+        <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+        <view class="load-more" wx:if="{{!personalHasMore && personalList.length > 0}}">没有更多了</view>
+      </block>
+
+      <!-- 空态 -->
+      <view class="empty" wx:if="{{!loading && personalList.length === 0}}">
+        <view class="empty-icon">🏆</view>
+        <view class="empty-text">暂无排行数据</view>
+      </view>
+      <!-- 加载占位 -->
+      <view class="empty" wx:if="{{loading}}">
+        <view class="empty-text">加载中...</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ============ 部门榜 ============ -->
+  <block wx:if="{{tab === 'dept' && viewMode === 'list'}}">
+    <!-- metric 切换 -->
+    <view class="metric-bar">
+      <view class="metric-item {{metric === 'avg' ? 'metric-active' : ''}}" data-metric="avg" bindtap="onMetricSwitch">人均步数</view>
+      <view class="metric-item {{metric === 'total' ? 'metric-active' : ''}}" data-metric="total" bindtap="onMetricSwitch">总步数</view>
+    </view>
+
+    <view class="list-wrap">
+      <block wx:if="{{deptList.length > 0}}">
+        <view class="dept-row" wx:for="{{deptList}}" wx:key="dept_id" data-dept-id="{{item.dept_id}}" data-dept-name="{{item.dept_name}}" bindtap="onDeptTap">
+          <view class="rank-no">{{item.rank}}</view>
+          <view class="info">
+            <view class="name">
+              {{item.dept_name || '未命名部门'}}
+              <text class="small-sample" wx:if="{{item.small_sample}}">样本量小</text>
+            </view>
+            <view class="dept-meta">
+              <text>人均 {{item.avg_steps}} 步</text>
+              <text class="dot">·</text>
+              <text>共 {{item.member_count}} 人</text>
+            </view>
+          </view>
+          <view class="steps">{{item.total_steps}} 步</view>
+        </view>
+        <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+        <view class="load-more" wx:if="{{!deptHasMore && deptList.length > 0}}">没有更多了</view>
+      </block>
+
+      <view class="empty" wx:if="{{!loading && deptList.length === 0}}">
+        <view class="empty-icon">🏆</view>
+        <view class="empty-text">暂无部门排行</view>
+      </view>
+      <view class="empty" wx:if="{{loading}}">
+        <view class="empty-text">加载中...</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ============ 部门明细 ============ -->
+  <block wx:if="{{viewMode === 'members'}}">
+    <view class="members-header">
+      <view class="back-btn" bindtap="onBackToList">‹ 返回</view>
+      <view class="members-title">{{currentDept.dept_name || '部门'}}成员榜</view>
+    </view>
+    <view class="list-wrap">
+      <block wx:if="{{memberList.length > 0}}">
+        <view class="rank-row {{item.is_me ? 'is-me' : ''}}" wx:for="{{memberList}}" wx:key="user_id">
+          <view class="rank-no">{{item.rank}}</view>
+          <view class="avatar">{{item.nickname ? item.nickname[0] : '?'}}</view>
+          <view class="info">
+            <view class="name">
+              {{item.nickname || '匿名'}}
+              <text class="me-tag" wx:if="{{item.is_me}}">我</text>
+            </view>
+            <view class="dept">{{item.dept_name || ''}}</view>
+          </view>
+          <view class="steps">{{item.total_steps}} 步</view>
+        </view>
+        <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+        <view class="load-more" wx:if="{{!memberHasMore && memberList.length > 0}}">没有更多了</view>
+      </block>
+
+      <view class="empty" wx:if="{{!loading && memberList.length === 0}}">
+        <view class="empty-icon">👥</view>
+        <view class="empty-text">该部门暂无成员数据</view>
+      </view>
+      <view class="empty" wx:if="{{loading}}">
+        <view class="empty-text">加载中...</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ============ 我的排名条（固定底部，仅个人榜） ============ -->
+  <view class="my-rank-bar" wx:if="{{tab === 'personal' && viewMode === 'list' && myRank}}">
+    <view class="my-rank-left">
+      <view class="my-rank-no">第 {{myRank.rank}} 名</view>
+      <view class="my-rank-neighbors" wx:if="{{myNeighbors.length > 1}}">
+        <text wx:for="{{myNeighbors}}" wx:key="user_id" wx:for-item="nb">{{nb.rank}}.{{nb.nickname || '匿名'}} </text>
+      </view>
+    </view>
+    <view class="my-rank-steps">{{myRank.total_steps}} 步</view>
+  </view>
+
+  <!-- ============ 我的部门卡（固定底部，仅部门榜） ============ -->
+  <view class="my-rank-bar" wx:if="{{tab === 'dept' && viewMode === 'list' && myDeptRank}}">
+    <view class="my-rank-left">
+      <view class="my-rank-no">我的部门 第 {{myDeptRank.rank}} 名</view>
+      <view class="my-rank-neighbors" wx:if="{{myDeptContribution > 0}}">贡献占比 {{myDeptContribution}}%</view>
+    </view>
+    <view class="my-rank-steps">人均 {{myDeptRank.avg_steps}} 步</view>
+  </view>
+
+  <!-- 更新时间 -->
+  <view class="updated-at" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+
 </view>

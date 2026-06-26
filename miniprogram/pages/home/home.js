@@ -267,9 +267,9 @@ Page({
     this.loadTrend(range);
   },
 
-  /** 我的排名入口：跳转 rank 页（R4.4）。本地轨 rank 页可能无数据，跳转即可。 */
+  /** 我的排名入口：跳转 rank 页（R4.4）。rank 是 tabBar 页，必须用 switchTab（navigateTo 会报错）。 */
   onMyRankTap() {
-    if (typeof wx === 'undefined' || !wx.navigateTo) return;
-    wx.navigateTo({ url: '/pages/rank/rank' });
+    if (typeof wx === 'undefined' || !wx.switchTab) return;
+    wx.switchTab({ url: '/pages/rank/rank' });
   }
 });

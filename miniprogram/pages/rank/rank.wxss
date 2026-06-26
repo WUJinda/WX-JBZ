@@ -1,4 +1,233 @@
-/* pages/rank/rank.wxss */
-.container {
+/* pages/rank/rank.wxss
+  排行榜页样式（F5/F6）。
+  - 列表项 / 头像 / 名次 / 步数
+  - 我的排名条 fixed 底部
+  - 本人高亮（is-me）
+  - 小部门标注（small_sample）
+  - 空态
+*/
+.rank-page {
+  min-height: 100vh;
+  background: #f5f5f5;
+  padding-bottom: 140rpx; /* 为底部我的排名条留位 */
+}
+
+/* 顶部 Tab */
+.tab-bar {
+  display: flex;
+  background: #ffffff;
+  border-bottom: 1rpx solid #eee;
+}
+.tab-item {
+  flex: 1;
+  text-align: center;
+  padding: 24rpx 0;
+  font-size: 30rpx;
+  color: #666;
+}
+.tab-active {
+  color: #1aad19;
+  font-weight: 600;
+  border-bottom: 4rpx solid #1aad19;
+}
+
+/* metric 切换 */
+.metric-bar {
+  display: flex;
+  background: #ffffff;
+  padding: 16rpx 24rpx;
+  gap: 16rpx;
+}
+.metric-item {
+  flex: 1;
+  text-align: center;
+  padding: 14rpx 0;
+  font-size: 26rpx;
+  color: #666;
+  background: #f5f5f5;
+  border-radius: 8rpx;
+}
+.metric-active {
+  color: #ffffff;
+  background: #1aad19;
+}
+
+/* 列表 */
+.list-wrap {
+  padding: 16rpx 24rpx;
+}
+
+/* 个人榜行 / 成员行 */
+.rank-row {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 12rpx;
   padding: 24rpx;
+  margin-bottom: 12rpx;
+}
+.rank-row.is-me {
+  background: #eafbee;
+  border: 2rpx solid #1aad19;
+}
+.rank-no {
+  width: 64rpx;
+  text-align: center;
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1aad19;
+}
+.avatar {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #1aad19;
+  color: #ffffff;
+  font-size: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 20rpx;
+}
+.info {
+  flex: 1;
+  overflow: hidden;
+}
+.name {
+  font-size: 28rpx;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+.me-tag {
+  font-size: 20rpx;
+  color: #ffffff;
+  background: #1aad19;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+}
+.dept {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 6rpx;
+}
+.steps {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 600;
+}
+
+/* 部门榜行 */
+.dept-row {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-radius: 12rpx;
+  padding: 24rpx;
+  margin-bottom: 12rpx;
+}
+.dept-row:active {
+  background: #f5f5f5;
+}
+.dept-meta {
+  font-size: 24rpx;
+  color: #999;
+  margin-top: 6rpx;
+}
+.dot {
+  margin: 0 8rpx;
+}
+.small-sample {
+  font-size: 20rpx;
+  color: #e6a23c;
+  background: #fdf6ec;
+  padding: 2rpx 10rpx;
+  border-radius: 6rpx;
+  margin-left: 12rpx;
+}
+
+/* 加载更多 */
+.load-more {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999;
+  padding: 24rpx 0;
+}
+
+/* 空态 */
+.empty {
+  text-align: center;
+  padding: 120rpx 0;
+}
+.empty-icon {
+  font-size: 80rpx;
+  margin-bottom: 24rpx;
+}
+.empty-text {
+  font-size: 28rpx;
+  color: #999;
+}
+
+/* 部门明细头 */
+.members-header {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  padding: 24rpx;
+  border-bottom: 1rpx solid #eee;
+}
+.back-btn {
+  font-size: 30rpx;
+  color: #1aad19;
+  padding-right: 24rpx;
+}
+.members-title {
+  font-size: 30rpx;
+  color: #333;
+  font-weight: 600;
+}
+
+/* 我的排名条 / 我的部门卡（固定底部） */
+.my-rank-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ffffff;
+  border-top: 2rpx solid #eee;
+  padding: 24rpx 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 100;
+  /* 适配 tabBar 高度（小程序原生 tabBar 约 100rpx） */
+  bottom: calc(100rpx);
+}
+.my-rank-left {
+  flex: 1;
+  overflow: hidden;
+}
+.my-rank-no {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1aad19;
+}
+.my-rank-neighbors {
+  font-size: 22rpx;
+  color: #999;
+  margin-top: 6rpx;
+}
+.my-rank-steps {
+  font-size: 28rpx;
+  color: #333;
+  font-weight: 600;
+}
+
+/* 更新时间 */
+.updated-at {
+  text-align: center;
+  font-size: 22rpx;
+  color: #bbb;
+  padding: 24rpx 0 120rpx;
 }
