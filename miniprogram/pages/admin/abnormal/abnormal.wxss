@@ -1,4 +1,76 @@
-/* pages/admin/abnormal/abnormal.wxss */
-.container {
+/* pages/admin/abnormal/abnormal.wxss
+  后台异常裁定样式：异常列表 + 忽略/置零按钮（参考 rank.wxss / dashboard.wxss）。
+*/
+.admin-page { padding: 32rpx; }
+.page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+.state-tip { text-align: center; font-size: 26rpx; color: #999; padding: 60rpx 0; }
+
+/* 列表统计 */
+.list-meta {
+  font-size: 24rpx;
+  color: #888;
+  margin-bottom: 12rpx;
+}
+
+/* 异常列表 */
+.abnormal-list {
+  /* 每条独立卡片 */
+}
+.abnormal-row {
+  background: #fff;
+  border-radius: 16rpx;
   padding: 24rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12rpx;
+}
+.user-id {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+.abnormal-flag {
+  font-size: 22rpx;
+  color: #fff;
+  background: #fa5151;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+}
+.row-meta {
+  font-size: 26rpx;
+  color: #888;
+  margin-bottom: 16rpx;
+}
+.row-meta .dot { margin: 0 8rpx; }
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.verdict-btn {
+  font-size: 26rpx;
+  border-radius: 32rpx;
+  padding: 10rpx 28rpx;
+  margin-left: 16rpx;
+}
+.verdict-ignore {
+  color: #888;
+  border: 1rpx solid #ddd;
+}
+.verdict-zero {
+  color: #fff;
+  background: #fa5151;
+  border: 1rpx solid #fa5151;
+}
+
+/* 分页加载 */
+.load-more {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999;
+  padding: 24rpx 0;
 }

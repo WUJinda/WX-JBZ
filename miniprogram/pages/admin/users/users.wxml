@@ -1,3 +1,86 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+<!-- pages/admin/users/users.wxml
+  后台用户管理：筛选栏 + 用户列表 + 分页 + 改部门弹窗（F8 R8.3）。
+  红线：只渲染后端下发的脱敏字段 phone_masked（非完整 phone），不渲染 _openid / sync_count。
+-->
+<view class="admin-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 筛选栏：关键字 + 部门 picker -->
+  <view class="filter-bar">
+    <view class="filter-search">
+      <input
+        class="search-input"
+        value="{{keyword}}"
+        bindinput="onKeywordInput"
+        bindconfirm="onKeywordSearch"
+        confirm-type="search"
+        placeholder="搜索昵称 / 手机号"
+      />
+      <view class="search-btn" bindtap="onKeywordSearch">搜索</view>
+    </view>
+    <picker
+      class="filter-dept"
+      mode="selector"
+      range="{{deptPickerRange}}"
+      value="{{deptPickerIndex}}"
+      bindchange="onDeptFilterChange"
+    >
+      <view class="picker-value">部门：{{deptPickerRange[deptPickerIndex] || '全部'}}</view>
+    </picker>
+  </view>
+
+  <!-- 统计 -->
+  <view class="list-meta" wx:if="{{!loading && list.length > 0}}">共 {{totalCount}} 人</view>
+
+  <!-- 加载态 -->
+  <view class="state-tip" wx:if="{{loading}}">加载中...</view>
+
+  <!-- 空态占位（本地轨云函数未部署） -->
+  <view class="state-tip" wx:if="{{!loading && list.length === 0}}">暂无数据，部署云函数后查看</view>
+
+  <!-- 用户列表 -->
+  <view class="user-list" wx:if="{{!loading}}">
+    <view class="user-row" wx:for="{{list}}" wx:key="_id">
+      <image class="avatar" src="{{item.avatar}}" mode="aspectFill"></image>
+      <view class="info">
+        <view class="nickname">{{item.nickname || '未命名'}}</view>
+        <view class="meta">
+          <text class="phone">{{item.phone_masked}}</text>
+          <text class="dot">·</text>
+          <text>{{item.dept_id}}</text>
+        </view>
+        <view class="meta">
+          <text class="join-status">{{item.joinStatusText}}</text>
+        </view>
+      </view>
+      <view
+        class="change-dept-btn"
+        data-user-id="{{item._id}}"
+        data-dept-id="{{item.dept_id}}"
+        bindtap="onOpenDeptPicker"
+      >改部门</view>
+    </view>
+  </view>
+
+  <!-- 分页加载更多 -->
+  <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+  <view class="load-more" wx:if="{{!loading && !loadingMore && !hasMore && list.length > 0}}">没有更多了</view>
+
+  <!-- 改部门弹窗 -->
+  <view class="picker-mask" wx:if="{{showDeptPicker}}" bindtap="onChangeDeptCancel"></view>
+  <view class="picker-sheet" wx:if="{{showDeptPicker}}">
+    <view class="picker-header">
+      <view class="picker-cancel" bindtap="onChangeDeptCancel">取消</view>
+      <view class="picker-title">修改部门</view>
+      <view class="picker-confirm" bindtap="onChangeDeptConfirm">确定</view>
+    </view>
+    <picker
+      mode="selector"
+      range="{{changeDeptRange}}"
+      value="{{changeDeptIndex}}"
+      bindchange="onChangeDeptPickerChange"
+    >
+      <view class="picker-value">{{changeDeptRange[changeDeptIndex]}}</view>
+    </picker>
+  </view>
 </view>

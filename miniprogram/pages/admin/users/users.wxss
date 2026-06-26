@@ -1,4 +1,139 @@
-/* pages/admin/users/users.wxss */
-.container {
-  padding: 24rpx;
+/* pages/admin/users/users.wxss
+  后台用户管理样式：筛选栏 + 用户列表 + 改部门弹窗（参考 rank.wxss / dashboard.wxss）。
+*/
+.admin-page { padding: 32rpx; }
+.page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+.state-tip { text-align: center; font-size: 26rpx; color: #999; padding: 60rpx 0; }
+
+/* 筛选栏 */
+.filter-bar {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
 }
+.filter-search {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333;
+  padding: 12rpx 20rpx;
+  background: #f7f8fa;
+  border-radius: 32rpx;
+}
+.search-btn {
+  margin-left: 16rpx;
+  font-size: 28rpx;
+  color: #07c160;
+  padding: 8rpx 12rpx;
+}
+.filter-dept { margin-top: 4rpx; }
+.picker-value {
+  font-size: 26rpx;
+  color: #333;
+  padding: 12rpx 0;
+}
+
+/* 列表统计 */
+.list-meta {
+  font-size: 24rpx;
+  color: #888;
+  margin-bottom: 12rpx;
+}
+
+/* 用户列表 */
+.user-list {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.user-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.user-row:last-child { border-bottom: none; }
+.avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: #f2f3f5;
+  flex: 0 0 80rpx;
+}
+.info {
+  flex: 1;
+  padding: 0 20rpx;
+  min-width: 0;
+}
+.nickname {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+.meta {
+  font-size: 24rpx;
+  color: #888;
+  margin-top: 8rpx;
+}
+.meta .dot { margin: 0 8rpx; }
+.join-status {
+  display: inline-block;
+  font-size: 22rpx;
+  color: #07c160;
+  background: #e6f7ee;
+  padding: 2rpx 12rpx;
+  border-radius: 8rpx;
+}
+.change-dept-btn {
+  flex: 0 0 auto;
+  font-size: 24rpx;
+  color: #07c160;
+  border: 1rpx solid #07c160;
+  border-radius: 24rpx;
+  padding: 8rpx 20rpx;
+}
+
+/* 分页加载 */
+.load-more {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999;
+  padding: 24rpx 0;
+}
+
+/* 改部门弹窗 */
+.picker-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 10;
+}
+.picker-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 24rpx;
+  z-index: 11;
+}
+.picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.picker-cancel { font-size: 28rpx; color: #888; }
+.picker-title { font-size: 30rpx; font-weight: 600; color: #1a1a1a; }
+.picker-confirm { font-size: 28rpx; color: #07c160; }

@@ -106,9 +106,12 @@ const handlers = {
     assertAdmin(store, context.openid);
 
     const now = (event && event.now) || new Date().toISOString();
+    // 业务 action（ignore/zero）改读 event.verdict_action（兼容 verdictAction），
+    // 避免与 exports.main 的 dispatch 字段 event.action（='verdict'）冲突——
+    // 否则 applyVerdict 永远收到 'verdict' 而非 'ignore'/'zero'（H1 遗留 bug）。
     const result = applyVerdict(store, {
       recordId: event && event.record_id,
-      action: event && event.action,
+      action: event && (event.verdict_action || event.verdictAction),
       now
     });
     // 写回 StepRecord（幂等）。

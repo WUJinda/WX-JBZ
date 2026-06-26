@@ -707,3 +707,216 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
   });
 });
 
+describe('admin 后台前端页面结构与红线（H3：users / abnormal / dept）', () => {
+  const H3_PAGES = {
+    users: 'miniprogram/pages/admin/users/users',
+    abnormal: 'miniprogram/pages/admin/abnormal/abnormal',
+    dept: 'miniprogram/pages/admin/dept/dept'
+  };
+  const H3_WXML = [
+    H3_PAGES.users + '.wxml',
+    H3_PAGES.abnormal + '.wxml',
+    H3_PAGES.dept + '.wxml'
+  ];
+
+  // ===== users 页（R8.3 用户管理）=====
+  it('users 页含筛选栏（keyword input + 部门 picker）+ 用户列表 + 改部门入口 + 分页 + 空态', () => {
+    const wxml = readSource(H3_PAGES.users + '.wxml');
+    // 筛选栏：关键字 input + 部门 picker
+    expect(wxml).toMatch(/onKeywordInput|onKeywordSearch/);
+    expect(wxml).toMatch(/picker/);
+    expect(wxml).toMatch(/onDeptFilterChange/);
+    // 用户列表
+    expect(wxml).toMatch(/user-list|user-row/);
+    // 改部门入口
+    expect(wxml).toMatch(/onOpenDeptPicker|改部门/);
+    // 分页
+    expect(wxml).toMatch(/loadingMore|load-more|hasMore/);
+    // 空态
+    expect(wxml).toMatch(/暂无/);
+  });
+
+  it('users.js 调 admin.users（dept_id/keyword/page/page_size）+ admin.changeDept + dept.list，且 api.call 全 .catch', () => {
+    const js = readSource(H3_PAGES.users + '.js');
+    // admin.users：event 字段名严格对齐
+    expect(js).toMatch(/\.call\(\s*['"]admin['"]/);
+    expect(js).toMatch(/action:\s*['"]users['"]/);
+    expect(js).toMatch(/dept_id/);
+    expect(js).toMatch(/keyword/);
+    expect(js).toMatch(/page_size/);
+    // admin.changeDept
+    expect(js).toMatch(/action:\s*['"]changeDept['"]/);
+    expect(js).toMatch(/user_id/);
+    // dept.list（填充部门选项）
+    expect(js).toMatch(/\.call\(\s*['"]dept['"]/);
+    expect(js).toMatch(/action:\s*['"]list['"]/);
+    // 引用 usersCalc
+    expect(js).toMatch(/require\(['"]\.\/usersCalc['"]\)/);
+    // 本地轨守卫
+    expect(js).toMatch(/getApp\(\)/);
+    expect(js).toMatch(/typeof api\.call !== 'function'/);
+    // 所有 api.call 全 .catch（至少 3 处：users / changeDept / dept.list）
+    const catchCount = (js.match(/\.catch\s*\(/g) || []).length;
+    expect(catchCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it('usersCalc.js 纯函数模块存在（buildDeptOptions/hasMore/formatJoinStatus）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/users/usersCalc.js')),
+      '缺少 usersCalc.js'
+    ).toBe(true);
+    const src = readSource('miniprogram/pages/admin/users/usersCalc.js');
+    expect(src).toMatch(/function buildDeptOptions/);
+    expect(src).toMatch(/function hasMore/);
+    expect(src).toMatch(/function formatJoinStatus/);
+  });
+
+  // ===== abnormal 页（R8.4 异常裁定）=====
+  it('abnormal 页含异常列表（user_id/date/steps/abnormal 高亮 + 忽略/置零按钮）+ 分页 + 空态', () => {
+    const wxml = readSource(H3_PAGES.abnormal + '.wxml');
+    // 异常列表
+    expect(wxml).toMatch(/abnormal-list|abnormal-row/);
+    // 字段展示
+    expect(wxml).toMatch(/user_id/);
+    expect(wxml).toMatch(/date/);
+    expect(wxml).toMatch(/steps/);
+    // 异常高亮
+    expect(wxml).toMatch(/abnormal-flag|异常/);
+    // 忽略 / 置零按钮（verdict action 区分）
+    expect(wxml).toMatch(/data-verdict="ignore"/);
+    expect(wxml).toMatch(/data-verdict="zero"/);
+    expect(wxml).toMatch(/onVerdict/);
+    // 分页
+    expect(wxml).toMatch(/loadingMore|load-more|hasMore/);
+    // 空态
+    expect(wxml).toMatch(/暂无/);
+  });
+
+  it('abnormal.js 调 admin.abnormalList；verdict 用 verdict_action（非 action 做 ignore/zero），且 api.call 全 .catch', () => {
+    const js = readSource(H3_PAGES.abnormal + '.js');
+    // admin.abnormalList
+    expect(js).toMatch(/\.call\(\s*['"]admin['"]/);
+    expect(js).toMatch(/action:\s*['"]abnormalList['"]/);
+    expect(js).toMatch(/page_size/);
+    // verdict：dispatch 字段 action='verdict'，业务裁定用 verdict_action
+    expect(js).toMatch(/action:\s*['"]verdict['"]/);
+    expect(js).toMatch(/verdict_action/);
+    // 不应出现把 ignore/zero 赋给 action 字段（即 action: 'ignore' / action: 'zero'）
+    expect(js).not.toMatch(/action:\s*['"]ignore['"]/);
+    expect(js).not.toMatch(/action:\s*['"]zero['"]/);
+    // 引用 abnormalCalc
+    expect(js).toMatch(/require\(['"]\.\/abnormalCalc['"]\)/);
+    // 本地轨守卫
+    expect(js).toMatch(/getApp\(\)/);
+    expect(js).toMatch(/typeof api\.call !== 'function'/);
+    // 所有 api.call 全 .catch（abnormalList / verdict）
+    const catchCount = (js.match(/\.catch\s*\(/g) || []).length;
+    expect(catchCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('abnormalCalc.js 纯函数模块存在（verdictLabel/formatSteps/hasMore）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/abnormal/abnormalCalc.js')),
+      '缺少 abnormalCalc.js'
+    ).toBe(true);
+    const src = readSource('miniprogram/pages/admin/abnormal/abnormalCalc.js');
+    expect(src).toMatch(/function verdictLabel/);
+    expect(src).toMatch(/function formatSteps/);
+    expect(src).toMatch(/function hasMore/);
+  });
+
+  // ===== dept 页（部门管理）=====
+  it('dept 页含部门列表（名称/成员数 + 编辑/删除）+ 新建按钮 + 弹窗表单（input + 确认/取消）+ 空态', () => {
+    const wxml = readSource(H3_PAGES.dept + '.wxml');
+    // 部门列表
+    expect(wxml).toMatch(/dept-list|dept-row/);
+    // 名称 / 成员数
+    expect(wxml).toMatch(/memberCountText|member_count|人/);
+    // 编辑 / 删除
+    expect(wxml).toMatch(/onEdit/);
+    expect(wxml).toMatch(/onDelete/);
+    // 新建按钮
+    expect(wxml).toMatch(/onCreate|新建/);
+    // 弹窗表单
+    expect(wxml).toMatch(/showForm/);
+    expect(wxml).toMatch(/formName/);
+    expect(wxml).toMatch(/onFormConfirm/);
+    expect(wxml).toMatch(/onFormCancel/);
+    // 空态
+    expect(wxml).toMatch(/暂无/);
+  });
+
+  it('dept.js 调 dept.list + admin.deptManage（op），且 api.call 全 .catch', () => {
+    const js = readSource(H3_PAGES.dept + '.js');
+    // dept.list
+    expect(js).toMatch(/\.call\(\s*['"]dept['"]/);
+    expect(js).toMatch(/action:\s*['"]list['"]/);
+    // admin.deptManage（op create/update/delete）
+    expect(js).toMatch(/\.call\(\s*['"]admin['"]/);
+    expect(js).toMatch(/action:\s*['"]deptManage['"]/);
+    expect(js).toMatch(/\bop\b/);
+    expect(js).toMatch(/['"]create['"]/);
+    expect(js).toMatch(/['"]update['"]/);
+    expect(js).toMatch(/['"]delete['"]/);
+    // 引用 deptCalc
+    expect(js).toMatch(/require\(['"]\.\/deptCalc['"]\)/);
+    // 本地轨守卫
+    expect(js).toMatch(/getApp\(\)/);
+    expect(js).toMatch(/typeof api\.call !== 'function'/);
+    // 所有 api.call 全 .catch（dept.list / deptManage create|update / deptManage delete）
+    const catchCount = (js.match(/\.catch\s*\(/g) || []).length;
+    expect(catchCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it('deptCalc.js 纯函数模块存在（validateDeptName/formatDept）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/dept/deptCalc.js')),
+      '缺少 deptCalc.js'
+    ).toBe(true);
+    const src = readSource('miniprogram/pages/admin/dept/deptCalc.js');
+    expect(src).toMatch(/function validateDeptName/);
+    expect(src).toMatch(/function formatDept/);
+  });
+
+  // ===== verdict bug 修复断言（H1 遗留 event.action 冲突）=====
+  it('verdict bug 已修复：admin/index.js verdict handler 取 event.verdict_action（不再用 event.action 做 ignore/zero）', () => {
+    const src = readSource('cloudfunctions/admin/index.js');
+    // verdict handler 取 event.verdict_action（兼容 verdictAction）
+    expect(src).toMatch(/verdict_action\s*\|\|\s*event\.verdictAction/);
+    // applyVerdict 调用入参 action 来自 verdict_action（而非 event.action）
+    // 验证 verdict handler 块内 action 字段绑定到 verdict_action
+    expect(src).toMatch(/action:\s*event\s*&&\s*\(event\.verdict_action\s*\|\|\s*event\.verdictAction\)/);
+  });
+
+  // ===== 红线 grep：H3 3 页 wxml 不绑定 _openid / 完整 phone / sync_count =====
+  it('红线：H3 3 个 admin 页 wxml 不绑定 _openid', () => {
+    for (const rel of H3_WXML) {
+      const src = readSource(rel);
+      expect(src).not.toMatch(/\{\{[^}]*_openid/);
+    }
+  });
+
+  it('红线：H3 3 个 admin 页 wxml 不绑定 sync_count', () => {
+    for (const rel of H3_WXML) {
+      const src = readSource(rel);
+      expect(src).not.toMatch(/\{\{[^}]*sync_count/);
+    }
+  });
+
+  it('红线：H3 3 个 admin 页 wxml 不绑定完整 phone（users 仅允许 phone_masked）', () => {
+    for (const rel of H3_WXML) {
+      const src = readSource(rel);
+      const lines = src.split('\n');
+      for (const line of lines) {
+        const binds = line.match(/\{\{[^}]+\}\}/g) || [];
+        for (const b of binds) {
+          // 含 phone 但不是 phone_masked / phoneMasked / previewPhone → 命中红线
+          if (/phone/i.test(b) && !/phoneMasked|phone_masked|previewPhone/i.test(b)) {
+            throw new Error(`${rel} 疑似绑定完整 phone: ${line.trim()}`);
+          }
+        }
+      }
+    }
+  });
+});
+

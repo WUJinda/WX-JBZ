@@ -1,3 +1,49 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+<!-- pages/admin/abnormal/abnormal.wxml
+  后台异常裁定：异常步数列表 + 忽略/置零裁定（F8 R8.4）。
+  红线：只渲染后端下发的白名单字段（user_id/date/steps/abnormal），不渲染 _openid / phone / sync_count。
+-->
+<view class="admin-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 统计 -->
+  <view class="list-meta" wx:if="{{!loading && list.length > 0}}">共 {{totalCount}} 条异常</view>
+
+  <!-- 加载态 -->
+  <view class="state-tip" wx:if="{{loading}}">加载中...</view>
+
+  <!-- 空态占位（本地轨云函数未部署） -->
+  <view class="state-tip" wx:if="{{!loading && list.length === 0}}">暂无异常记录</view>
+
+  <!-- 异常列表 -->
+  <view class="abnormal-list" wx:if="{{!loading}}">
+    <view class="abnormal-row" wx:for="{{list}}" wx:key="_id">
+      <view class="row-top">
+        <view class="user-id">用户 {{item.user_id}}</view>
+        <view class="abnormal-flag">异常</view>
+      </view>
+      <view class="row-meta">
+        <text>{{item.date}}</text>
+        <text class="dot">·</text>
+        <text>{{item.stepsText}}</text>
+      </view>
+      <view class="row-actions">
+        <view
+          class="verdict-btn verdict-ignore"
+          data-record-id="{{item._id}}"
+          data-verdict="ignore"
+          bindtap="onVerdict"
+        >忽略</view>
+        <view
+          class="verdict-btn verdict-zero"
+          data-record-id="{{item._id}}"
+          data-verdict="zero"
+          bindtap="onVerdict"
+        >置零</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分页加载更多 -->
+  <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+  <view class="load-more" wx:if="{{!loading && !loadingMore && !hasMore && list.length > 0}}">没有更多了</view>
 </view>

@@ -1,3 +1,57 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+<!-- pages/admin/dept/dept.wxml
+  后台部门管理：列表 + 新建/编辑/删除 + 弹窗表单（F8 部门管理）。
+  红线：仅展示部门字段（dept_id/name/member_count），无敏感字段，不渲染 _openid / phone。
+-->
+<view class="admin-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 加载态 -->
+  <view class="state-tip" wx:if="{{loading}}">加载中...</view>
+
+  <!-- 空态占位（本地轨云函数未部署） -->
+  <view class="state-tip" wx:if="{{!loading && list.length === 0}}">暂无部门</view>
+
+  <!-- 部门列表 -->
+  <view class="dept-list" wx:if="{{!loading}}">
+    <view class="dept-row" wx:for="{{list}}" wx:key="dept_id">
+      <view class="dept-info">
+        <view class="dept-name">{{item.name}}</view>
+        <view class="dept-meta">{{item.memberCountText}}</view>
+      </view>
+      <view class="dept-actions">
+        <view
+          class="action-btn"
+          data-dept-id="{{item.dept_id}}"
+          data-name="{{item.name}}"
+          bindtap="onEdit"
+        >编辑</view>
+        <view
+          class="action-btn danger"
+          data-dept-id="{{item.dept_id}}"
+          bindtap="onDelete"
+        >删除</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 新建按钮 -->
+  <button class="create-btn" bindtap="onCreate">新建部门</button>
+
+  <!-- 新建/编辑弹窗 -->
+  <view class="form-mask" wx:if="{{showForm}}" bindtap="onFormCancel"></view>
+  <view class="form-sheet" wx:if="{{showForm}}">
+    <view class="form-title">{{editingDept ? '编辑部门' : '新建部门'}}</view>
+    <input
+      class="form-input"
+      value="{{formName}}"
+      bindinput="onFormNameInput"
+      placeholder="部门名称"
+      maxlength="30"
+    />
+    <view class="form-error" wx:if="{{formError}}">{{formError}}</view>
+    <view class="form-actions">
+      <view class="form-btn cancel" bindtap="onFormCancel">取消</view>
+      <view class="form-btn confirm" bindtap="onFormConfirm">确认</view>
+    </view>
+  </view>
 </view>
