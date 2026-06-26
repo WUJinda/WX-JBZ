@@ -256,3 +256,98 @@ describe('steps action 挂载与同步前端结构（E1~E4）', () => {
     expect(src).toMatch(/不.*下发|用后即弃|绝不/);
   });
 });
+
+describe('steps.trend / user.stats action 挂载与 home 趋势结构（F4）', () => {
+  it('steps/index.js 的 handlers 表挂载 trend（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/steps/index.js');
+    expect(src).toMatch(/\btrend\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/stepsTrend['"]\)/);
+  });
+
+  it('steps.trend 走 requireUser（需 OPENID）', () => {
+    const src = readSource('cloudfunctions/steps/index.js');
+    expect(src).toMatch(/trend:\s*true/);
+  });
+
+  it('stepsTrend.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/steps/stepsTrend.js')),
+      '缺少 stepsTrend.js'
+    ).toBe(true);
+  });
+
+  it('user/index.js 的 handlers 表挂载 stats（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/\bstats\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/userStats['"]\)/);
+  });
+
+  it('user.stats 走 requireUser（需 OPENID，与游客通道区分）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/stats:\s*true/);
+  });
+
+  it('userStats.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userStats.js')),
+      '缺少 userStats.js'
+    ).toBe(true);
+  });
+
+  it('home 页面引用 homeTrend 趋势纯函数模块', () => {
+    const js = readSource('miniprogram/pages/home/home.js');
+    expect(js).toMatch(/require\(['"]\.\/homeTrend['"]\)/);
+  });
+
+  it('homeTrend.js 前端纯函数模块存在（区间/柱高/空态可单测）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/home/homeTrend.js')),
+      '缺少 homeTrend.js'
+    ).toBe(true);
+  });
+
+  it('home 含趋势图（7/30 切换 + 纯 CSS 柱状图 + 空态）与参与天数 / 排名入口', () => {
+    const wxml = readSource('miniprogram/pages/home/home.wxml');
+    // 7/30 切换
+    expect(wxml).toMatch(/data-range="7"/);
+    expect(wxml).toMatch(/data-range="30"/);
+    expect(wxml).toMatch(/onTrendRange/);
+    // 纯 CSS 柱状图（百分比高度）
+    expect(wxml).toMatch(/height:\{\{item\.heightPct\}\}%/);
+    expect(wxml).toMatch(/trend-bar/);
+    // R4.3 空态占位文案
+    expect(wxml).toMatch(/暂无数据，请点击同步步数/);
+    expect(wxml).toMatch(/trendEmpty/);
+    // 参与天数 / 活动进度
+    expect(wxml).toMatch(/activeDays|已参与天数/);
+    expect(wxml).toMatch(/totalDays|活动期天数/);
+    // 排名入口（R4.4 引导文案）
+    expect(wxml).toMatch(/onMyRankTap/);
+    expect(wxml).toMatch(/完成同步后查看排名/);
+  });
+
+  it('home.js 进入主页加载统计 + 趋势（onShow 调 loadStats/loadTrend）', () => {
+    const js = readSource('miniprogram/pages/home/home.js');
+    expect(js).toMatch(/loadStats/);
+    expect(js).toMatch(/loadTrend/);
+    expect(js).toMatch(/action:\s*['"]stats['"]/);
+    expect(js).toMatch(/action:\s*['"]trend['"]/);
+    expect(js).toMatch(/onMyRankTap/);
+  });
+
+  it('趋势图为纯 CSS，home.js / homeTrend.js 不 require 任何图表库', () => {
+    const homeJs = readSource('miniprogram/pages/home/home.js');
+    const homeTrendJs = readSource('miniprogram/pages/home/homeTrend.js');
+    const forbidden = /require\(['"][^'"]*(wx-charts|echarts|ec-canvas|@antv|f2|chart)[^'"]*['"]\)/i;
+    expect(homeJs).not.toMatch(forbidden);
+    expect(homeTrendJs).not.toMatch(forbidden);
+  });
+
+  it('steps.trend / user.stats 投影不下发 _openid / sync_count / user_id', () => {
+    const trendSrc = readSource('cloudfunctions/steps/stepsTrend.js');
+    const statsSrc = readSource('cloudfunctions/user/userStats.js');
+    // 投影函数明确不含敏感字段
+    expect(trendSrc).toMatch(/projectTrend/);
+    expect(statsSrc).toMatch(/buildStats/);
+  });
+});

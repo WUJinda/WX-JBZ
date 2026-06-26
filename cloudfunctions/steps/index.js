@@ -19,7 +19,8 @@ const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { decryptSteps } = require('./decrypt');
 const { syncSteps } = require('./stepsSync');
-const { getToday, getHistory } = require('./stepsQuery');
+const { getToday, getHistory, getUserRecords } = require('./stepsQuery');
+const { buildTrend } = require('./stepsTrend');
 
 /**
  * 当次 code2Session：用前端最新 wx.login code 换 openid + session_key（新鲜，用后即弃）。
@@ -101,6 +102,18 @@ const handlers = {
     const to = event && event.to;
     const store = { StepRecord: await loadCollection(cloud, 'StepRecord') };
     return getHistory({ store, userId, activityId, from, to });
+  },
+
+  // F4: 趋势图（近 7/30 天，纯 CSS 柱状图源数据）。
+  // 入参 range 仅接受 7/30，其余按 7 兜底；buildTrend 内部再次兜底。
+  trend: async (event, context) => {
+    const openid = context && context.openid;
+    const userId = (event && event.user_id) || openid;
+    const activityId = event && event.activity_id;
+    const range = event && event.range;
+    const store = { StepRecord: await loadCollection(cloud, 'StepRecord') };
+    const records = getUserRecords(store, userId, activityId);
+    return buildTrend({ records, range });
   }
 };
 
@@ -132,8 +145,8 @@ async function loadCollection(cloudSdk, name) {
   return all;
 }
 
-// 需登录态（requireUser）的 action：sync/today/history 均需 OPENID（与 activity.current 游客通道不同）。
-const REQUIRE_USER_ACTIONS = { sync: true, today: true, history: true };
+// 需登录态（requireUser）的 action：sync/today/history/trend 均需 OPENID（与 activity.current 游客通道不同）。
+const REQUIRE_USER_ACTIONS = { sync: true, today: true, history: true, trend: true };
 
 exports.main = async (event) => {
   const action = event && event.action;

@@ -38,4 +38,56 @@
       前往设置开启授权
     </button>
   </view>
+
+  <!-- F4：参与天数 / 活动进度 -->
+  <view class="days-block">
+    <view class="days-card">
+      <text class="days-label">已参与天数</text>
+      <text class="days-value">{{activeDays}}</text>
+    </view>
+    <view class="days-card">
+      <text class="days-label">活动期天数</text>
+      <text class="days-value">{{totalDays}}</text>
+    </view>
+  </view>
+
+  <!-- F4：我的排名入口（R4.4：myRank 为空时引导完成同步） -->
+  <view class="rank-entry" bindtap="onMyRankTap">
+    <text class="rank-entry-title">我的排名</text>
+    <text class="rank-entry-value" wx:if="{{myRank !== null}}">第 {{myRank}} 名</text>
+    <text class="rank-entry-tip" wx:else>完成同步后查看排名</text>
+    <text class="rank-entry-arrow">›</text>
+  </view>
+
+  <!-- F4：步数趋势（R4.2：近 7/30 天切换；R4.3：无数据展示占位） -->
+  <view class="trend-block">
+    <view class="trend-header">
+      <text class="trend-title">步数趋势</text>
+      <view class="trend-tabs">
+        <text
+          class="trend-tab {{trendRange === 7 ? 'trend-tab-active' : ''}}"
+          data-range="7"
+          bindtap="onTrendRange"
+        >近7天</text>
+        <text
+          class="trend-tab {{trendRange === 30 ? 'trend-tab-active' : ''}}"
+          data-range="30"
+          bindtap="onTrendRange"
+        >近30天</text>
+      </view>
+    </view>
+
+    <!-- 纯 CSS 柱状图（柱高百分比归一化） -->
+    <view class="trend-bars" wx:if="{{!trendEmpty}}">
+      <view class="trend-bar-wrap" wx:for="{{trendList}}" wx:key="date">
+        <view class="trend-bar" style="height:{{item.heightPct}}%"></view>
+        <text class="trend-bar-date">{{item.date}}</text>
+      </view>
+    </view>
+
+    <!-- R4.3 空态占位 -->
+    <view class="trend-empty" wx:else>
+      暂无数据，请点击同步步数
+    </view>
+  </view>
 </view>

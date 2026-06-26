@@ -1,6 +1,8 @@
 // pages/home/home.js
 // 个人主页 + 步数同步入口（对齐 PRD F3 R3.1~R3.6，开发计划阶段 E4）。
+// F4：增量补齐步数展示（统计/趋势/参与天数/排名入口/空态），不破坏 E4 同步状态机。
 const { STATES, transition, shouldThrottle } = require('./homeSync');
+const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
 
 Page({
   data: {
@@ -16,7 +18,14 @@ Page({
     jsCode: '',
     encryptedData: '',
     iv: '',
-    activityId: 'a_demo_001'
+    activityId: 'a_demo_001',
+    // F4：步数展示（统计 / 趋势 / 排名入口 / 空态）
+    activeDays: 0,
+    totalDays: 0,
+    myRank: null,
+    trendRange: 7,
+    trendList: [],
+    trendEmpty: true
   },
 
   onLoad() {
@@ -25,6 +34,9 @@ Page({
 
   onShow() {
     this.refreshLastSyncText();
+    // F4：进入主页主动加载统计 + 趋势（本地轨云函数未部署 → 失败占位，不阻塞同步功能）。
+    this.loadStats();
+    this.loadTrend(this.data.trendRange);
   },
 
   /**
@@ -179,6 +191,85 @@ Page({
   onPullDownRefresh() {
     this.apply({ type: 'RESET' });
     this.refreshLastSyncText();
+    this.loadStats();
+    this.loadTrend(this.data.trendRange);
     wx.stopPullDownRefresh();
+  },
+
+  // ===== F4：步数展示（统计 / 趋势 / 排名入口） =====
+
+  /** 加载个人统计（user.stats）。本地轨失败 → 占位，不阻塞同步。 */
+  loadStats() {
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') return;
+    api
+      .call(
+        'user',
+        { action: 'stats', activity_id: this.data.activityId },
+        { loading: false, silent: true }
+      )
+      .then((data) => {
+        const d = data || {};
+        this.setData({
+          activeDays: d.active_days || 0,
+          totalDays: d.total_days || 0,
+          myRank: d.my_rank == null ? null : d.my_rank,
+          // 同步刷新累计/今日（与 stats 口径一致；不覆盖 sync 成功态的更即时值由 onShow 触发顺序保证）
+          totalSteps: typeof d.total_steps === 'number' ? d.total_steps : this.data.totalSteps,
+          todaySteps: typeof d.today_steps === 'number' ? d.today_steps : this.data.todaySteps
+        });
+      })
+      .catch(() => {
+        // 本地轨：云函数未部署 → 占位空态，不弹错误（同步功能照常）。
+      });
+  },
+
+  /** 加载趋势（steps.trend）。本地轨失败 → 占位。 */
+  loadTrend(range) {
+    const r = selectRange(range);
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      this.applyTrend([], r);
+      return;
+    }
+    api
+      .call(
+        'steps',
+        { action: 'trend', activity_id: this.data.activityId, range: r },
+        { loading: false, silent: true }
+      )
+      .then((data) => {
+        const list = (data && data.list) || [];
+        this.applyTrend(list, r);
+      })
+      .catch(() => {
+        this.applyTrend([], r);
+      });
+  },
+
+  /** 应用趋势到 data（归一化 + 空态）。 */
+  applyTrend(list, range) {
+    const r = selectRange(range);
+    const bars = normalizeBars(list);
+    this.setData({
+      trendRange: r,
+      trendList: bars,
+      trendEmpty: isEmptyTrend(list)
+    });
+  },
+
+  /** 区间切换 7↔30（R4.2）。 */
+  onTrendRange(e) {
+    const range = selectRange(e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.range);
+    if (range === this.data.trendRange) return;
+    this.loadTrend(range);
+  },
+
+  /** 我的排名入口：跳转 rank 页（R4.4）。本地轨 rank 页可能无数据，跳转即可。 */
+  onMyRankTap() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/rank/rank' });
   }
 });

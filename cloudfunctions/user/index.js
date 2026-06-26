@@ -13,6 +13,8 @@ const { ok, fail } = require('../common/response');
 const { CODE, notImplemented } = require('../common/errors');
 const { getProfile } = require('./userProfile');
 const { joinDepartment } = require('./userJoin');
+const { buildStats } = require('./userStats');
+const { mockCurrentActivity } = require('../activity/activityStatus');
 
 // handler 表：action -> handler。
 const handlers = {
@@ -56,13 +58,63 @@ const handlers = {
       }
     });
     return result;
+  },
+  // F4: 个人主页统计（当日/累计/参与天数/活动期天数/排名占位）。
+  // 需登录态（requireUser）。复用有效步数口径（与 steps.today/history 一致）。
+  stats: async (event, context) => {
+    const openid = context && context.openid;
+    const userId = (event && event.user_id) || openid;
+    const activityId = (event && event.activity_id) || 'a_demo_001';
+    const activity = (event && event.activity) || loadActivity(cloud);
+    const records = await loadUserRecords(cloud, 'StepRecord', userId, activityId);
+    return buildStats({ records, activity });
   }
-  // stats: async (event, context) => { ... }   // 后续阶段
 };
 
+/**
+ * 载入某用户某活动的 StepRecord（云轨真实库）。
+ * 本地轨/单测不经此 handler，直接调纯函数注入 records。
+ * @param {object} cloudSdk
+ * @param {string} name
+ * @param {string} userId
+ * @param {string} activityId
+ * @returns {Promise<object[]>}
+ */
+async function loadUserRecords(cloudSdk, name, userId, activityId) {
+  const db = cloudSdk.database();
+  const PAGE = 100;
+  let all = [];
+  let skip = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const res = await db
+      .collection(name)
+      .where({ user_id: userId, activity_id: activityId })
+      .skip(skip)
+      .limit(PAGE)
+      .get();
+    const data = (res && res.data) || [];
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    skip += PAGE;
+  }
+  return all;
+}
+
+/**
+ * 载入活动文档（本地轨用 mock；云轨按 activity_id 查库）。
+ * @param {object} cloudSdk
+ * @returns {object}
+ */
+function loadActivity(cloudSdk) {
+  // 本地轨：用 mockCurrentActivity（与 activity.current 一致）。
+  // 云轨：可按 activity_id 查 Activity 集合；本阶段先以 mock 兜底，保证 total_days 可算。
+  return mockCurrentActivity();
+}
+
 // 需登录态（requireUser）的 action：必须有 OPENID 且 User 存在。
-// 与 activity.current 游客通道不同——join 报名必须登录态。
-const REQUIRE_USER_ACTIONS = { join: true };
+// 与 activity.current 游客通道不同——join/stats 必须登录态。
+const REQUIRE_USER_ACTIONS = { join: true, stats: true };
 
 exports.main = async (event) => {
   const action = event && event.action;

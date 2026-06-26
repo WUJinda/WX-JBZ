@@ -26,3 +26,87 @@
 .auth-denied-block { margin-top: 32rpx; text-align: center; }
 .auth-denied-tip { display: block; font-size: 26rpx; color: #e64340; margin-bottom: 16rpx; }
 .resetting-btn { background: #fff; color: #07c160; border: 1rpx solid #07c160; border-radius: 48rpx; font-size: 28rpx; }
+
+/* F4：参与天数 / 活动进度 */
+.days-block { display: flex; justify-content: space-between; margin-top: 32rpx; margin-bottom: 16rpx; }
+.days-card {
+  flex: 1;
+  margin: 0 8rpx;
+  padding: 24rpx;
+  background: #f7f8fa;
+  border-radius: 16rpx;
+  text-align: center;
+}
+.days-label { display: block; font-size: 24rpx; color: #888; margin-bottom: 8rpx; }
+.days-value { display: block; font-size: 40rpx; font-weight: 700; color: #1a1a1a; }
+
+/* F4：我的排名入口 */
+.rank-entry {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.rank-entry-title { flex: 1; font-size: 28rpx; color: #1a1a1a; }
+.rank-entry-value { font-size: 28rpx; color: #07c160; font-weight: 600; }
+.rank-entry-tip { font-size: 26rpx; color: #999; }
+.rank-entry-arrow { margin-left: 12rpx; font-size: 32rpx; color: #ccc; }
+
+/* F4：步数趋势（纯 CSS 柱状图，禁止图表库） */
+.trend-block {
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.trend-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24rpx; }
+.trend-title { font-size: 30rpx; font-weight: 600; color: #1a1a1a; }
+.trend-tabs { display: flex; }
+.trend-tab {
+  font-size: 24rpx;
+  color: #888;
+  padding: 8rpx 20rpx;
+  border-radius: 24rpx;
+  background: #f2f3f5;
+  margin-left: 12rpx;
+}
+.trend-tab-active { color: #fff; background: #07c160; }
+
+/* 柱状图容器：固定高度 + flex 等分；柱子高度按百分比归一化 */
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 240rpx;
+  padding: 16rpx 0;
+}
+.trend-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  margin: 0 4rpx;
+}
+.trend-bar {
+  width: 70%;
+  background: #07c160;
+  border-radius: 8rpx 8rpx 0 0;
+  min-height: 4rpx;
+}
+.trend-bar-date {
+  font-size: 18rpx;
+  color: #aaa;
+  margin-top: 8rpx;
+  transform: scale(0.85);
+}
+
+.trend-empty {
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  padding: 60rpx 0;
+}
