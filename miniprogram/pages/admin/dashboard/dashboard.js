@@ -1,6 +1,122 @@
 // pages/admin/dashboard/dashboard.js
+// 后台首页：模块导航 + 数据看板（对齐 PRD F8 R8.5，开发计划阶段 H2）。
+//
+// 看板对接 admin.dashboard（buildDashboard 输出：participated/whitelistTotal/rate/
+// totalSteps/avgSteps/validParticipants/dailyActive/deptRank）。
+// 5 个模块导航：activity / whitelist（H2 已实现）/ users / abnormal / dept（H3 填充，导航先就位）。
+//
+// 红线：
+//   - 本页只渲染后端下发的非敏感字段（deptRank 等），绝不渲染 _openid/完整 phone/sync_count。
+//   - 本地轨云函数未部署：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → 静默 catch → 空态占位，不白屏不崩。
+//   - admin 页是 navigateTo 进入（非 tabBar），onModuleTap 用 wx.navigateTo 跳子页。
+const { formatRate, normalizeDailyActive, isEmptyDashboard } = require('./dashboardCalc');
+
+const ACTIVITY_ID = 'a_demo_001';
+
 Page({
   data: {
-    pageLabel: '数据看板'
+    pageLabel: '数据看板',
+    // 6 指标（F8 §420–428）
+    participated: 0,
+    whitelistTotal: 0,
+    rateText: '0%',
+    totalSteps: 0,
+    avgSteps: 0,
+    validParticipants: 0,
+    // 日活趋势（纯 CSS 柱状）
+    dailyActive: [],
+    dailyActiveEmpty: true,
+    // 部门榜（复用 RankCache，R8.5）
+    deptRank: [],
+    // 通用
+    loading: true,
+    errorMsg: '',
+    empty: false
+  },
+
+  onShow() {
+    this.loadDashboard();
+  },
+
+  onPullDownRefresh() {
+    this.loadDashboard();
+    wx.stopPullDownRefresh();
+  },
+
+  /** 加载数据看板。本地轨失败 → 占位空态，不弹错误。 */
+  loadDashboard() {
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      // 无云能力 → 空态占位（不崩）。
+      this.setData({ loading: false, errorMsg: '', empty: true });
+      return;
+    }
+    this.setData({ loading: true, errorMsg: '' });
+    api
+      .call(
+        'admin',
+        { action: 'dashboard', activity_id: ACTIVITY_ID },
+        { loading: false, silent: true }
+      )
+      .then((data) => {
+        const d = data || {};
+        const metrics = {
+          participated: d.participated,
+          whitelistTotal: d.whitelistTotal,
+          totalSteps: d.totalSteps,
+          validParticipants: d.validParticipants,
+          deptRank: d.deptRank
+        };
+        const daily = Array.isArray(d.dailyActive) ? d.dailyActive : [];
+        this.setData({
+          loading: false,
+          errorMsg: '',
+          participated: Number(d.participated) || 0,
+          whitelistTotal: Number(d.whitelistTotal) || 0,
+          rateText: formatRate(d.rate),
+          totalSteps: Number(d.totalSteps) || 0,
+          avgSteps: Math.round(Number(d.avgSteps) || 0),
+          validParticipants: Number(d.validParticipants) || 0,
+          dailyActive: normalizeDailyActive(daily),
+          dailyActiveEmpty: !Array.isArray(daily) || daily.length === 0,
+          deptRank: Array.isArray(d.deptRank) ? d.deptRank : [],
+          empty: isEmptyDashboard(metrics)
+        });
+      })
+      .catch(() => {
+        // 本地轨：云函数未部署 → 空态占位，不弹错误（照 rank.loadPersonal 模式）。
+        this.setData({
+          loading: false,
+          errorMsg: '',
+          participated: 0,
+          whitelistTotal: 0,
+          rateText: '0%',
+          totalSteps: 0,
+          avgSteps: 0,
+          validParticipants: 0,
+          dailyActive: [],
+          dailyActiveEmpty: true,
+          deptRank: [],
+          empty: true
+        });
+      });
+  },
+
+  /** 模块导航：跳转后台子页（admin 页非 tab，用 navigateTo）。 */
+  onModuleTap(e) {
+    const mod = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.mod;
+    if (!mod) return;
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    const urlMap = {
+      activity: '/pages/admin/activity/activity',
+      whitelist: '/pages/admin/whitelist/whitelist',
+      users: '/pages/admin/users/users',
+      abnormal: '/pages/admin/abnormal/abnormal',
+      dept: '/pages/admin/dept/dept'
+    };
+    const url = urlMap[mod];
+    if (!url) return;
+    wx.navigateTo({ url });
   }
 });

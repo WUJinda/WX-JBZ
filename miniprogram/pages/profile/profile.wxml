@@ -40,5 +40,11 @@
       <text class="label">累计步数</text>
       <text class="value">{{totalSteps}}</text>
     </view>
+
+    <!-- 后台管理入口（仅管理员可见，F8） -->
+    <view class="admin-entry" wx:if="{{adminVisible}}" bindtap="onAdminEntry">
+      <text class="admin-entry-title">后台管理</text>
+      <text class="admin-entry-arrow">›</text>
+    </view>
   </block>
 </view>

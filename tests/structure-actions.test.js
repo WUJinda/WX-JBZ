@@ -527,3 +527,183 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).not.toMatch(/sync_count\s*:/);
   });
 });
+
+describe('admin 后台前端页面结构与红线（H2：dashboard / activity / whitelist + profile 入口）', () => {
+  const H2_WXML = [
+    'miniprogram/pages/admin/dashboard/dashboard.wxml',
+    'miniprogram/pages/admin/activity/activity.wxml',
+    'miniprogram/pages/admin/whitelist/whitelist.wxml'
+  ];
+
+  it('dashboard 页含 5 模块导航卡片 + 6 指标卡 + 日活趋势柱状 + 部门榜', () => {
+    const wxml = readSource('miniprogram/pages/admin/dashboard/dashboard.wxml');
+    // 5 模块导航（data-mod 标识）
+    expect(wxml).toMatch(/data-mod="activity"/);
+    expect(wxml).toMatch(/data-mod="whitelist"/);
+    expect(wxml).toMatch(/data-mod="users"/);
+    expect(wxml).toMatch(/data-mod="abnormal"/);
+    expect(wxml).toMatch(/data-mod="dept"/);
+    expect(wxml).toMatch(/onModuleTap/);
+    // 6 指标卡（参与人数 / 白名单总数 / 参与率 / 累计步数 / 人均 / 有效参与）
+    expect(wxml).toMatch(/participated/);
+    expect(wxml).toMatch(/whitelistTotal/);
+    expect(wxml).toMatch(/rateText/);
+    expect(wxml).toMatch(/totalSteps/);
+    expect(wxml).toMatch(/avgSteps/);
+    expect(wxml).toMatch(/validParticipants/);
+    // 日活趋势纯 CSS 柱状
+    expect(wxml).toMatch(/dailyActive/);
+    expect(wxml).toMatch(/height:\{\{item\.heightPct\}\}%/);
+    // 部门榜（small_sample 标注）
+    expect(wxml).toMatch(/deptRank/);
+    expect(wxml).toMatch(/small_sample/);
+  });
+
+  it('dashboard.js 调 admin / action:dashboard，且 api.call 接 .catch', () => {
+    const js = readSource('miniprogram/pages/admin/dashboard/dashboard.js');
+    expect(js).toMatch(/\.call\(\s*['"]admin['"]/);
+    expect(js).toMatch(/action:\s*['"]dashboard['"]/);
+    expect(js).toMatch(/activity_id/);
+    expect(js).toMatch(/\.catch\s*\(/);
+    // 引用 dashboardCalc 纯函数
+    expect(js).toMatch(/require\(['"]\.\/dashboardCalc['"]\)/);
+    // 本地轨守卫：getApp().api 不存在时提前 return
+    expect(js).toMatch(/getApp\(\)/);
+    expect(js).toMatch(/typeof api\.call !== 'function'/);
+  });
+
+  it('dashboardCalc.js 纯函数模块存在（formatRate/normalizeDailyActive/isEmptyDashboard）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/dashboard/dashboardCalc.js')),
+      '缺少 dashboardCalc.js'
+    ).toBe(true);
+    const src = readSource('miniprogram/pages/admin/dashboard/dashboardCalc.js');
+    expect(src).toMatch(/function formatRate/);
+    expect(src).toMatch(/function normalizeDailyActive/);
+    expect(src).toMatch(/function isEmptyDashboard/);
+  });
+
+  it('activity 页含表单字段（name/cover/起止 picker/rules/发布 switch）', () => {
+    const wxml = readSource('miniprogram/pages/admin/activity/activity.wxml');
+    expect(wxml).toMatch(/onNameInput/);
+    expect(wxml).toMatch(/onCoverInput/);
+    expect(wxml).toMatch(/onStartChange/);
+    expect(wxml).toMatch(/onEndChange/);
+    expect(wxml).toMatch(/picker mode="date"/);
+    expect(wxml).toMatch(/onRulesInput/);
+    expect(wxml).toMatch(/switch/);
+    expect(wxml).toMatch(/onPublishChange/);
+    expect(wxml).toMatch(/onSave/);
+  });
+
+  it('activity.js 调 activity / action:save，且 api.call 接 .catch；前端先校验', () => {
+    const js = readSource('miniprogram/pages/admin/activity/activity.js');
+    expect(js).toMatch(/\.call\(\s*['"]activity['"]/);
+    expect(js).toMatch(/action:\s*['"]save['"]/);
+    expect(js).toMatch(/\.catch\s*\(/);
+    // 引用 activityCalc 并先校验
+    expect(js).toMatch(/require\(['"]\.\/activityCalc['"]\)/);
+    expect(js).toMatch(/validateActivityForm/);
+    // 本地轨守卫
+    expect(js).toMatch(/getApp\(\)/);
+  });
+
+  it('activityCalc.js 纯函数模块存在（validateActivityForm/formatPublishState）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/activity/activityCalc.js')),
+      '缺少 activityCalc.js'
+    ).toBe(true);
+    const src = readSource('miniprogram/pages/admin/activity/activityCalc.js');
+    expect(src).toMatch(/function validateActivityForm/);
+    expect(src).toMatch(/function formatPublishState/);
+  });
+
+  it('whitelist 页含 textarea + 预览数量 + 样本 + 导入按钮', () => {
+    const wxml = readSource('miniprogram/pages/admin/whitelist/whitelist.wxml');
+    expect(wxml).toMatch(/onTextChange/);
+    expect(wxml).toMatch(/previewCount/);
+    expect(wxml).toMatch(/previewSample/);
+    expect(wxml).toMatch(/onImport/);
+  });
+
+  it('whitelist.js 调 admin / action:whitelistImport，入参 raw_text，且 api.call 接 .catch', () => {
+    const js = readSource('miniprogram/pages/admin/whitelist/whitelist.js');
+    expect(js).toMatch(/\.call\(\s*['"]admin['"]/);
+    expect(js).toMatch(/action:\s*['"]whitelistImport['"]/);
+    expect(js).toMatch(/raw_text/);
+    expect(js).toMatch(/\.catch\s*\(/);
+    // 引用 whitelistCalc
+    expect(js).toMatch(/require\(['"]\.\/whitelistCalc['"]\)/);
+    // 本地轨守卫
+    expect(js).toMatch(/getApp\(\)/);
+  });
+
+  it('whitelistCalc.js 纯函数模块存在（previewPhones/formatImportResult），正则与后端一致', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/whitelist/whitelistCalc.js')),
+      '缺少 whitelistCalc.js'
+    ).toBe(true);
+    const src = readSource('miniprogram/pages/admin/whitelist/whitelistCalc.js');
+    expect(src).toMatch(/function previewPhones/);
+    expect(src).toMatch(/function formatImportResult/);
+    // 与后端 whitelistParse.js 同款正则 1[3-9]\d{9}
+    expect(src).toMatch(/1\[3-9\]\\d\{9\}/);
+  });
+
+  it('whitelist 前端预览正则与后端 whitelistParse 严格一致（同源校验）', () => {
+    const wlSrc = readSource('miniprogram/pages/admin/whitelist/whitelistCalc.js');
+    const parseSrc = readSource('cloudfunctions/admin/whitelistParse.js');
+    // 两处都定义 1[3-9]\d{9} 正则
+    expect(wlSrc).toMatch(/1\[3-9\]\\d\{9\}/);
+    expect(parseSrc).toMatch(/1\[3-9\]\\d\{9\}/);
+  });
+
+  it('profile 后台入口 wx:if adminVisible + onAdminEntry navigateTo dashboard', () => {
+    const wxml = readSource('miniprogram/pages/profile/profile.wxml');
+    expect(wxml).toMatch(/wx:if="\{\{adminVisible\}\}"/);
+    expect(wxml).toMatch(/onAdminEntry/);
+    const js = readSource('miniprogram/pages/profile/profile.js');
+    // adminVisible 默认 false；is_admin===true 才置 true
+    expect(js).toMatch(/adminVisible:\s*false/);
+    expect(js).toMatch(/is_admin === true/);
+    // navigateTo 到 dashboard（admin 页非 tab）
+    expect(js).toMatch(/wx\.navigateTo/);
+    expect(js).toMatch(/\/pages\/admin\/dashboard\/dashboard/);
+  });
+
+  // ===== 红线 grep：本轮 wxml 不绑定 _openid / 完整 phone / sync_count =====
+  it('红线：本轮 3 个 admin 页 wxml 不绑定 _openid', () => {
+    for (const rel of H2_WXML) {
+      const src = readSource(rel);
+      // 数据绑定形式 {{..._openid...}} 或属性绑定 data-x="{{_openid}}" → 禁止
+      expect(src).not.toMatch(/\{\{[^}]*_openid/);
+    }
+  });
+
+  it('红线：本轮 3 个 admin 页 wxml 不绑定 sync_count', () => {
+    for (const rel of H2_WXML) {
+      const src = readSource(rel);
+      expect(src).not.toMatch(/\{\{[^}]*sync_count/);
+    }
+  });
+
+  it('红线：本轮 3 个 admin 页 wxml 不绑定完整 phone（仅允许 phoneMasked 脱敏）', () => {
+    for (const rel of H2_WXML) {
+      const src = readSource(rel);
+      // 排除 phoneMasked / previewXxx 后，不应有 {{...phone...}} 绑定
+      // 匹配 {{...phone...}} 但其前不紧跟 Masked，且整体非 preview 前缀
+      const lines = src.split('\n');
+      for (const line of lines) {
+        // 找所有 {{ ... }} 绑定
+        const binds = line.match(/\{\{[^}]+\}\}/g) || [];
+        for (const b of binds) {
+          // 含 phone 但不是 phoneMasked / previewPhone / phone_masked → 命中红线
+          if (/phone/i.test(b) && !/phoneMasked|phone_masked|previewPhone/i.test(b)) {
+            throw new Error(`${rel} 疑似绑定完整 phone: ${line.trim()}`);
+          }
+        }
+      }
+    }
+  });
+});
+

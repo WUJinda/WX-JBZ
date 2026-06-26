@@ -1,3 +1,63 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+<!-- pages/admin/activity/activity.wxml
+  后台活动配置：表单 + 发布（F8 R8.1）。
+  红线：只提交活动配置字段，无 _openid/phone/sync_count 绑定。
+-->
+<view class="admin-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 活动名称 -->
+  <view class="form-row">
+    <text class="form-label">活动名称</text>
+    <input class="form-input" value="{{name}}" bindinput="onNameInput" placeholder="请输入活动名称" />
+  </view>
+  <view class="form-error" wx:if="{{formErrors.name}}">{{formErrors.name}}</view>
+
+  <!-- 头图 URL -->
+  <view class="form-row">
+    <text class="form-label">头图 URL</text>
+    <input class="form-input" value="{{cover_url}}" bindinput="onCoverInput" placeholder="请输入头图链接" />
+  </view>
+
+  <!-- 开始时间 -->
+  <view class="form-row">
+    <text class="form-label">开始时间</text>
+    <picker mode="date" value="{{start_time}}" bindchange="onStartChange">
+      <view class="form-picker {{start_time ? '' : 'placeholder'}}">{{start_time || '请选择开始日期'}}</view>
+    </picker>
+  </view>
+
+  <!-- 结束时间 -->
+  <view class="form-row">
+    <text class="form-label">结束时间</text>
+    <picker mode="date" value="{{end_time}}" bindchange="onEndChange">
+      <view class="form-picker {{end_time ? '' : 'placeholder'}}">{{end_time || '请选择结束日期'}}</view>
+    </picker>
+  </view>
+  <view class="form-error" wx:if="{{formErrors.startEnd}}">{{formErrors.startEnd}}</view>
+  <view class="form-error" wx:if="{{formErrors.startTime}}">{{formErrors.startTime}}</view>
+  <view class="form-error" wx:if="{{formErrors.endTime}}">{{formErrors.endTime}}</view>
+
+  <!-- 活动规则 -->
+  <view class="form-row form-row-textarea">
+    <text class="form-label">活动规则</text>
+    <textarea class="form-textarea" value="{{rules}}" bindinput="onRulesInput" placeholder="请输入活动规则" />
+  </view>
+
+  <!-- 发布开关 -->
+  <view class="form-row">
+    <text class="form-label">发布</text>
+    <view class="form-publish">
+      <text class="publish-text">{{publishText}}</text>
+      <switch checked="{{publish}}" bindchange="onPublishChange" />
+    </view>
+  </view>
+
+  <!-- 错误提示 -->
+  <view class="form-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+
+  <!-- 保存按钮 -->
+  <button class="save-btn" bindtap="onSave" disabled="{{submitting}}">
+    <block wx:if="{{submitting}}">保存中...</block>
+    <block wx:else>保存</block>
+  </button>
 </view>

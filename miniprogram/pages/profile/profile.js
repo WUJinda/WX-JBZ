@@ -16,7 +16,9 @@ Page({
     joinStatus: 'pending',
     totalSteps: 0,
     loading: true,
-    errorMsg: ''
+    errorMsg: '',
+    // 后台入口（仅 is_admin===true 的用户可见，F8）
+    adminVisible: false
   },
 
   onShow() {
@@ -36,15 +38,24 @@ Page({
           phoneMasked: (data && data.phone_masked) || '',
           deptName: (data && data.dept_name) || '',
           joinStatus: (data && data.join_status) || 'pending',
-          totalSteps: (data && data.total_steps) || 0
+          totalSteps: (data && data.total_steps) || 0,
+          // 后台入口仅管理员可见：is_admin===true 才显示（本地轨失败保持 false）
+          adminVisible: !!(data && data.is_admin === true)
         });
       })
       .catch((err) => {
-        self.setData({ loading: false, errorMsg: (err && err.message) || '加载失败' });
+        // 本地轨失败 → adminVisible 保持 false（入口不显示，符合「仅管理员可见」）
+        self.setData({ loading: false, errorMsg: (err && err.message) || '加载失败', adminVisible: false });
       });
   },
 
   onPullDownRefresh() {
     this.loadProfile();
+  },
+
+  /** 进入后台管理（admin 页非 tabBar，用 navigateTo）。 */
+  onAdminEntry() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/admin/dashboard/dashboard' });
   }
 });

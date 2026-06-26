@@ -1,4 +1,89 @@
-/* pages/admin/whitelist/whitelist.wxss */
-.container {
-  padding: 24rpx;
+/* pages/admin/whitelist/whitelist.wxss
+  后台白名单导入样式。
+*/
+.admin-page { padding: 32rpx; }
+.page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+
+.form-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.form-row-textarea {
+  flex-direction: column;
+  align-items: stretch;
+}
+.form-label {
+  font-size: 28rpx;
+  color: #666;
+  margin-bottom: 12rpx;
+}
+.form-textarea {
+  width: 100%;
+  min-height: 200rpx;
+  font-size: 28rpx;
+  color: #333;
+  padding: 16rpx;
+  box-sizing: border-box;
+  background: #f7f8fa;
+  border-radius: 12rpx;
+}
+
+.preview-block {
+  padding: 20rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  margin-top: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.preview-summary {
+  font-size: 26rpx;
+  color: #666;
+}
+.preview-count {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #07c160;
+}
+.preview-invalid {
+  font-size: 24rpx;
+  color: #fa8c16;
+  margin-left: 8rpx;
+}
+.preview-sample {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 12rpx;
+}
+.sample-item {
+  font-size: 24rpx;
+  color: #333;
+  background: #f2f3f5;
+  padding: 6rpx 16rpx;
+  border-radius: 8rpx;
+  margin: 6rpx 8rpx 0 0;
+}
+
+.form-error {
+  font-size: 24rpx;
+  color: #e64340;
+  padding: 12rpx 0;
+}
+.result-block {
+  font-size: 28rpx;
+  color: #07c160;
+  padding: 16rpx 0;
+}
+.import-btn {
+  width: 100%;
+  background: #07c160;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  margin-top: 32rpx;
+}
+.import-btn[disabled] {
+  background: #9ad8b6;
+  color: #fff;
 }

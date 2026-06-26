@@ -52,3 +52,23 @@
   color: #1890ff;
   margin-top: 16rpx;
 }
+/* F8 后台管理入口（仅管理员可见） */
+.admin-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 32rpx;
+  padding: 28rpx 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.admin-entry-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.admin-entry-arrow {
+  font-size: 36rpx;
+  color: #ccc;
+}

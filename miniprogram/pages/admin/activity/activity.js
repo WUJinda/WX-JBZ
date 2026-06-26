@@ -1,6 +1,122 @@
 // pages/admin/activity/activity.js
+// 后台活动配置：表单 + 发布（对齐 PRD F8 R8.1，开发计划阶段 H2）。
+//
+// 对接 activity.save（后端 H1 为已知缺口，本轮前端先对接；本地轨 getApp().api 不存在 → 占位提示）。
+// 表单先经纯函数 validateActivityForm 校验，通过才调 api.call。
+//
+// 红线：
+//   - 本页只展示/提交活动配置字段（name/cover_url/start_time/end_time/rules/publish），无敏感字段。
+//   - 本地轨：getApp().api 不存在 → 提前 return 占位提示；api.call 失败 → .catch 错误提示，不白屏。
+const { validateActivityForm, formatPublishState } = require('./activityCalc');
+
+const ACTIVITY_ID = 'a_demo_001';
+
 Page({
   data: {
-    pageLabel: '活动配置'
+    pageLabel: '活动配置',
+    // 表单字段
+    activityId: ACTIVITY_ID,
+    name: '',
+    cover_url: '',
+    start_time: '', // YYYY-MM-DD
+    end_time: '', // YYYY-MM-DD
+    rules: '',
+    publish: false,
+    // 状态
+    submitting: false,
+    errorMsg: '',
+    formErrors: {}, // {name, startEnd, ...}
+    publishText: '未发布'
+  },
+
+  onLoad() {
+    this.refreshPublishText();
+  },
+
+  /** 名称输入。 */
+  onNameInput(e) {
+    this.setData({ name: (e && e.detail && e.detail.value) || '' });
+  },
+
+  /** 头图 URL 输入。 */
+  onCoverInput(e) {
+    this.setData({ cover_url: (e && e.detail && e.detail.value) || '' });
+  },
+
+  /** 开始时间 picker。 */
+  onStartChange(e) {
+    this.setData({ start_time: (e && e.detail && e.detail.value) || '' });
+  },
+
+  /** 结束时间 picker。 */
+  onEndChange(e) {
+    this.setData({ end_time: (e && e.detail && e.detail.value) || '' });
+  },
+
+  /** 规则 textarea。 */
+  onRulesInput(e) {
+    this.setData({ rules: (e && e.detail && e.detail.value) || '' });
+  },
+
+  /** 发布 switch。 */
+  onPublishChange(e) {
+    const v = !!(e && e.detail && e.detail.value);
+    this.setData({ publish: v, publishText: formatPublishState(v) });
+  },
+
+  refreshPublishText() {
+    this.setData({ publishText: formatPublishState(this.data.publish) });
+  },
+
+  /** 保存：先前端校验，通过才调 activity.save。 */
+  onSave() {
+    if (this.data.submitting) return;
+    const form = {
+      name: this.data.name,
+      start_time: this.data.start_time,
+      end_time: this.data.end_time
+    };
+    const { valid, errors } = validateActivityForm(form);
+    if (!valid) {
+      this.setData({ formErrors: errors });
+      return;
+    }
+    this.setData({ formErrors: {}, errorMsg: '' });
+
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      // 无云能力 → 占位提示（不崩）。
+      this.setData({ errorMsg: '云能力未就绪，无法保存' });
+      return;
+    }
+
+    this.setData({ submitting: true });
+    api
+      .call(
+        'activity',
+        {
+          action: 'save',
+          activity_id: this.data.activityId,
+          name: this.data.name,
+          cover_url: this.data.cover_url,
+          start_time: this.data.start_time,
+          end_time: this.data.end_time,
+          rules: this.data.rules,
+          publish: this.data.publish
+        },
+        { loading: '保存中' }
+      )
+      .then(() => {
+        this.setData({ submitting: false, errorMsg: '' });
+        wx.showToast({ title: '保存成功', icon: 'success' });
+      })
+      .catch((err) => {
+        // 本地轨：activity.save 后端缺口 / 云函数未部署 → 错误提示，不白屏。
+        this.setData({
+          submitting: false,
+          errorMsg: (err && err.message) || '保存失败，请稍后重试'
+        });
+      });
   }
 });

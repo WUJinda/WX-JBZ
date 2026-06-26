@@ -1,4 +1,143 @@
-/* pages/admin/dashboard/dashboard.wxss */
-.container {
-  padding: 24rpx;
+/* pages/admin/dashboard/dashboard.wxss
+  后台首页样式：模块导航网格 + 指标卡 + 日活趋势纯 CSS 柱状 + 部门榜（参考 home.wxss / rank.wxss）。
+*/
+.admin-page { padding: 32rpx; }
+.page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+.state-tip { text-align: center; font-size: 26rpx; color: #999; padding: 60rpx 0; }
+
+/* 模块导航网格 */
+.module-grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 32rpx;
 }
+.module-card {
+  width: 33.33%;
+  box-sizing: border-box;
+  padding: 8rpx;
+  text-align: center;
+}
+.module-card .module-icon {
+  font-size: 48rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx 0 12rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.module-card .module-name {
+  font-size: 24rpx;
+  color: #333;
+  padding: 12rpx 0;
+}
+
+/* 指标卡网格（6 指标，3 列 2 行） */
+.metric-grid {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 24rpx;
+}
+.metric-card {
+  width: 33.33%;
+  box-sizing: border-box;
+  padding: 8rpx;
+  text-align: center;
+}
+.metric-card .metric-label {
+  display: block;
+  background: #f7f8fa;
+  border-radius: 16rpx 16rpx 0 0;
+  padding: 24rpx 12rpx 8rpx;
+  font-size: 24rpx;
+  color: #888;
+}
+.metric-card .metric-value {
+  display: block;
+  background: #f7f8fa;
+  border-radius: 0 0 16rpx 16rpx;
+  padding: 0 12rpx 24rpx;
+  font-size: 40rpx;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* 日活趋势（纯 CSS 柱状图） */
+.trend-block {
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+  margin-bottom: 24rpx;
+}
+.trend-header { margin-bottom: 24rpx; }
+.trend-title { font-size: 30rpx; font-weight: 600; color: #1a1a1a; }
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 240rpx;
+  padding: 16rpx 0;
+  overflow-x: auto;
+}
+.trend-bar-wrap {
+  flex: 0 0 48rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  margin: 0 4rpx;
+}
+.trend-bar {
+  width: 70%;
+  background: #07c160;
+  border-radius: 8rpx 8rpx 0 0;
+  min-height: 4rpx;
+}
+.trend-bar-date {
+  font-size: 18rpx;
+  color: #aaa;
+  margin-top: 8rpx;
+  transform: scale(0.85);
+}
+.trend-empty {
+  text-align: center;
+  font-size: 26rpx;
+  color: #999;
+  padding: 60rpx 0;
+}
+
+/* 部门榜 */
+.dept-block {
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.block-title { font-size: 30rpx; font-weight: 600; color: #1a1a1a; margin-bottom: 16rpx; }
+.dept-row {
+  display: flex;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.dept-row:last-child { border-bottom: none; }
+.rank-no {
+  width: 56rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #07c160;
+  text-align: center;
+}
+.info { flex: 1; padding: 0 16rpx; }
+.name { font-size: 28rpx; color: #1a1a1a; }
+.small-sample {
+  display: inline-block;
+  margin-left: 8rpx;
+  font-size: 20rpx;
+  color: #fa8c16;
+  background: #fff7e6;
+  padding: 2rpx 8rpx;
+  border-radius: 8rpx;
+}
+.dept-meta { font-size: 24rpx; color: #888; margin-top: 6rpx; }
+.dept-meta .dot { margin: 0 8rpx; }
+.steps { font-size: 28rpx; color: #1a1a1a; font-weight: 600; }
