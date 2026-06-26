@@ -35,6 +35,26 @@ describe('集合 schema 定义（B1）', () => {
     expect(phoneIdx.unique).toBe(true);
   });
 
+  it('Activity 集合结构合法（字段 + status/start_time 索引）', () => {
+    const a = COLLECTIONS.Activity;
+    expect(a).toBeDefined();
+    expect(Array.isArray(a.indexes)).toBe(true);
+    // 字段齐全（PRD F7 字段定义）
+    for (const f of ['_id', 'activity_id', 'name', 'cover_url', 'start_time', 'end_time', 'status', 'rules', 'total_steps', 'participant_count']) {
+      expect(a.fields[f], `Activity 缺少字段: ${f}`).toBeDefined();
+    }
+    // 索引：status / start_time（技术架构 §5.4）
+    const statusIdx = a.indexes.find((i) => i.fields.status);
+    const startIdx = a.indexes.find((i) => i.fields.start_time);
+    expect(statusIdx, 'Activity 缺少 status 索引').toBeDefined();
+    expect(startIdx, 'Activity 缺少 start_time 索引').toBeDefined();
+  });
+
+  it('Activity 敏感聚合字段标记 onlyServer', () => {
+    expect(COLLECTIONS.Activity.fields.total_steps.onlyServer).toBe(true);
+    expect(COLLECTIONS.Activity.fields.participant_count.onlyServer).toBe(true);
+  });
+
   it('每个索引声明含 name / fields 两要素', () => {
     for (const name of Object.keys(COLLECTIONS)) {
       for (const idx of COLLECTIONS[name].indexes) {
@@ -78,10 +98,16 @@ describe('索引初始化脚本（B1）', () => {
     const out = await ensureIndexes(mockCloud);
     expect(out.User).toBeDefined();
     expect(out.Whitelist).toBeDefined();
-    // User 4 个索引 + Whitelist 1 个索引
+    expect(out.Activity).toBeDefined();
+    // 每个集合的索引数与声明一致
     expect(out.User.length).toBe(COLLECTIONS.User.indexes.length);
     expect(out.Whitelist.length).toBe(COLLECTIONS.Whitelist.indexes.length);
-    expect(created.length).toBe(COLLECTIONS.User.indexes.length + COLLECTIONS.Whitelist.indexes.length);
+    expect(out.Activity.length).toBe(COLLECTIONS.Activity.indexes.length);
+    // 总创建数 = 全部集合索引之和
+    const totalDeclared = Object.keys(COLLECTIONS).reduce(
+      (sum, n) => sum + COLLECTIONS[n].indexes.length, 0
+    );
+    expect(created.length).toBe(totalDeclared);
   });
 
   it('ensureCollectionIndexes 对已存在索引（createIndex 抛错）幂等不视为失败', async () => {

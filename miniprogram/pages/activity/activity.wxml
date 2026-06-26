@@ -1,5 +1,80 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
-  <view class="intro">这是活动主页入口（符合 PRD：打开小程序先到活动主页）。骨架阶段点击下方按钮进入主界面，即可看到底部 tabBar。</view>
-  <button class="entry-btn" type="primary" bindtap="goHome">进入主页</button>
+<!-- 活动主页（启动页，游客可见）—— 对齐 PRD F7 -->
+<view class="activity-page">
+  <!-- 活动头图 -->
+  <view class="cover">
+    <image wx:if="{{activity.cover_url}}" class="cover-img" src="{{activity.cover_url}}" mode="aspectFill" />
+    <view wx:else class="cover-placeholder">
+      <text class="cover-title">{{activity.name}}</text>
+    </view>
+    <!-- 当前阶段标识 -->
+    <view class="status-badge status-{{status}}">{{statusText}}</view>
+  </view>
+
+  <!-- 活动信息：起止 + 当前阶段 + 倒计时 -->
+  <view class="info-block">
+    <view class="info-row">
+      <text class="info-label">活动名称</text>
+      <text class="info-value">{{activity.name}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">开始时间</text>
+      <text class="info-value">{{activity.start_time}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">结束时间</text>
+      <text class="info-value">{{activity.end_time}}</text>
+    </view>
+    <view class="info-row">
+      <text class="info-label">当前阶段</text>
+      <text class="info-value">{{statusText}}</text>
+    </view>
+
+    <!-- 倒计时（R7.3：精确到日时分；结束当日到 23:59:59；已结束归零） -->
+    <view class="countdown" wx:if="{{countdown}}">
+      <text class="countdown-label">{{countdown.label}}</text>
+      <view class="countdown-timer" wx:if="{{countdown.status !== 'ended'}}">
+        <text class="cd-num">{{countdown.days}}</text><text class="cd-unit">天</text>
+        <text class="cd-num">{{countdown.hours}}</text><text class="cd-unit">时</text>
+        <text class="cd-num">{{countdown.minutes}}</text><text class="cd-unit">分</text>
+      </view>
+      <text class="countdown-ended" wx:else>活动已结束</text>
+    </view>
+  </view>
+
+  <!-- 进度条：已进行天数 / 总天数 -->
+  <view class="progress-block" wx:if="{{progress}}">
+    <view class="progress-meta">
+      <text>活动进度</text>
+      <text class="progress-days">{{progress.daysElapsed}}/{{progress.daysTotal}} 天</text>
+    </view>
+    <view class="progress-bar">
+      <view class="progress-fill" style="width: {{progress.percent}}%"></view>
+    </view>
+  </view>
+
+  <!-- 活动规则 -->
+  <view class="rules-block">
+    <view class="block-title">活动规则</view>
+    <view class="rules-text">{{activity.rules}}</view>
+  </view>
+
+  <!-- CTA（四态：未开始置灰 / 进行中报名 / 进行中已报名我的步数 / 已结束查看战绩） -->
+  <button
+    class="cta-btn {{cta.disabled ? 'cta-disabled' : ''}}"
+    bindtap="onCtaTap"
+    disabled="{{cta.disabled}}"
+  >{{cta.text}}</button>
+
+  <!-- 数据概览：全员累计步数 / 参与人数 -->
+  <view class="overview-block">
+    <view class="block-title">数据概览</view>
+    <view class="overview-row">
+      <text class="overview-label">全员累计步数</text>
+      <text class="overview-value">{{overview.total_steps}}</text>
+    </view>
+    <view class="overview-row">
+      <text class="overview-label">参与人数</text>
+      <text class="overview-value">{{overview.participant_count}}</text>
+    </view>
+  </view>
 </view>

@@ -53,6 +53,40 @@ const COLLECTIONS = {
       phone: { type: 'string', onlyServer: true, desc: '🔒 完整手机号，仅后端匹配' },
       imported_at: { type: 'date', desc: '导入时间' }
     }
+  },
+
+  Activity: {
+    description: '活动（对齐技术架构 §5.4，PRD F7）',
+    indexes: [
+      { name: 'idx_activity_status', fields: { status: 1 }, unique: false },
+      { name: 'idx_activity_start', fields: { start_time: 1 }, unique: false }
+    ],
+    fields: {
+      _id: { type: 'string', desc: '主键' },
+      activity_id: { type: 'string', desc: '活动 ID（P0 单期，预留多期）' },
+      name: { type: 'string', desc: '活动名称' },
+      cover_url: { type: 'string', desc: '头图 URL' },
+      start_time: { type: 'date', desc: '开始时间' },
+      end_time: { type: 'date', desc: '结束时间' },
+      status: {
+        type: 'string',
+        enum: ['pending', 'active', 'ended'],
+        desc: '活动状态：由时间推算冗余写入（pending 未开始 / active 进行中 / ended 已结束）；真实判定以 deriveStatus 为准'
+      },
+      rules: { type: 'string', desc: '规则说明（richtext）' },
+      total_steps: {
+        type: 'int',
+        onlyServer: true,
+        desc: '🔒 全员累计步数（聚合写回，不下发原始值，概览中按需下发）'
+      },
+      participant_count: {
+        type: 'int',
+        onlyServer: true,
+        desc: '🔒 已报名人数（聚合写回，概览中按需下发）'
+      },
+      created_at: { type: 'date', desc: '创建时间' },
+      updated_at: { type: 'date', desc: '更新时间' }
+    }
   }
 };
 
