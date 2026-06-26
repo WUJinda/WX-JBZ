@@ -55,6 +55,27 @@ const COLLECTIONS = {
     }
   },
 
+  Department: {
+    description: '部门（对齐技术架构 §5.2，PRD F2 部门选择）',
+    indexes: [
+      { name: 'idx_dept_activity', fields: { activity_id: 1 }, unique: false },
+      { name: 'idx_dept_activity_name', fields: { activity_id: 1, name: 1 }, unique: true },
+      { name: 'idx_dept_id', fields: { dept_id: 1 }, unique: true }
+    ],
+    fields: {
+      _id: { type: 'string', desc: '主键（云数据库自动生成）' },
+      dept_id: { type: 'string', desc: '部门唯一标识（业务键，如 d_01）' },
+      name: { type: 'string', desc: '部门名称（即团队名，PRD dept_name）' },
+      activity_id: { type: 'string', desc: '所属活动 ID（P0 单期，预留多期）' },
+      member_count: {
+        type: 'int',
+        default: 0,
+        desc: '部门已报名人数（展示用，聚合写回；真实聚合留阶段 G）'
+      },
+      created_at: { type: 'date', desc: '创建时间' }
+    }
+  },
+
   Activity: {
     description: '活动（对齐技术架构 §5.4，PRD F7）',
     indexes: [

@@ -2,3 +2,90 @@
 .container {
   padding: 24rpx;
 }
+
+.title {
+  font-size: 40rpx;
+  font-weight: 600;
+  margin-bottom: 12rpx;
+}
+
+.subtitle {
+  font-size: 26rpx;
+  color: #888;
+  margin-bottom: 32rpx;
+}
+
+.dept-list {
+  margin-bottom: 40rpx;
+}
+
+.dept-item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx 24rpx;
+  background: #fff;
+  border: 2rpx solid #eee;
+  border-radius: 16rpx;
+  margin-bottom: 16rpx;
+}
+
+.dept-item.selected {
+  border-color: #07c160;
+  background: #f0faf4;
+}
+
+.dept-radio {
+  width: 40rpx;
+  height: 40rpx;
+  border: 2rpx solid #ccc;
+  border-radius: 50%;
+  margin-right: 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dept-item.selected .dept-radio {
+  border-color: #07c160;
+}
+
+.radio-dot {
+  width: 22rpx;
+  height: 22rpx;
+  border-radius: 50%;
+  background: #07c160;
+}
+
+.dept-info {
+  flex: 1;
+}
+
+.dept-name {
+  font-size: 32rpx;
+  font-weight: 500;
+  margin-bottom: 6rpx;
+}
+
+.dept-meta {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.hint {
+  text-align: center;
+  color: #aaa;
+  font-size: 26rpx;
+  margin: 24rpx 0;
+}
+
+.error {
+  color: #e64340;
+  font-size: 26rpx;
+  margin: 16rpx 0;
+  text-align: center;
+}
+
+.confirm-btn {
+  margin-top: 24rpx;
+  width: 100% !important;
+}

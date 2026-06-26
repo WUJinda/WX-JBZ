@@ -1,3 +1,33 @@
 <view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+  <view class="title">选择你的部门</view>
+  <view class="subtitle">部门即团队，选择部门即报名归属（报名后不可自行更改）</view>
+
+  <view class="dept-list">
+    <view
+      wx:for="{{departments}}"
+      wx:key="dept_id"
+      class="dept-item {{selectedDeptId === item.dept_id ? 'selected' : ''}}"
+      data-id="{{item.dept_id}}"
+      bindtap="onDeptTap"
+    >
+      <view class="dept-radio">
+        <view wx:if="{{selectedDeptId === item.dept_id}}" class="radio-dot"></view>
+      </view>
+      <view class="dept-info">
+        <view class="dept-name">{{item.name}}</view>
+        <view class="dept-meta">已报名 {{item.member_count}} 人</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="hint">加载中…</view>
+  <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
+
+  <button
+    class="confirm-btn"
+    type="primary"
+    disabled="{{!selectedDeptId || submitting}}"
+    loading="{{submitting}}"
+    bindtap="onConfirmTap"
+  >确认加入</button>
 </view>

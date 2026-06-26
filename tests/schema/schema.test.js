@@ -55,6 +55,23 @@ describe('集合 schema 定义（B1）', () => {
     expect(COLLECTIONS.Activity.fields.participant_count.onlyServer).toBe(true);
   });
 
+  it('Department 集合结构合法（PRD F2 字段 dept_id/name/member_count + activity_id 索引）', () => {
+    const d = COLLECTIONS.Department;
+    expect(d).toBeDefined();
+    expect(Array.isArray(d.indexes)).toBe(true);
+    // 字段齐全（PRD F2：dept_id / dept_name(name) / member_count）
+    for (const f of ['_id', 'dept_id', 'name', 'activity_id', 'member_count', 'created_at']) {
+      expect(d.fields[f], `Department 缺少字段: ${f}`).toBeDefined();
+    }
+    // 索引：activity_id（技术架构 §5.2）
+    const activityIdx = d.indexes.find((i) => i.fields.activity_id);
+    expect(activityIdx, 'Department 缺少 activity_id 索引').toBeDefined();
+    // dept_id 业务唯一索引
+    const deptIdIdx = d.indexes.find((i) => i.fields.dept_id);
+    expect(deptIdIdx, 'Department 缺少 dept_id 索引').toBeDefined();
+    expect(deptIdIdx.unique).toBe(true);
+  });
+
   it('每个索引声明含 name / fields 两要素', () => {
     for (const name of Object.keys(COLLECTIONS)) {
       for (const idx of COLLECTIONS[name].indexes) {

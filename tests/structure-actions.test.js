@@ -117,3 +117,59 @@ describe('activity action 挂载与页面结构校验（C1+C2）', () => {
     ).toBe(true);
   });
 });
+
+describe('dept.list / user.join action 挂载与 dept 页面结构（D1+D2）', () => {
+  it('dept/index.js 的 handlers 表挂载 list（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/dept/index.js');
+    expect(src).toMatch(/\blist\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/deptList['"]\)/);
+  });
+
+  it('deptList.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/dept/deptList.js')),
+      '缺少 deptList.js'
+    ).toBe(true);
+  });
+
+  it('user/index.js 的 handlers 表挂载 join（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/\bjoin\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/userJoin['"]\)/);
+  });
+
+  it('userJoin.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userJoin.js')),
+      '缺少 userJoin.js'
+    ).toBe(true);
+  });
+
+  it('user.join 走 requireUser（需登录态，与 activity.current 游客通道不同）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    // 存在 requireUser 机制（REQUIRE_USER_ACTIONS 或 authMiddleware requireUser:true）
+    expect(src).toMatch(/requireUser/);
+    expect(src).toMatch(/join/);
+  });
+
+  it('dept 页面结构：部门列表（单选）+ 确认加入按钮', () => {
+    const wxml = readSource('miniprogram/pages/dept/dept.wxml');
+    // 部门列表
+    expect(wxml).toMatch(/dept-list|departments/);
+    // 单选（selected 态 / radio）
+    expect(wxml).toMatch(/selectedDeptId|dept-radio|radio-dot/);
+    expect(wxml).toMatch(/onDeptTap/);
+    // 确认加入按钮
+    expect(wxml).toMatch(/确认加入|confirm-btn|onConfirmTap/);
+    // member_count 展示
+    expect(wxml).toMatch(/member_count|已报名/);
+  });
+
+  it('dept 页面引用 createApi 并调用 dept.list / user.join', () => {
+    const js = readSource('miniprogram/pages/dept/dept.js');
+    expect(js).toMatch(/require\(['"]\.\/\.\.\/\.\.\/utils\/request['"]\)|createApi/);
+    expect(js).toMatch(/action:\s*['"]list['"]/);
+    expect(js).toMatch(/action:\s*['"]join['"]/);
+    expect(js).toMatch(/dept_id/);
+  });
+});
