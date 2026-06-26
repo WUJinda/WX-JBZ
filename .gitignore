@@ -1,0 +1,36 @@
+# === 依赖 ===
+node_modules/
+**/node_modules/
+
+# === 微信小程序 / 云开发 ===
+# 开发者工具本地私有配置（含个人 appid 等，不上库）
+project.private.config.json
+# 小程序 npm 构建产物
+miniprogram_npm/
+# 本地调试缓存
+.cache/
+
+# === 构建产物 / 日志 ===
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === 操作系统 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === 环境与密钥 ===
+.env
+.env.local
+*.local
+
+# === IDE ===
+.idea/
+*.swp
+*.swo
+
+# === Claude Code 运行时（个人本地 / 临时状态，不入库） ===
+.claude/settings.local.json
+.claude/loop-state.json
