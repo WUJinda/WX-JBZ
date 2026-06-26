@@ -2,3 +2,12 @@
 .container {
   padding: 24rpx;
 }
+.intro {
+  margin: 24rpx 0;
+  color: #666;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+.entry-btn {
+  margin-top: 32rpx;
+}

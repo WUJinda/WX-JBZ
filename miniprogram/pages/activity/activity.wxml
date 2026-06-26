@@ -1,3 +1,5 @@
 <view class="container">
   <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+  <view class="intro">这是活动主页入口（符合 PRD：打开小程序先到活动主页）。骨架阶段点击下方按钮进入主界面，即可看到底部 tabBar。</view>
+  <button class="entry-btn" type="primary" bindtap="goHome">进入主页</button>
 </view>
