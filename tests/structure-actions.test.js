@@ -920,3 +920,80 @@ describe('admin 后台前端页面结构与红线（H3：users / abnormal / dept
   });
 });
 
+describe('activity.save action 挂载与共享 adminGuard（I）', () => {
+  it('activity/index.js 的 handlers 表挂载 save（不再占位注释）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    expect(src).toMatch(/\bsave\s*:\s*async/);
+    // 纯函数模块被 require
+    expect(src).toMatch(/require\(['"]\.\/activitySave['"]\)/);
+  });
+
+  it('activity.save 走 assertAdmin（管理员守卫，非管理员 AUTH_NOT_ADMIN）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    // save handler 内调用 assertAdmin
+    expect(src).toMatch(/assertAdmin\(/);
+    // 共享守卫来自 common（跨云函数 require common 范式）
+    expect(src).toMatch(/require\(['"]\.\.\/common\/adminGuard['"]\)/);
+  });
+
+  it('activity.save 经 authMiddleware 取 openid（缺则 AUTH_NO_OPENID，区别于 current 游客通道）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    expect(src).toMatch(/require\(['"]\.\.\/common\/authMiddleware['"]\)/);
+    // save handler 内调用 authMiddleware
+    expect(src).toMatch(/authMiddleware\(/);
+  });
+
+  it('activity.current 仍游客可调（不经强制 authMiddleware）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    // 入口对所有 action 直接 dispatch 到 handler（current 游客通道不变）
+    expect(src).toMatch(/safeOpenid/);
+    expect(src).toMatch(/\bcurrent\s*:\s*async/);
+  });
+
+  it('activitySave.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/activity/activitySave.js')),
+      '缺少 activitySave.js'
+    ).toBe(true);
+  });
+
+  it('activitySave.js 纯函数不调真实云 API（grep 实证：无 wx-server-sdk/cloud 副作用）', () => {
+    const src = readSource('cloudfunctions/activity/activitySave.js');
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(src).not.toMatch(/cloud\.database\(\)/);
+    expect(src).not.toMatch(/cloud\.callFunction/);
+  });
+
+  it('activitySave.js 复用 activityStatus.deriveStatus（R8.1 由 deriveStatus 满足）', () => {
+    const src = readSource('cloudfunctions/activity/activitySave.js');
+    expect(src).toMatch(/require\(['"]\.\/activityStatus['"]\)/);
+    expect(src).toMatch(/deriveStatus/);
+  });
+
+  it('activitySave.js 不写入 published 字段（R8.1 无 published）', () => {
+    const src = readSource('cloudfunctions/activity/activitySave.js');
+    expect(src).not.toMatch(/published\s*:/);
+  });
+
+  it('common/adminGuard.js 共享守卫模块存在且导出 assertAdmin', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/common/adminGuard.js')),
+      '缺少 common/adminGuard.js'
+    ).toBe(true);
+    const src = readSource('cloudfunctions/common/adminGuard.js');
+    expect(src).toMatch(/function assertAdmin/);
+    expect(src).toMatch(/module\.exports.*assertAdmin/);
+    // 复用 common/errors（相对路径）
+    expect(src).toMatch(/require\(['"]\.\/errors['"]\)/);
+  });
+
+  it('admin/adminGuard.js 为 re-export common/adminGuard（一行 re-export，零回归）', () => {
+    const src = readSource('cloudfunctions/admin/adminGuard.js');
+    // 一行 re-export，指向 common/adminGuard
+    expect(src).toMatch(/require\(['"]\.\.\/common\/adminGuard['"]\)/);
+    // 不应再内嵌 assertAdmin 实现体（实现已移走）
+    expect(src).not.toMatch(/function assertAdmin/);
+  });
+});
+
+
