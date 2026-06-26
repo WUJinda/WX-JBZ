@@ -2,3 +2,53 @@
 .container {
   padding: 24rpx;
 }
+.page-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  margin-bottom: 24rpx;
+}
+.user-card {
+  display: flex;
+  align-items: center;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #eee;
+  margin-bottom: 16rpx;
+}
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  margin-right: 16rpx;
+  background: #f0f0f0;
+}
+.nickname {
+  font-size: 32rpx;
+  font-weight: 500;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.label {
+  color: #666;
+  font-size: 28rpx;
+}
+.value {
+  color: #333;
+  font-size: 28rpx;
+}
+.hint {
+  color: #999;
+  font-size: 26rpx;
+  padding: 24rpx 0;
+}
+.hint.error {
+  color: #e64c45;
+}
+.btn-secondary {
+  color: #1890ff;
+  margin-top: 16rpx;
+}

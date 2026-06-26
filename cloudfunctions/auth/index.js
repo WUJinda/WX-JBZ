@@ -1,21 +1,40 @@
 /**
- * auth 云函数入口：登录鉴权（对齐技术架构 §4.1）。
+ * auth 云函数入口：登录鉴权（对齐技术架构 §4.1 / §6.1，开发计划 B2/B3）。
  * Action: login / phone
  *
- * 本轮为骨架：未实现的 action 返回 not implemented。
- * 身份以 cloud.getWXContext().OPENID 为准，不使用任何自管 token。
+ * 身份完全以 cloud.getWXContext().OPENID 为可信来源，不使用任何自管 token。
+ * 业务逻辑见 authLogin.js / authPhone.js（纯函数 + 注入式 db，可单测）。
  */
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-const { authMiddleware } = require('../common/authMiddleware');
+const { authMiddleware, getOpenid } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, notImplemented } = require('../common/errors');
+const { login } = require('./authLogin');
+const { verifyPhone } = require('./authPhone');
 
-// handler 表：action -> handler。后续轮次在此挂载实现。
+// handler 表：action -> handler。handler 只做「取上下文 → 调纯函数 → 组装出入参」。
 const handlers = {
-  // login: async (event, context) => { ... }   // B2
-  // phone: async (event, context) => { ... }   // B3
+  // B2: 登录（取 openid → 查/建 User → 返回登录态，不下发 token）
+  login: async (event, context) => {
+    const db = cloud.database();
+    return login({
+      getWXContext: cloud.getWXContext,
+      db,
+      profile: event && event.profile
+    });
+  },
+
+  // B3: 手机号验证（脱敏 + 白名单校验 + 更新 User，不下发完整手机号）
+  phone: async (event, context) => {
+    const openid = context && context.openid;
+    const db = cloud.database();
+    // 本地轨：phone 由调用方传入「已解密的完整手机号」。
+    // 真实 getPhoneNumber / encryptedData 解密链路在云轨接入。
+    const phone = event && event.phone;
+    return verifyPhone({ openid, phone, db });
+  }
 };
 
 exports.main = async (event) => {
@@ -23,11 +42,10 @@ exports.main = async (event) => {
   try {
     const handler = handlers[action];
     if (typeof handler !== 'function') {
-      // 骨架阶段：未实现统一返回 not implemented
       const err = notImplemented(action ? 'auth.' + action : 'auth.<empty>');
       return fail(err.code, err.message);
     }
-    // 登录前置 action 不强制 requireUser
+    // 登录前置 action 不强制 requireUser；phone 需要 openid 上下文
     const context = authMiddleware({ getWXContext: cloud.getWXContext });
     const data = await handler(event, context);
     return ok(data);

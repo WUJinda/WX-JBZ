@@ -1,0 +1,108 @@
+const { projectProfile, projectSteps, getProfile } = require('../../cloudfunctions/user/userProfile');
+const { createMockDb } = require('../helpers/mockDb');
+const { CODE } = require('../../cloudfunctions/common/errors');
+
+describe('user.profile 纯函数', () => {
+  describe('projectSteps（累计步数占位）', () => {
+    it('数字原样返回（向下取整）', () => {
+      expect(projectSteps(12500)).toBe(12500);
+      expect(projectSteps(12500.9)).toBe(12500);
+    });
+    it('数字字符串转数字', () => {
+      expect(projectSteps('8000')).toBe(8000);
+    });
+    it('null/undefined/负数/NaN 兜底为 0', () => {
+      expect(projectSteps(null)).toBe(0);
+      expect(projectSteps(undefined)).toBe(0);
+      expect(projectSteps(-1)).toBe(0);
+      expect(projectSteps('abc')).toBe(0);
+    });
+  });
+
+  describe('projectProfile（脱敏下发）', () => {
+    it('不下发原始 phone / openid / unionid', () => {
+      const user = {
+        _openid: 'oSECRET',
+        unionid: 'uSECRET',
+        phone: '13812341234',
+        phone_masked: '138****1234',
+        nickname: '张明',
+        avatar: 'a.jpg',
+        dept_id: 'd_01',
+        join_status: 'joined',
+        total_steps: 12500
+      };
+      const out = projectProfile(user);
+      expect(out).not.toHaveProperty('phone');
+      expect(out).not.toHaveProperty('openid');
+      expect(out).not.toHaveProperty('unionid');
+      expect(out.phone_masked).toBe('138****1234');
+      expect(out.nickname).toBe('张明');
+      expect(out.dept_id).toBe('d_01');
+      expect(out.join_status).toBe('joined');
+      expect(out.total_steps).toBe(12500);
+    });
+
+    it('phone_masked 缺失但 phone 存在时，按完整号兜底脱敏（不下发完整号）', () => {
+      const out = projectProfile({ phone: '15900001111' });
+      expect(out.phone_masked).toBe('159****1111');
+      expect(out).not.toHaveProperty('phone');
+    });
+
+    it('phone 完全缺失时 phone_masked 为空串', () => {
+      const out = projectProfile({});
+      expect(out.phone_masked).toBe('');
+    });
+
+    it('total_steps 缺失兜底为 0', () => {
+      const out = projectProfile({});
+      expect(out.total_steps).toBe(0);
+    });
+
+    it('join_status 缺失兜底为 pending', () => {
+      const out = projectProfile({});
+      expect(out.join_status).toBe('pending');
+    });
+  });
+
+  describe('getProfile 主逻辑', () => {
+    it('按 openid 查到用户并脱敏下发', async () => {
+      const { db } = createMockDb({
+        User: [
+          {
+            _id: 'u_1',
+            _openid: 'oU',
+            nickname: '张明',
+            avatar: 'a.jpg',
+            phone: '13812341234',
+            phone_masked: '138****1234',
+            dept_id: 'd_01',
+            join_status: 'joined'
+          }
+        ]
+      });
+      const out = await getProfile({ openid: 'oU', db });
+      expect(out.phone_masked).toBe('138****1234');
+      expect(out.dept_id).toBe('d_01');
+      expect(out).not.toHaveProperty('phone');
+    });
+
+    it('User 不存在抛 AUTH_USER_NOT_FOUND', async () => {
+      const { db } = createMockDb({ User: [] });
+      await expect(getProfile({ openid: 'oNONE', db })).rejects.toMatchObject({
+        code: CODE.AUTH_USER_NOT_FOUND
+      });
+    });
+
+    it('openid 缺失抛 AUTH_NO_OPENID', async () => {
+      const { db } = createMockDb({});
+      await expect(getProfile({ db })).rejects.toMatchObject({ code: CODE.AUTH_NO_OPENID });
+    });
+
+    it('db 缺失抛 SYS_DB_ERROR', async () => {
+      await expect(getProfile({ openid: 'oU' })).rejects.toMatchObject({
+        code: CODE.SYS_DB_ERROR
+      });
+    });
+  });
+});

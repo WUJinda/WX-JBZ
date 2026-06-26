@@ -1,3 +1,44 @@
 <view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+  <view class="page-title">{{pageLabel}}</view>
+
+  <block wx:if="{{loading}}">
+    <view class="hint">加载中...</view>
+  </block>
+
+  <block wx:if="{{!loading && errorMsg}}">
+    <view class="hint error">{{errorMsg}}</view>
+    <button class="btn-secondary" bindtap="loadProfile">重新加载</button>
+  </block>
+
+  <block wx:if="{{!loading && !errorMsg}}">
+    <!-- 头像 + 昵称 -->
+    <view class="user-card">
+      <image class="avatar" src="{{avatar || ''}}" mode="aspectFill" />
+      <view class="nickname">{{nickname || '未设置昵称'}}</view>
+    </view>
+
+    <!-- 脱敏手机号 -->
+    <view class="row">
+      <text class="label">手机号</text>
+      <text class="value">{{phoneMasked || '未验证'}}</text>
+    </view>
+
+    <!-- 部门 -->
+    <view class="row">
+      <text class="label">部门</text>
+      <text class="value">{{deptName || '未加入'}}</text>
+    </view>
+
+    <!-- 报名状态 -->
+    <view class="row">
+      <text class="label">报名状态</text>
+      <text class="value">{{joinStatus === 'joined' ? '已报名' : '未报名'}}</text>
+    </view>
+
+    <!-- 累计步数（占位，真实聚合留后续阶段） -->
+    <view class="row">
+      <text class="label">累计步数</text>
+      <text class="value">{{totalSteps}}</text>
+    </view>
+  </block>
 </view>

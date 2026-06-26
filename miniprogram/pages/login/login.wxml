@@ -1,3 +1,41 @@
 <view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 步骤 1：微信授权登录 -->
+  <block wx:if="{{authState === 'init'}}">
+    <view class="step">第 1 步：微信授权登录</view>
+    <button class="btn-primary" bindtap="onLoginTap">微信一键登录</button>
+  </block>
+
+  <!-- 已登录态：展示头像昵称，进入手机号验证 -->
+  <block wx:if="{{authState === 'logged'}}">
+    <view class="user-card">
+      <image class="avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill" />
+      <view class="nickname">{{userInfo.nickName}}</view>
+    </view>
+  </block>
+
+  <!-- 授权被拒绝引导：openSetting 重授权 -->
+  <block wx:if="{{authDenied}}">
+    <view class="hint">需要微信授权才能参与活动</view>
+    <button class="btn-secondary" open-type="openSetting" bindopensetting="onOpenSetting">前往设置重新授权</button>
+  </block>
+
+  <!-- 步骤 2：手机号验证（仅已登录后展示） -->
+  <block wx:if="{{authState === 'logged' || authState === 'phoneVerifying'}}">
+    <view class="step">第 2 步：验证手机号（仅企业员工可参与）</view>
+    <!-- open-type=getPhoneNumber：微信手机号快速验证 -->
+    <button class="btn-primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">微信手机号快速验证</button>
+  </block>
+
+  <!-- 手机号校验失败/非白名单引导 -->
+  <block wx:if="{{phoneDenied}}">
+    <view class="hint">手机号验证未通过，可能非企业员工或已拒绝授权</view>
+    <button class="btn-secondary" bindtap="onRetryPhone">重新验证</button>
+  </block>
+
+  <!-- 手机号验证成功 -->
+  <block wx:if="{{authState === 'phoneVerified'}}">
+    <view class="success">手机号已验证：{{phoneMasked}}</view>
+  </block>
 </view>
