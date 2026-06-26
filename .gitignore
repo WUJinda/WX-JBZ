@@ -7,6 +7,8 @@ node_modules/
 project.private.config.json
 # 小程序 npm 构建产物
 miniprogram_npm/
+# 云函数共享层打包产物（由 scripts/sync-shared.js 生成，不入库）
+cloudfunctions-dist/
 # 本地调试缓存
 .cache/
 

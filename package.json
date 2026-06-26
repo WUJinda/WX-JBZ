@@ -4,7 +4,9 @@
   "private": true,
   "description": "健步走微信小程序 + 微信云开发 P0",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "sync:shared": "node scripts/sync-shared.js",
+    "verify:dist": "node scripts/verify-dist.js"
   },
   "devDependencies": {
     "vitest": "^1.6.0"

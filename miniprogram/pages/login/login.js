@@ -60,18 +60,19 @@ Page({
   },
 
   // ---- 手机号验证 ----
-  // open-type=getPhoneNumber 回调：e.detail.code 用于云轨 getPhoneNumber 解密。
-  // 本地轨：直接将「已解密的完整手机号」透传给 auth.phone（云轨联调时改为传 code）。
+  // open-type=getPhoneNumber 回调：e.detail.code 由「手机号快速验证组件」下发，
+  // 传给云函数 auth.phone 走 cloud.openapi.phonenumber.getPhoneNumber({code}) 解密。
+  // 红线：前端只传 code，绝不传明文 phone（明文可被伪造绕过白名单）。
   onGetPhoneNumber(e) {
     if (!e || !e.detail) return;
-    if (e.detail.errMsg && e.detail.errMsg.indexOf('ok') === -1) {
+    // 兼容授权失败：errMsg 不含 ok，或 code 缺失（旧基础库 / 用户拒绝）。
+    if ((e.detail.errMsg && e.detail.errMsg.indexOf('ok') === -1) || !e.detail.code) {
       this.setData({ phoneDenied: true });
       return;
     }
     const self = this;
-    // 本地轨占位：实际手机号由云轨 getPhoneNumber 解密得到。
-    // 这里以 e.detail.phone 作为已解密手机号（mock 注入），生产请改用 code。
-    const phone = e.detail.phone || '';
+    // 仅取 code（云轨解密）。不再读 e.detail.phone 明文。
+    const code = e.detail.code;
     const app = getApp();
     const api = app && app.api;
     if (!api || typeof api.call !== 'function') {
@@ -80,7 +81,7 @@ Page({
       return;
     }
     api
-      .call('auth', { action: 'phone', phone })
+      .call('auth', { action: 'phone', code })
       .then((data) => {
         self.setData({
           authState: 'phoneVerified',

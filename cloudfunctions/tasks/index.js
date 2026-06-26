@@ -158,16 +158,66 @@ async function applyLocksToCloud(cloudSdk, records, date) {
   }
 }
 
+/**
+ * dailyLock 触发时点（§6.4：默认 12:00，可配）。
+ * 与 dailyLock.LOCK_DEFAULT_CONFIG.lockHour 对齐——本常量用于「定时触发时
+ * 判断当前小时是否到锁点」；dailyLock 纯函数内部 lockHour 仅作配置项保留。
+ */
+const DAILY_LOCK_HOUR = 12;
+
+/**
+ * 定时触发（无 action）时的统一入口（§6.5：同一逻辑既被定时触发器调用、也可手动 action 触发）。
+ *
+ * 微信定时触发器调用云函数时 event 不带 action（也不可靠携带 trigger name），
+ * 故 main 在 event.action 缺失时转至此函数：
+ *   1. 每次必跑 rankAggregate（§6.3 每 10 分钟覆盖写 RankCache，幂等）；
+ *   2. 判断当前小时是否到 DAILY_LOCK_HOUR（用 event.now 优先，否则 new Date()，
+ *      统一按北京时间口径算小时，与 dailyLock/rankAggregate 的 timezoneOffsetMinutes 一致），
+ *      到点则跑 dailyLock（§6.4 幂等：已锁记录跳过，安全）。
+ *
+ * 安全前提：dailyLock 幂等（见 dailyLock.js —— 已锁再置 true 无副作用、不改 steps）。
+ *
+ * @param {object} event
+ * @returns {Promise<object>} { rank: <rankAggregate 结果>, dailyLock?: <dailyLock 结果|null> }
+ */
+async function runScheduledTasks(event) {
+  // 1. rankAggregate 每次必跑（幂等覆盖写）。
+  const rank = await handlers.rankAggregate(event);
+
+  // 2. 判断是否到 dailyLock 时点。优先用 event.now（注入/触发器时间），否则当前时刻。
+  const nowMs =
+    event && typeof event.now === 'number'
+      ? event.now
+      : event && event.now
+        ? new Date(event.now).getTime()
+        : Date.now();
+  // 北京时间（UTC+8）的小时数：复用 dailyLock/rankAggregate 的 tz 口径（480 分钟）。
+  const beijingHour = Math.floor((nowMs / 3600000 + 8) % 24);
+
+  let dailyLockResult = null;
+  if (beijingHour === DAILY_LOCK_HOUR) {
+    dailyLockResult = await handlers.dailyLock(event);
+  }
+
+  return { rank, dailyLock: dailyLockResult };
+}
+
 exports.main = async (event) => {
   const action = event && event.action;
   try {
-    const handler = handlers[action];
-    if (typeof handler !== 'function') {
-      const err = notImplemented(action ? 'tasks.' + action : 'tasks.<empty>');
-      return fail(err.code, err.message);
+    // 显式 action 分发保留（rankAggregate/dailyLock 仍可被手动/测试触发，§6.5）。
+    if (action) {
+      const handler = handlers[action];
+      if (typeof handler !== 'function') {
+        const err = notImplemented('tasks.' + action);
+        return fail(err.code, err.message);
+      }
+      // 定时任务为系统级，不取调用者 OPENID 做用户鉴权
+      const data = await handler(event);
+      return ok(data);
     }
-    // 定时任务为系统级，不取调用者 OPENID 做用户鉴权
-    const data = await handler(event);
+    // 无 action：定时触发器特征 -> 走统一调度入口。
+    const data = await runScheduledTasks(event);
     return ok(data);
   } catch (err) {
     if (err && typeof err.code === 'number') {
