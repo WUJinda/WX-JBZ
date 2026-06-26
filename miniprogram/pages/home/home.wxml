@@ -1,3 +1,41 @@
-<view class="container">
-  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+<!-- 个人主页 + 步数同步入口（对齐 PRD F3） -->
+<view class="home-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 今日步数 / 累计步数 -->
+  <view class="steps-block">
+    <view class="steps-card">
+      <text class="steps-label">今日步数</text>
+      <text class="steps-value">{{todaySteps}}</text>
+    </view>
+    <view class="steps-card">
+      <text class="steps-label">累计步数</text>
+      <text class="steps-value">{{totalSteps}}</text>
+    </view>
+  </view>
+
+  <!-- 同步按钮（idle / failed 状态可点；syncing 中禁用） -->
+  <button
+    class="sync-btn {{syncState === 'syncing' || syncState === 'authing' ? 'sync-btn-loading' : ''}}"
+    bindtap="onSyncTap"
+    disabled="{{syncState === 'syncing' || syncState === 'authing'}}"
+  >
+    <block wx:if="{{syncState === 'authing'}}">授权中...</block>
+    <block wx:elif="{{syncState === 'syncing'}}">同步中...</block>
+    <block wx:else>同步微信步数</block>
+  </button>
+
+  <!-- 最近同步时间 -->
+  <view class="last-sync" wx:if="{{lastSyncText}}">最近同步：{{lastSyncText}}</view>
+
+  <!-- 错误提示 -->
+  <view class="error-tip" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+
+  <!-- 拒绝授权后：重新授权引导（openSetting） -->
+  <view class="auth-denied-block" wx:if="{{syncState === 'authDenied'}}">
+    <text class="auth-denied-tip">需授权「微信运动」数据访问才能参与排名</text>
+    <button class="resetting-btn" open-type="openSetting" bindopensetting="onOpenSetting">
+      前往设置开启授权
+    </button>
+  </view>
 </view>

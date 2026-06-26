@@ -108,6 +108,34 @@ const COLLECTIONS = {
       created_at: { type: 'date', desc: '创建时间' },
       updated_at: { type: 'date', desc: '更新时间' }
     }
+  },
+
+  StepRecord: {
+    description: '步数记录（对齐技术架构 §5.5 / §6.2，PRD F3 R3.1~R3.6）',
+    indexes: [
+      // R3.2 去重依据：同一 (user_id, activity_id, date) 仅一条。
+      // 云数据库无原生唯一约束，由 sync 逻辑用先查后写/事务保证 upsert；
+      // 此处声明为唯一索引作为「结构真相源」（建索引脚本据此建唯一索引）。
+      {
+        name: 'idx_step_user_activity_date',
+        fields: { user_id: 1, activity_id: 1, date: 1 },
+        unique: true
+      },
+      { name: 'idx_step_activity_date', fields: { activity_id: 1, date: 1 }, unique: false },
+      { name: 'idx_step_abnormal_activity', fields: { abnormal: 1, activity_id: 1 }, unique: false }
+    ],
+    fields: {
+      _id: { type: 'string', desc: '主键（云数据库自动生成）' },
+      user_id: { type: 'string', desc: '用户 id（业务键，对齐 User._id）' },
+      _openid: { type: 'string', onlyServer: true, desc: '🔒 微信 openid（冗余便于聚合，不下发原始值）' },
+      activity_id: { type: 'string', desc: '所属活动 ID' },
+      date: { type: 'string', desc: '步数日期 YYYY-MM-DD（北京时间）' },
+      steps: { type: 'int', default: 0, desc: '当日步数' },
+      abnormal: { type: 'boolean', default: false, desc: '是否异常标记（单日 > 阈值，仅标记不剔除，R3.6）' },
+      locked: { type: 'boolean', default: false, desc: '每日锁定标记（次日 12:00 锁定后置 true，锁定后 sync 不覆盖，§6.4）' },
+      synced_at: { type: 'date', desc: '最近同步时间（也用于同分排序 first_reach_at 计算，§6.3）' },
+      sync_count: { type: 'int', default: 0, onlyServer: true, desc: '🔒 当日同步计数（频控用，≤6 次/日，R3.3）' }
+    }
   }
 };
 

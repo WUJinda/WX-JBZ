@@ -88,6 +88,31 @@ describe('集合 schema 定义（B1）', () => {
     expect(COLLECTIONS.User.fields.phone.onlyServer).toBe(true);
     expect(COLLECTIONS.Whitelist.fields.phone.onlyServer).toBe(true);
   });
+
+  it('StepRecord 集合结构合法（PRD F3 / 技术架构 §5.5：字段齐全 + (user_id,activity_id,date) 唯一索引）', () => {
+    const s = COLLECTIONS.StepRecord;
+    expect(s).toBeDefined();
+    expect(Array.isArray(s.indexes)).toBe(true);
+    // 字段齐全（E1）
+    for (const f of ['_id', 'user_id', '_openid', 'activity_id', 'date', 'steps', 'abnormal', 'locked', 'synced_at', 'sync_count']) {
+      expect(s.fields[f], `StepRecord 缺少字段: ${f}`).toBeDefined();
+    }
+    // (user_id, activity_id, date) 唯一索引（R3.2 去重依据）
+    const uadIdx = s.indexes.find(
+      (i) => i.fields.user_id && i.fields.activity_id && i.fields.date
+    );
+    expect(uadIdx, 'StepRecord 缺少 (user_id,activity_id,date) 索引').toBeDefined();
+    expect(uadIdx.unique).toBe(true);
+    // activity_id + date 聚合索引
+    expect(s.indexes.find((i) => i.fields.activity_id && i.fields.date), '缺少 activity_id+date 索引').toBeDefined();
+    // abnormal + activity_id 后台查询索引
+    expect(s.indexes.find((i) => i.fields.abnormal && i.fields.activity_id), '缺少 abnormal+activity_id 索引').toBeDefined();
+  });
+
+  it('StepRecord 敏感字段标记 onlyServer（_openid / sync_count 不下发）', () => {
+    expect(COLLECTIONS.StepRecord.fields._openid.onlyServer).toBe(true);
+    expect(COLLECTIONS.StepRecord.fields.sync_count.onlyServer).toBe(true);
+  });
 });
 
 describe('索引初始化脚本（B1）', () => {

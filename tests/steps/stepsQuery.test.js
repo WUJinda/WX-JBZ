@@ -1,0 +1,101 @@
+/**
+ * steps.today / steps.history 聚合纯函数单测（E3）。
+ * 仅 locked 或今日已入库的有效步数参与累计/历史返回。
+ */
+const { getToday, getHistory } = require('../../cloudfunctions/steps/stepsQuery');
+const { CODE } = require('../../cloudfunctions/common/errors');
+
+const USER_ID = 'u_1';
+const ACTIVITY_ID = 'a_demo_001';
+
+function rec(overrides) {
+  return Object.assign(
+    {
+      user_id: USER_ID, _openid: 'oU', activity_id: ACTIVITY_ID,
+      date: '2026-07-01', steps: 8000, abnormal: false,
+      locked: false, synced_at: '2026-07-01T10:00:00Z', sync_count: 1
+    },
+    overrides || {}
+  );
+}
+
+const NOW = new Date('2026-07-03T04:00:00Z'); // 北京时间 07-03 12:00
+
+describe('getToday 今日步数（E3）', () => {
+  it('返回当日已入库步数 + 累计（locked + 今日）', async () => {
+    const store = {
+      StepRecord: [
+        rec({ date: '2026-07-01', steps: 8000, locked: true }),
+        rec({ date: '2026-07-02', steps: 9000, locked: false }), // 未锁定且非今日 → 不计入累计
+        rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日
+      ]
+    };
+    const out = await getToday({ store, userId: USER_ID, activityId: ACTIVITY_ID, now: NOW });
+    expect(out.date).toBe('2026-07-03');
+    expect(out.steps).toBe(7000);
+    expect(out.total).toBe(8000 + 7000); // locked(07-01) + 今日(07-03)
+  });
+
+  it('无当日记录 → steps=0', async () => {
+    const store = {
+      StepRecord: [rec({ date: '2026-07-01', steps: 8000, locked: true })]
+    };
+    const out = await getToday({ store, userId: USER_ID, activityId: ACTIVITY_ID, now: NOW });
+    expect(out.steps).toBe(0);
+    expect(out.total).toBe(8000); // 仅 locked
+  });
+
+  it('缺 userId → AUTH_USER_NOT_FOUND', async () => {
+    await expect(
+      getToday({ store: { StepRecord: [] }, activityId: ACTIVITY_ID, now: NOW })
+    ).rejects.toMatchObject({ code: CODE.AUTH_USER_NOT_FOUND });
+  });
+});
+
+describe('getHistory 区间查询（E3，仅 locked/今日有效）', () => {
+  it('返回区间内有效步数 + total', async () => {
+    const store = {
+      StepRecord: [
+        rec({ date: '2026-07-01', steps: 8000, locked: true }),
+        rec({ date: '2026-07-02', steps: 9000, locked: false }), // 非有效（未锁且非今日）
+        rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日有效
+      ]
+    };
+    const out = await getHistory({
+      store, userId: USER_ID, activityId: ACTIVITY_ID,
+      from: '2026-07-01', to: '2026-07-03', now: NOW
+    });
+    expect(out.list).toHaveLength(2); // 07-01(locked) + 07-03(今日)
+    expect(out.total).toBe(15000);
+  });
+
+  it('from/to 区间裁剪', async () => {
+    const store = {
+      StepRecord: [
+        rec({ date: '2026-07-01', steps: 8000, locked: true }),
+        rec({ date: '2026-07-02', steps: 9000, locked: true })
+      ]
+    };
+    const out = await getHistory({
+      store, userId: USER_ID, activityId: ACTIVITY_ID,
+      from: '2026-07-02', to: '2026-07-02', now: NOW
+    });
+    expect(out.list).toHaveLength(1);
+    expect(out.list[0].date).toBe('2026-07-02');
+  });
+
+  it('历史返回项不下发 _openid / sync_count', async () => {
+    const store = {
+      StepRecord: [rec({ date: '2026-07-01', steps: 8000, locked: true })]
+    };
+    const out = await getHistory({ store, userId: USER_ID, activityId: ACTIVITY_ID, now: NOW });
+    expect(out.list[0]).not.toHaveProperty('_openid');
+    expect(out.list[0]).not.toHaveProperty('sync_count');
+  });
+
+  it('缺 activityId → STEP_ACTIVITY_CLOSED', async () => {
+    await expect(
+      getHistory({ store: { StepRecord: [] }, userId: USER_ID, now: NOW })
+    ).rejects.toMatchObject({ code: CODE.STEP_ACTIVITY_CLOSED });
+  });
+});

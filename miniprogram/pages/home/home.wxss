@@ -1,4 +1,28 @@
 /* pages/home/home.wxss */
-.container {
-  padding: 24rpx;
+.home-page { padding: 32rpx; }
+.page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+.steps-block { display: flex; justify-content: space-between; margin-bottom: 32rpx; }
+.steps-card {
+  flex: 1;
+  margin: 0 8rpx;
+  padding: 32rpx 24rpx;
+  background: #f7f8fa;
+  border-radius: 16rpx;
+  text-align: center;
 }
+.steps-label { display: block; font-size: 26rpx; color: #888; margin-bottom: 12rpx; }
+.steps-value { display: block; font-size: 48rpx; font-weight: 700; color: #1a1a1a; }
+.sync-btn {
+  width: 100%;
+  background: #07c160;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  margin-bottom: 16rpx;
+}
+.sync-btn-loading { background: #9ad8b6; }
+.last-sync { text-align: center; font-size: 24rpx; color: #999; margin-top: 12rpx; }
+.error-tip { text-align: center; font-size: 26rpx; color: #e64340; margin-top: 16rpx; }
+.auth-denied-block { margin-top: 32rpx; text-align: center; }
+.auth-denied-tip { display: block; font-size: 26rpx; color: #e64340; margin-bottom: 16rpx; }
+.resetting-btn { background: #fff; color: #07c160; border: 1rpx solid #07c160; border-radius: 48rpx; font-size: 28rpx; }

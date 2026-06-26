@@ -173,3 +173,86 @@ describe('dept.list / user.join action 挂载与 dept 页面结构（D1+D2）', 
     expect(js).toMatch(/dept_id/);
   });
 });
+
+describe('steps action 挂载与同步前端结构（E1~E4）', () => {
+  it('steps/index.js 的 handlers 表挂载 sync/today/history（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/steps/index.js');
+    expect(src).toMatch(/\bsync\s*:\s*async/);
+    expect(src).toMatch(/\btoday\s*:\s*async/);
+    expect(src).toMatch(/\bhistory\s*:\s*async/);
+    // 纯函数模块被 require
+    expect(src).toMatch(/require\(['"]\.\/decrypt['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/stepsSync['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/stepsQuery['"]\)/);
+  });
+
+  it('steps sync/today/history 走 requireUser（需 OPENID，与游客通道区分）', () => {
+    const src = readSource('cloudfunctions/steps/index.js');
+    expect(src).toMatch(/requireUser/);
+    expect(src).toMatch(/REQUIRE_USER_ACTIONS/);
+    expect(src).toMatch(/sync:\s*true/);
+    expect(src).toMatch(/today:\s*true/);
+    expect(src).toMatch(/history:\s*true/);
+  });
+
+  it('steps 纯函数模块存在（decrypt/stepsSync/stepsQuery）', () => {
+    const files = [
+      'cloudfunctions/steps/decrypt.js',
+      'cloudfunctions/steps/stepsSync.js',
+      'cloudfunctions/steps/stepsQuery.js'
+    ];
+    for (const rel of files) {
+      expect(fs.existsSync(path.join(ROOT, rel)), `缺少纯函数模块: ${rel}`).toBe(true);
+    }
+  });
+
+  it('decrypt.js 用 Node crypto 实现 AES-128-CBC（与 wx-server-sdk 解耦）', () => {
+    const src = readSource('cloudfunctions/steps/decrypt.js');
+    expect(src).toMatch(/require\(['"]crypto['"]\)/);
+    expect(src).toMatch(/aes-128-cbc/);
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+  });
+
+  it('home 同步前端含：同步按钮 / 拒绝重授权(openSetting) / 下拉刷新 / Toast', () => {
+    const wxml = readSource('miniprogram/pages/home/home.wxml');
+    // 同步按钮
+    expect(wxml).toMatch(/sync-btn|onSyncTap/);
+    // 拒绝后 openSetting 重授权
+    expect(wxml).toMatch(/open-type=["']openSetting["']/);
+    expect(wxml).toMatch(/onOpenSetting/);
+    // 今日 / 累计步数展示
+    expect(wxml).toMatch(/todaySteps|今日步数/);
+    expect(wxml).toMatch(/totalSteps|累计步数/);
+
+    const js = readSource('miniprogram/pages/home/home.js');
+    // 同步中 / 成功 Toast
+    expect(js).toMatch(/showToast/);
+    // 下拉刷新
+    expect(js).toMatch(/onPullDownRefresh/);
+    // getWeRunData 授权
+    expect(js).toMatch(/getWeRunData/);
+    // 调 steps.sync
+    expect(js).toMatch(/action:\s*['"]sync['"]/);
+  });
+
+  it('home 页面引用 homeSync 授权状态机纯函数模块', () => {
+    const js = readSource('miniprogram/pages/home/home.js');
+    expect(js).toMatch(/require\(['"]\.\/homeSync['"]\)/);
+  });
+
+  it('homeSync.js 前端纯函数模块存在（授权状态机可单测）', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/home/homeSync.js')),
+      '缺少 homeSync.js'
+    ).toBe(true);
+  });
+
+  it('session_key 绝不写入任何集合（grep 验证：无 collection 写 sessionKey）', () => {
+    const src = readSource('cloudfunctions/steps/index.js');
+    // handler 中 sessionKey 仅作局部变量解密后丢弃；不应出现在 add/update 的 data 中
+    expect(src).not.toMatch(/\.add\(\s*\{[\s\S]*sessionKey/);
+    expect(src).not.toMatch(/\.update\(\s*\{[\s\S]*sessionKey/);
+    // 不下发：sync 返回值由 syncSteps 产出（不含 sessionKey），handler 不把 sessionKey 放进返回
+    expect(src).toMatch(/不.*下发|用后即弃|绝不/);
+  });
+});
