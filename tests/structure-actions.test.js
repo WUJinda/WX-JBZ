@@ -442,3 +442,88 @@ describe('mask.js 脱敏纯函数挂载（G1）', () => {
     expect(src).toMatch(/module\.exports.*maskNickname/);
   });
 });
+
+describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
+  it('admin/index.js 的 handlers 表挂载 7 个 action（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/admin/index.js');
+    expect(src).toMatch(/\bwhitelistImport\s*:\s*async/);
+    expect(src).toMatch(/\busers\s*:\s*async/);
+    expect(src).toMatch(/\bchangeDept\s*:\s*async/);
+    expect(src).toMatch(/\babnormalList\s*:\s*async/);
+    expect(src).toMatch(/\bverdict\s*:\s*async/);
+    expect(src).toMatch(/\bdashboard\s*:\s*async/);
+    expect(src).toMatch(/\bdeptManage\s*:\s*async/);
+  });
+
+  it('admin/index.js require 全部纯函数模块', () => {
+    const src = readSource('cloudfunctions/admin/index.js');
+    expect(src).toMatch(/require\(['"]\.\/adminGuard['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/whitelistParse['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/whitelistImport['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/userList['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/changeDept['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/abnormalList['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/verdict['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/deptManage['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/dashboard['"]\)/);
+  });
+
+  it('admin/index.js 全部 7 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
+    const src = readSource('cloudfunctions/admin/index.js');
+    // assertAdmin 至少出现 7 次（每个 handler 一次）
+    const count = (src.match(/assertAdmin\(/g) || []).length;
+    expect(count).toBeGreaterThanOrEqual(7);
+  });
+
+  it('admin 纯函数模块文件存在（8 个）', () => {
+    const files = [
+      'cloudfunctions/admin/adminGuard.js',
+      'cloudfunctions/admin/whitelistParse.js',
+      'cloudfunctions/admin/whitelistImport.js',
+      'cloudfunctions/admin/userList.js',
+      'cloudfunctions/admin/changeDept.js',
+      'cloudfunctions/admin/abnormalList.js',
+      'cloudfunctions/admin/verdict.js',
+      'cloudfunctions/admin/deptManage.js',
+      'cloudfunctions/admin/dashboard.js'
+    ];
+    for (const rel of files) {
+      expect(fs.existsSync(path.join(ROOT, rel)), `缺少纯函数模块: ${rel}`).toBe(true);
+    }
+  });
+
+  it('admin 纯函数不调真实云 API（grep 实证：无 wx-server-sdk/cloud 副作用）', () => {
+    const modules = [
+      'cloudfunctions/admin/adminGuard.js',
+      'cloudfunctions/admin/whitelistParse.js',
+      'cloudfunctions/admin/whitelistImport.js',
+      'cloudfunctions/admin/userList.js',
+      'cloudfunctions/admin/changeDept.js',
+      'cloudfunctions/admin/abnormalList.js',
+      'cloudfunctions/admin/verdict.js',
+      'cloudfunctions/admin/deptManage.js',
+      'cloudfunctions/admin/dashboard.js'
+    ];
+    for (const rel of modules) {
+      const src = readSource(rel);
+      expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+      expect(src).not.toMatch(/cloud\.database\(\)/);
+      expect(src).not.toMatch(/cloud\.callFunction/);
+    }
+  });
+
+  it('projectUser 投影函数体不下发敏感字段（grep 实证）', () => {
+    const src = readSource('cloudfunctions/admin/userList.js');
+    expect(src).toMatch(/projectUser/);
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/\bphone\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
+
+  it('projectAbnormal 投影函数体不下发敏感字段（grep 实证）', () => {
+    const src = readSource('cloudfunctions/admin/abnormalList.js');
+    expect(src).toMatch(/projectAbnormal/);
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
+});
