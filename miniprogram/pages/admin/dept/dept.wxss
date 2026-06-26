@@ -1,0 +1,4 @@
+/* pages/admin/dept/dept.wxss */
+.container {
+  padding: 24rpx;
+}

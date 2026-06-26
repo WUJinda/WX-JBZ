@@ -1,0 +1,12 @@
+{
+  "name": "jbz-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "健步走微信小程序 + 微信云开发 P0",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0"
+  }
+}

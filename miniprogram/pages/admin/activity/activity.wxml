@@ -1,0 +1,3 @@
+<view class="container">
+  <view class="placeholder-text">{{pageLabel}}（占位页）</view>
+</view>

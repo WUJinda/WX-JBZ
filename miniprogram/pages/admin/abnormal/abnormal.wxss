@@ -1,0 +1,4 @@
+/* pages/admin/abnormal/abnormal.wxss */
+.container {
+  padding: 24rpx;
+}

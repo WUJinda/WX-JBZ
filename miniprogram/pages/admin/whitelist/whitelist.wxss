@@ -1,0 +1,4 @@
+/* pages/admin/whitelist/whitelist.wxss */
+.container {
+  padding: 24rpx;
+}

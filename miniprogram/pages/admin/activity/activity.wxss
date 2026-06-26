@@ -1,0 +1,4 @@
+/* pages/admin/activity/activity.wxss */
+.container {
+  padding: 24rpx;
+}

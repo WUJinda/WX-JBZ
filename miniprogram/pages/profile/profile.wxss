@@ -1,0 +1,4 @@
+/* pages/profile/profile.wxss */
+.container {
+  padding: 24rpx;
+}

@@ -1,0 +1,4 @@
+/* pages/admin/dashboard/dashboard.wxss */
+.container {
+  padding: 24rpx;
+}

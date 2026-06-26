@@ -1,0 +1,9 @@
+{
+  "name": "activity",
+  "version": "1.0.0",
+  "description": "JBZ activity 云函数",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

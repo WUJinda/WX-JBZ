@@ -1,0 +1,17 @@
+{
+  "miniprogramRoot": ".",
+  "cloudfunctionRoot": "../cloudfunctions",
+  "appid": "touristappid",
+  "projectname": "jbz-app",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true
+  },
+  "libVersion": "2.32.3",
+  "compileType": "miniprogram",
+  "condition": {}
+}
