@@ -2,10 +2,9 @@
 const { createApi } = require('./utils/request');
 
 App({
-  // TODO B0.1：用户开通云开发环境后回填真实 envId（dev/prod 两套），
-  //   回填后下方 init+api 挂载才生效；占位期间各页 getApp().api 仍为 undefined，
-  //   走本地轨守卫兜底（行为不变）。
-  cloudEnvId: 'jbz-cloud-env-placeholder',
+  // 云开发环境 ID（B0.1 已回填）。onLaunch 的占位守卫：含 'placeholder' 时不挂 api。
+  // 当前为免费云环境（开发联调用）；上线后再按需转付费 / 加 prod 环境。
+  cloudEnvId: 'cloud1-d1gtq8mlla5f94c43',
 
   onLaunch() {
     if (!wx.cloud) {
