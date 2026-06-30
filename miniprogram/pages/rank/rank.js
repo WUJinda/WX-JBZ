@@ -15,7 +15,7 @@ const {
   formatUpdatedAt,
   DEFAULT_PAGE_SIZE
 } = require('./rankCalc');
-const { hasMore } = require('../../../utils/pagination');
+const { hasMore } = require('../../utils/pagination');
 
 const ACTIVITY_ID = 'a_demo_001';
 
