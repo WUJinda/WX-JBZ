@@ -1,8 +1,9 @@
 // pages/login/login.js
 // 登录授权页（对齐 PRD F1，开发计划 B4）。
-// 流程：getUserProfile 授权 → 手机号验证（open-type=getPhoneNumber）。
-//   注：getUserProfile 须在 TAP 同步栈内直接调（不能套异步回调）；
-//   身份取 cloud.getWXContext().OPENID（云开发自动注入），不用 wx.login。
+// 流程：一键登录（auth.login 用 OPENID 静默建号）→ 按 join_status 进主流程。
+// MVP 阶段跳过手机号验证（快速验证组件收费 + 隐私协议审核周期长），
+// 登录建号即视为注册；手机号/白名单代码（onGetPhoneNumber + auth.phone）保留，后续收紧员工身份时恢复。
+// 身份取 cloud.getWXContext().OPENID（云开发自动注入），不用 wx.login。
 // 拒绝授权时引导 openSetting 重新授权。授权状态机见 authFlow.js（纯函数单测）。
 
 // api 实例从 getApp().api 取（与其余页一致，避免模块级 createApi 在本地轨发起真实 callFunction）。
@@ -38,8 +39,14 @@ Page({
     // 真实昵称头像留待个人页「头像昵称填写能力」(chooseAvatar) 补，不阻塞建号。
     api
       .call('auth', { action: 'login', profile: {} })
-      .then(() => {
-        self.setData({ authState: 'logged', userInfo: {}, authDenied: false });
+      .then((data) => {
+        // 登录建号成功：MVP 跳过手机号验证，按 join_status 直接进主流程。
+        // 已报名 → 首页（tabBar，须 switchTab）；未报名 → 部门选择（报名）。
+        if (data && data.join_status === 'joined') {
+          wx.switchTab({ url: '/pages/home/home' });
+        } else {
+          wx.redirectTo({ url: '/pages/dept/dept' });
+        }
       })
       .catch(() => {
         // 云函数失败：静默兜底切前端态（与各页加载失败兜底口径一致，不白屏）。
