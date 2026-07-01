@@ -62,4 +62,61 @@ async function ensureIndexes(cloud) {
   return out;
 }
 
-module.exports = { ensureIndexes, ensureCollectionIndexes, COLLECTIONS };
+/**
+ * 创建单个集合（幂等）。
+ * 背景：云开发数据库集合不会自动创建，where().get() 查不存在的集合报 -502005，
+ *   故建索引前须先确保集合存在（auth.login「先查后 add」曾因 User 未建而炸）。
+ * createCollection 对已存在集合会抛错——按错误信息识别「已存在」视为幂等成功。
+ *
+ * @param {object} db cloud.database() 句柄
+ * @param {string} name 集合名
+ * @returns {Promise<{collection:string, ok:boolean, created:boolean, reason?:string}>}
+ */
+async function ensureCollection(db, name) {
+  try {
+    await db.createCollection(name);
+    return { collection: name, ok: true, created: true };
+  } catch (err) {
+    const reason = (err && err.errMsg) || (err && err.message) || 'unknown';
+    // 已存在视为幂等成功（微信侧错误信息含 already/exist/已存在/-5010 等）
+    const exists = /already|exist|已存在|-5010/i.test(reason);
+    return { collection: name, ok: exists, created: false, reason };
+  }
+}
+
+/**
+ * 对全部声明的集合建集合（幂等，可重复运行）。
+ * @param {object} cloud wx-server-sdk 实例（已 init）
+ * @returns {Promise<object>} { User: {ok,created,reason?}, Whitelist: {...}, ... }
+ */
+async function ensureCollections(cloud) {
+  if (!cloud || typeof cloud.database !== 'function') {
+    throw new Error('ensureCollections: cloud with database() is required');
+  }
+  const db = cloud.database();
+  const out = {};
+  for (const name of Object.keys(COLLECTIONS)) {
+    out[name] = await ensureCollection(db, name);
+  }
+  return out;
+}
+
+/**
+ * 一键建集合 + 索引（幂等，运维入口）。先建集合再建索引。
+ * @param {object} cloud wx-server-sdk 实例（已 init）
+ * @returns {Promise<{collections:object, indexes:object}>}
+ */
+async function ensureSchema(cloud) {
+  const collections = await ensureCollections(cloud);
+  const indexes = await ensureIndexes(cloud);
+  return { collections, indexes };
+}
+
+module.exports = {
+  ensureIndexes,
+  ensureCollectionIndexes,
+  ensureCollections,
+  ensureCollection,
+  ensureSchema,
+  COLLECTIONS
+};

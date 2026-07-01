@@ -105,7 +105,9 @@ const SHARED_MANIFEST = {
     'common/response',
     'common/adminGuard',
     'steps/stepsSync',         // 经 admin/dashboard 引入
-    'activity/activityStatus'  // steps/stepsSync 的传递依赖
+    'activity/activityStatus', // steps/stepsSync 的传递依赖
+    'schema/initIndexes',      // 经 admin.ensureSchema 运维 action 引入
+    'schema/collections'       // initIndexes 的同目录依赖
   ],
   tasks: [
     'common/errors',
@@ -208,7 +210,7 @@ function rewriteRequires(content, fileRelPath) {
   const requireRe = /(require\s*\(\s*)(['"])(\.{1,2}\/[^'"]+|[a-zA-Z@][^'"]*)(['"])(\s*\))/g;
 
   // 哪些"目录前缀"算跨目录共享：common/steps/activity/dept
-  const SHARED_DIRS = ['common', 'steps', 'activity', 'dept'];
+  const SHARED_DIRS = ['common', 'steps', 'activity', 'dept', 'schema'];
 
   // 当前文件所在目录相对包根的深度（用于决定回退几层到包根）。
   // 包根文件：dirSegments = []，回退 0 层；

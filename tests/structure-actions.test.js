@@ -468,15 +468,15 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/require\(['"]\.\/dashboard['"]\)/);
   });
 
-  it('admin/index.js 全部 7 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
+  it('admin/index.js 全部 8 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     // 语义说明：每个管理员 handler 必须在入口调用 assertAdmin 做管理员守卫，
     // 漏一个 handler 会导致非管理员可绕过鉴权调用该 action。
-    // admin 共 7 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage），
-    // 故 assertAdmin 语句调用必须精确出现 7 次（每个 handler 内 1 次）。
+    // admin 共 8 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage/ensureSchema），
+    // 故 assertAdmin 语句调用必须精确出现 8 次（每个 handler 内 1 次）。
     const actions = [
       'whitelistImport', 'users', 'changeDept',
-      'abnormalList', 'verdict', 'dashboard', 'deptManage'
+      'abnormalList', 'verdict', 'dashboard', 'deptManage', 'ensureSchema'
     ];
     // 结构化断言：每个 handler 块内都含 assertAdmin（按 handler 名切分源码块）。
     for (const act of actions) {
@@ -496,7 +496,7 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(callCount).toBe(actions.length);
   });
 
-  it('activity.save handler 调用 assertAdmin（管理员守卫，与 admin 7 action 同口径）', () => {
+  it('activity.save handler 调用 assertAdmin（管理员守卫，与 admin 8 action 同口径）', () => {
     const src = readSource('cloudfunctions/activity/index.js');
     // save 是唯一需要管理员守卫的 activity action，语句调用必须精确出现 1 次。
     const callCount = (src.match(/^\s+assertAdmin\(store/gm) || []).length;
@@ -507,16 +507,16 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src.slice(saveIdx, saveIdx + 800).includes('assertAdmin(')).toBe(true);
   });
 
-  it('assertAdmin 全仓调用总数 = 8（admin 7 + activity.save 1），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 9（admin 8 + activity.save 1），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
     const activitySrc = readSource('cloudfunctions/activity/index.js');
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(adminCount).toBe(7);
+    expect(adminCount).toBe(8);
     expect(activityCount).toBe(1);
-    expect(adminCount + activityCount).toBe(8);
+    expect(adminCount + activityCount).toBe(9);
   });
 
   it('admin 纯函数模块文件存在（8 个）', () => {

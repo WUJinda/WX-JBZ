@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { COLLECTIONS, ensureIndexes, ensureCollectionIndexes } = require('../../cloudfunctions/schema/initIndexes');
+const { COLLECTIONS, ensureIndexes, ensureCollectionIndexes, ensureCollections, ensureCollection, ensureSchema } = require('../../cloudfunctions/schema/initIndexes');
 
 describe('集合 schema 定义（B1）', () => {
   it('COLLECTIONS 可被 require 且为对象', () => {
@@ -198,5 +198,73 @@ describe('索引初始化脚本（B1）', () => {
   it('ensureIndexes 缺 cloud 抛错', async () => {
     await expect(ensureIndexes(null)).rejects.toThrow();
     await expect(ensureIndexes({})).rejects.toThrow();
+  });
+
+  it('ensureCollection 成功创建集合 → ok/created=true', async () => {
+    const calls = [];
+    const db = {
+      createCollection(name) { calls.push(name); return Promise.resolve(); }
+    };
+    const out = await ensureCollection(db, 'User');
+    expect(out).toEqual({ collection: 'User', ok: true, created: true });
+    expect(calls).toEqual(['User']);
+  });
+
+  it('ensureCollection 已存在（createCollection 抛 already exists）→ 幂等 ok=true/created=false', async () => {
+    const db = {
+      createCollection() {
+        const e = new Error('collection already exists');
+        e.errMsg = 'collection already exists';
+        return Promise.reject(e);
+      }
+    };
+    const out = await ensureCollection(db, 'User');
+    expect(out.ok).toBe(true);
+    expect(out.created).toBe(false);
+    expect(out.reason).toMatch(/already|exist/i);
+  });
+
+  it('ensureCollection 其它错误 → ok=false 且带 reason（不抛）', async () => {
+    const db = {
+      createCollection() {
+        const e = new Error('permission denied');
+        e.errMsg = 'permission denied';
+        return Promise.reject(e);
+      }
+    };
+    const out = await ensureCollection(db, 'User');
+    expect(out.ok).toBe(false);
+    expect(out.created).toBe(false);
+    expect(out.reason).toBe('permission denied');
+  });
+
+  it('ensureCollections 对全部声明集合各调一次 createCollection', async () => {
+    const calls = [];
+    const mockCloud = {
+      database: () => ({
+        createCollection(name) { calls.push(name); return Promise.resolve(); }
+      })
+    };
+    const out = await ensureCollections(mockCloud);
+    expect(Object.keys(out).sort()).toEqual(Object.keys(COLLECTIONS).sort());
+    expect(calls.length).toBe(Object.keys(COLLECTIONS).length);
+  });
+
+  it('ensureSchema 合成 collections + indexes（幂等不抛错）', async () => {
+    const mockCloud = {
+      database: () => ({
+        createCollection: () => Promise.resolve(),
+        collection: () => ({ createIndex: () => Promise.resolve() })
+      })
+    };
+    const out = await ensureSchema(mockCloud);
+    expect(out.collections).toBeDefined();
+    expect(out.indexes).toBeDefined();
+    expect(Object.keys(out.collections).sort()).toEqual(Object.keys(COLLECTIONS).sort());
+    expect(Object.keys(out.indexes).sort()).toEqual(Object.keys(COLLECTIONS).sort());
+  });
+
+  it('ensureCollections 缺 cloud 抛错', async () => {
+    await expect(ensureCollections(null)).rejects.toThrow();
   });
 });

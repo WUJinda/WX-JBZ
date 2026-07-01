@@ -25,6 +25,7 @@ const { queryAbnormal } = require('./abnormalList');
 const { applyVerdict } = require('./verdict');
 const { createDept, updateDept, deleteDept } = require('./deptManage');
 const { buildDashboard } = require('./dashboard');
+const { ensureSchema } = require('../schema/initIndexes');
 
 const handlers = {
   // R8.2 白名单导入：raw_text → parseWhitelist → applyWhitelistImport → 写回 Whitelist。
@@ -170,6 +171,16 @@ const handlers = {
       throw BizError(CODE.SYS_DB_ERROR, 'deptManage: invalid op (create|update|delete)');
     }
     return result;
+  },
+
+  // 运维：一键建集合 + 索引（幂等可重跑）。仅管理员。
+  // 解决云数据库集合不会自动创建（where().get 查不存在集合报 -502005）导致的手动建表踩坑。
+  ensureSchema: async (event, context) => {
+    const store = {
+      User: await loadCollection(cloud, 'User')
+    };
+    assertAdmin(store, context.openid);
+    return ensureSchema(cloud);
   }
 };
 
