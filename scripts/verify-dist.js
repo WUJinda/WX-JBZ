@@ -65,13 +65,15 @@ function resolveRequire(fromFile, spec) {
   return null;
 }
 
-/** 收集目录下所有 .js 文件（绝对路径），递归。 */
+/** 收集目录下所有 .js 文件（绝对路径），递归。跳过 node_modules（npm 依赖不校验）。 */
 function collectJsFiles(dir) {
   const out = [];
   if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      // node_modules 是 npm 依赖，其内部 require 由 npm 保证，不在本工具校验范围。
+      if (entry.name === 'node_modules') continue;
       out.push(...collectJsFiles(full));
     } else if (entry.isFile() && path.extname(entry.name) === '.js') {
       out.push(full);

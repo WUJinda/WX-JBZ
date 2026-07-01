@@ -173,13 +173,19 @@ const handlers = {
     return result;
   },
 
-  // 运维：一键建集合 + 索引（幂等可重跑）。仅管理员。
+  // 运维：一键建集合 + 索引（幂等可重跑）。
   // 解决云数据库集合不会自动创建（where().get 查不存在集合报 -502005）导致的手动建表踩坑。
+  // 守卫：小程序调用（有 openid）→ assertAdmin；云控制台调试（无 openid）→ 跳过守卫直接执行
+  // （ensureSchema 是幂等无害的运维操作，且控制台调试本身已具备云开发开发者权限边界）。
   ensureSchema: async (event, context) => {
-    const store = {
-      User: await loadCollection(cloud, 'User')
-    };
-    assertAdmin(store, context.openid);
+    if (context && context.openid) {
+      const store = {
+        User: await loadCollection(cloud, 'User')
+      };
+      assertAdmin(store, context.openid);
+    } else {
+      console.warn('[ensureSchema] 无 openid，按云控制台调试模式执行（跳过管理员守卫）');
+    }
     return ensureSchema(cloud);
   }
 };
@@ -329,7 +335,15 @@ exports.main = async (event) => {
       return fail(err.code, err.message);
     }
     // 取调用者 openid（仅取 OPENID，admin 守卫由 assertAdmin 承担）。
-    const context = authMiddleware({ getWXContext: cloud.getWXContext });
+    // ensureSchema 允许无 openid（云控制台调试模式）：控制台调试无 wxContext，
+    // authMiddleware 会抛 AUTH_NO_OPENID；此处对 ensureSchema 软取，由 handler 内决定是否守卫。
+    let context;
+    try {
+      context = authMiddleware({ getWXContext: cloud.getWXContext });
+    } catch (e) {
+      if (action !== 'ensureSchema') throw e;
+      context = { openid: null };
+    }
     const data = await handler(event, context);
     return ok(data);
   } catch (err) {

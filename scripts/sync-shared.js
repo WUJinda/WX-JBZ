@@ -124,10 +124,25 @@ const SHARED_MANIFEST = {
 
 /**
  * 递归删除目录（rm -rf 语义）。
+ * Windows 上目录可能被进程占用（如微信开发者工具监视 cloudfunctions-dist），
+ * rmSync 偶发 EBUSY/EPERM/ENOTEMPTY —— 靠 rmSync 原生 maxRetries + 外层重试等句柄释放。
+ * 仍失败则由调用方（main 的逐包清理）兜底为覆盖式重建。
  */
 function rmrf(target) {
   if (!fs.existsSync(target)) return;
-  fs.rmSync(target, { recursive: true, force: true });
+  const RETRIES = 6;
+  const DELAY_MS = 400;
+  for (let attempt = 0; attempt <= RETRIES; attempt++) {
+    try {
+      fs.rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+      return;
+    } catch (err) {
+      const retryable = err && /^(EBUSY|EPERM|ENOTEMPTY|EMFILE)$/.test(err.code);
+      if (!retryable || attempt === RETRIES) throw err;
+      const end = Date.now() + DELAY_MS;
+      while (Date.now() < end) { /* 同步等待句柄释放 */ }
+    }
+  }
 }
 
 /**
@@ -321,12 +336,18 @@ function collectJsFiles(dir) {
 }
 
 function main() {
-  // 幂等：先清空 dist 再全量生成
-  rmrf(DIST_DIR);
+  // 逐包清理 + 构建（不再整体 rmrf DIST_DIR：Windows 下若某包目录被进程占用，
+  // 整体 rmrf 会因一个包 EBUSY 而全建失败；逐包清理则只影响被占用的包，
+  // 该包由 buildOne 覆盖式重建兜底——mkdir recursive 复用目录 + copyFileSync 覆盖源文件）。
   fs.mkdirSync(DIST_DIR, { recursive: true });
 
   let count = 0;
   for (const fn of CLOUD_FUNCTIONS) {
+    try {
+      rmrf(path.join(DIST_DIR, fn));
+    } catch (err) {
+      console.warn(`[sync-shared] 清理 ${fn} 失败（${(err && err.code) || err.message}），改为覆盖式重建`);
+    }
     buildOne(fn);
     count++;
     console.log(`[sync-shared] 打包: ${fn}`);
