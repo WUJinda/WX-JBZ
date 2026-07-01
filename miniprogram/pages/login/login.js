@@ -1,6 +1,8 @@
 // pages/login/login.js
 // 登录授权页（对齐 PRD F1，开发计划 B4）。
-// 流程：wx.login + getUserProfile 授权 → 手机号验证（open-type=getPhoneNumber）。
+// 流程：getUserProfile 授权 → 手机号验证（open-type=getPhoneNumber）。
+//   注：getUserProfile 须在 TAP 同步栈内直接调（不能套异步回调）；
+//   身份取 cloud.getWXContext().OPENID（云开发自动注入），不用 wx.login。
 // 拒绝授权时引导 openSetting 重新授权。授权状态机见 authFlow.js（纯函数单测）。
 
 // api 实例从 getApp().api 取（与其余页一致，避免模块级 createApi 在本地轨发起真实 callFunction）。
@@ -21,29 +23,28 @@ Page({
   // ---- 登录授权（wx.login + getUserProfile）----
   onLoginTap() {
     const self = this;
-    // wx.login 取 code（真实 code2Session 在云函数 auth.login 内由 OPENID 完成，
-    // 本地轨 OPENID 由 wx.cloud 自动携带）
-    wx.login({
-      success() {
-        wx.getUserProfile({
-          desc: '用于完善健步走活动资料',
-          success(res) {
-            self.setData({
-              authState: 'logged',
-              userInfo: res.userInfo || null,
-              authDenied: false
-            });
-          },
-          fail() {
-            // 用户拒绝授权 getUserProfile
-            self.setData({ authDenied: true });
-          }
-        });
-      },
-      fail() {
-        self.setData({ authDenied: true });
-      }
-    });
+    const app = getApp();
+    const api = app && app.api;
+    // 无云能力（本地轨占位）→ 仅切前端态兜底，不崩。
+    if (!api || typeof api.call !== 'function') {
+      self.setData({ authState: 'logged', userInfo: {}, authDenied: false });
+      return;
+    }
+    // 一键登录：直接调 auth.login 用 OPENID 建号占位（registered=false）。
+    // 不再调用 wx.getUserProfile —— 三个原因：
+    //   1) errno 112：getUserProfile 须在「用户隐私保护指引」声明 scope，未声明则报错；
+    //   2) 微信 2022-10-25 新规：getUserProfile 已不再返回真实昵称头像（仅默认值）；
+    //   3) auth.login 取身份用 cloud.getWXContext().OPENID（云开发自动注入），本就不依赖它。
+    // 真实昵称头像留待个人页「头像昵称填写能力」(chooseAvatar) 补，不阻塞建号。
+    api
+      .call('auth', { action: 'login', profile: {} })
+      .then(() => {
+        self.setData({ authState: 'logged', userInfo: {}, authDenied: false });
+      })
+      .catch(() => {
+        // 云函数失败：静默兜底切前端态（与各页加载失败兜底口径一致，不白屏）。
+        self.setData({ authState: 'logged', userInfo: {}, authDenied: false });
+      });
   },
 
   // 拒绝后引导用户到 openSetting 重新授权
