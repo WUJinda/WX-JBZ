@@ -40,17 +40,23 @@ Page({
   },
 
   /**
-   * 预取 wx.login code（用于 steps.sync 当次 code2Session，架构 §6.2）。
-   * 每次同步前刷新，保证 code 新鲜。
+   * 获取 wx.login code（用于 steps.sync 当次 code2Session，架构 §6.2）。
+   *
+   * @param {Function} [cb] 拿到 code（setData 完成）后的回调；login 不可用/失败时也会调用（code 可能为空）
    */
-  refreshLoginCode() {
-    if (typeof wx === 'undefined' || !wx.login) return;
+  refreshLoginCode(cb) {
+    if (typeof wx === 'undefined' || !wx.login) {
+      if (typeof cb === 'function') cb();
+      return;
+    }
     wx.login({
       success: (res) => {
         this.setData({ jsCode: res.code || '' });
+        if (typeof cb === 'function') cb();
       },
       fail: () => {
         this.setData({ jsCode: '' });
+        if (typeof cb === 'function') cb();
       }
     });
   },
@@ -98,7 +104,12 @@ Page({
       return;
     }
     this.apply({ type: 'SYNC_START' });
-    this.callWeRunData();
+    // 关键：wx.login 与 wx.getWeRunData 必须同源——getWeRunData 的 encryptedData 用
+    // 「当前登录态 session_key」加密，云函数靠 login 的 code 经 code2Session 换出同一
+    // session_key 才能解密（decrypt.js AES-128-CBC）。故在此先 login 取 fresh code，
+    // 紧接 getWeRunData；callCloudSync 不再重复 login，否则 code 与 encryptedData 可能
+    // 分属不同登录态（login 触发会话刷新）→ 云端解密必败（STEP_DECRYPT_FAILED 3002）。
+    this.refreshLoginCode(() => this.callWeRunData());
   },
 
   /** 调 wx.getWeRunData（首次需用户授权微信运动）。 */
@@ -123,7 +134,7 @@ Page({
 
   /** 调 steps.sync（带最新 wx.login code）。 */
   callCloudSync(encryptedData, iv) {
-    this.refreshLoginCode();
+    // 不再 refreshLoginCode：code 已在 onSyncTap 时与 getWeRunData 同源获取（见 onSyncTap 注释）。
     const code = this.data.jsCode;
     if (!code) {
       this.apply({ type: 'CLOUD_FAIL', payload: { message: '登录态失效，请重试' } });

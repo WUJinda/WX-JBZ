@@ -14,6 +14,10 @@
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
+// Node 内置：直接 HTTP 调 jscode2session 取 session_key（code2Session 已改走 HTTP，见下注释）。
+const https = require('https');
+const querystring = require('querystring');
+
 const { authMiddleware } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
@@ -23,32 +27,69 @@ const { getToday, getHistory, getUserRecords } = require('./stepsQuery');
 const { buildTrend } = require('./stepsTrend');
 
 /**
- * 当次 code2Session：用前端最新 wx.login code 换 openid + session_key（新鲜，用后即弃）。
- * 真实环境走 cloud.callCloud / openapi；本地轨/单测不经此路径。
+ * 当次 code2Session：用前端最新 wx.login code 换 session_key（解密 getWeRunData 用，用后即弃）。
  *
- * @param {object} cloudSdk
- * @param {string} jsCode wx.login code
+ * ⚠️ 不走 cloud.openapi.auth.code2Session：实测在云开发云函数环境下，微信 openapi 网关持续
+ *   返回 -604100 "API not found"（见云函数日志 wxResp.errorCode；SDK 仅原样转述）。已排除：
+ *   config.json 已声明 permissions.openapi=["auth.code2Session"]、新代码已部署生效
+ *   （/var/user/index.js）、wx-server-sdk 2.6.3 支持该接口——网关侧仍不认（社区同款求助帖：
+ *   2.6.3 + 云端安装依赖，持续报错无 openapi 解法）。故改走「直接 HTTP 调 jscode2session」，
+ *   生产通用方案，免 openapi 网关、必通。
+ *   代价：AppSecret 须以云函数环境变量注入（WX_APPID / WX_APP_SECRET），绝不入源码。
+ *
+ * 红线不变（架构 §6.2）：session_key 仅本函数返回值短暂存在，调用方立即解密后丢弃，
+ *   不落库、不下发前端。
+ *
+ * @param {string} jsCode wx.login code（须与 getWeRunData 同源登录态，见 home.js onSyncTap）
  * @returns {Promise<{openid:string, sessionKey:string}>}
  */
-async function code2Session(cloudSdk, jsCode) {
-  if (!cloudSdk || !cloudSdk.openapi || !cloudSdk.openapi.auth || typeof cloudSdk.openapi.auth.code2Session !== 'function') {
-    throw BizError(CODE.SYS_EXTERNAL_ERROR, 'code2Session: cloud openapi not available');
-  }
+async function code2Session(jsCode) {
   if (!jsCode) {
     throw BizError(CODE.STEP_DECRYPT_FAILED, 'code2Session: jsCode required');
   }
-  // wx-server-sdk openapi 形态：cloud.openapi.auth.code2Session({ code })
-  let res;
+  const appid = process.env.WX_APPID;
+  const secret = process.env.WX_APP_SECRET;
+  if (!appid || !secret) {
+    throw BizError(
+      CODE.SYS_EXTERNAL_ERROR,
+      'code2Session: 缺 WX_APPID / WX_APP_SECRET 云函数环境变量（云开发控制台→云函数→steps→配置→环境变量）'
+    );
+  }
+  // GET https://api.weixin.qq.com/sns/jscode2session?appid&secret&js_code&grant_type
+  const qs = querystring.stringify({
+    appid,
+    secret,
+    js_code: jsCode,
+    grant_type: 'authorization_code'
+  });
+  const raw = await new Promise((resolve, reject) => {
+    const req = https.request(
+      { hostname: 'api.weixin.qq.com', path: '/sns/jscode2session?' + qs, method: 'GET' },
+      (res) => {
+        let data = '';
+        res.on('data', (c) => (data += c));
+        res.on('end', () => resolve(data));
+      }
+    );
+    req.on('error', (e) => reject(new Error('jscode2session network error: ' + (e && e.message))));
+    req.end();
+  });
+  let r;
   try {
-    res = await cloudSdk.openapi.auth.code2Session({ code: jsCode });
+    r = JSON.parse(raw);
   } catch (e) {
-    throw BizError(CODE.SYS_EXTERNAL_ERROR, 'code2Session: ' + ((e && e.errMsg) || (e && e.message) || 'failed'));
+    console.error('[steps.code2Session] non-JSON response', String(raw).slice(0, 300));
+    throw BizError(CODE.SYS_EXTERNAL_ERROR, 'jscode2session 非 JSON 响应: ' + String(raw).slice(0, 200));
   }
-  const r = (res && res.result) || res || {};
+  if (r.errcode) {
+    // 40029 invalid code / 40163 code been used / 45011 频控 / -1 系统忙。
+    console.error('[steps.code2Session] wechat errcode', JSON.stringify(r));
+    throw BizError(CODE.SYS_EXTERNAL_ERROR, 'jscode2session errcode ' + r.errcode + ': ' + (r.errmsg || ''));
+  }
   if (!r.session_key || !r.openid) {
-    throw BizError(CODE.STEP_DECRYPT_FAILED, 'code2Session: no session_key/openid returned');
+    throw BizError(CODE.STEP_DECRYPT_FAILED, 'jscode2session: 未返回 session_key/openid');
   }
-  // 注意：session_key 仅在此返回值中短暂存在，调用方用完立即丢弃，不落库不下发。
+  // session_key 用后即弃（调用方 decrypt 后不再引用）；不落库、不下发。
   return { openid: r.openid, sessionKey: r.session_key };
 }
 
@@ -67,7 +108,7 @@ const handlers = {
     const config = event && event.config;
 
     // 当次取新鲜 session_key（用后即弃）。
-    const { sessionKey } = await code2Session(cloud, jsCode);
+    const { sessionKey } = await code2Session(jsCode);
     // 立即解密 → stepInfoList。
     const { stepInfoList } = decryptSteps({ sessionKey, iv, encryptedData });
     // sessionKey 变量自此不再被引用（GC 回收）；不落库、不下发。
