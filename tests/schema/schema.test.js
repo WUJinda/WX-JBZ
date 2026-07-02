@@ -195,6 +195,19 @@ describe('索引初始化脚本（B1）', () => {
     });
   });
 
+  it('ensureCollectionIndexes 在 createIndex 不可用时返回 manual 清单（wx-server-sdk 云函数端无此 API）', async () => {
+    // 真实云环境：db.collection(name) 返回的对象没有 createIndex 方法。
+    const db = { collection: () => ({ /* 无 createIndex */ }) };
+    const results = await ensureCollectionIndexes(db, 'Whitelist');
+    expect(results.length).toBe(COLLECTIONS.Whitelist.indexes.length);
+    results.forEach((r) => {
+      expect(r.manual).toBe(true);
+      expect(r.ok).toBe(false);
+      expect(r.fields).toBeDefined();
+      expect(typeof r.unique).toBe('boolean');
+    });
+  });
+
   it('ensureIndexes 缺 cloud 抛错', async () => {
     await expect(ensureIndexes(null)).rejects.toThrow();
     await expect(ensureIndexes({})).rejects.toThrow();

@@ -28,6 +28,22 @@ async function ensureCollectionIndexes(db, name) {
   if (!def || !Array.isArray(def.indexes)) return [];
   const collection = db.collection(name);
   const results = [];
+  // wx-server-sdk 的 collection 对象无 createIndex 方法（云函数端不能建索引），
+  // 索引需在云开发控制台手动建或用 tcb CLI。检测到 API 缺失则返回 manual 声明清单
+  // （带 fields/unique 供人工对照建），不报错——索引是性能/约束优化，非功能阻塞。
+  if (typeof collection.createIndex !== 'function') {
+    for (const idx of def.indexes) {
+      results.push({
+        index: idx.name,
+        ok: false,
+        manual: true,
+        unique: !!idx.unique,
+        fields: idx.fields,
+        reason: 'createIndex API 在 wx-server-sdk 不可用；请在云开发控制台手动建此索引'
+      });
+    }
+    return results;
+  }
   for (const idx of def.indexes) {
     try {
       // 云数据库 createIndex 接受字段映射与选项
