@@ -191,6 +191,14 @@ async function syncSteps(params) {
       if (item.date === today) {
         existing.sync_count = newCount;
       }
+      // P1 历史日补锁：早期落库的历史日 record 可能 locked=false（dailyLock 只锁「昨天」，
+      // 锁不到回灌的更早历史日）。本次同步补锁为 true（历史日步数已固化）；今日记录保持
+      // unlocked 可刷新。补锁仅发生一次——下次同步该 record 已 locked 走上方 continue。
+      if (item.date < today) {
+        existing.locked = true;
+      }
+      // P0 写回标记：handler 据此把改动持久化（existing 自带库 _id → update）。
+      existing._dirty = true;
     } else {
       const rec = {
         user_id: userId,
@@ -199,9 +207,15 @@ async function syncSteps(params) {
         date: item.date,
         steps: item.steps,
         abnormal,
-        locked: false,
+        // P1 历史日即锁：date<today 视为已固化 → locked=true（口径 locked || date===today），
+        // 保证回灌进来的历史步数立即成为有效步数；今日 locked=false（当日可多次同步刷新）。
+        // 与 dailyLock（锁昨日）互补、幂等不冲突。
+        locked: item.date < today,
         synced_at: syncedAtIso,
-        sync_count: item.date === today ? newCount : 0
+        sync_count: item.date === today ? newCount : 0,
+        // P0 写回标记：handler 据此 .add()（新建无 _id）；projectStep 白名单投影不下发此字段。
+        _isNew: true,
+        _dirty: true
       };
       store.StepRecord.push(rec);
     }

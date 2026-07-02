@@ -114,7 +114,7 @@ const handlers = {
     // sessionKey 变量自此不再被引用（GC 回收）；不落库、不下发。
 
     const store = { StepRecord: await loadCollection(cloud, 'StepRecord') };
-    return syncSteps({
+    const result = await syncSteps({
       store,
       openid,
       userId,
@@ -123,6 +123,10 @@ const handlers = {
       activity,
       config
     });
+    // P0：把 syncSteps 在内存 store 上的 upsert 改动写回云库（syncSteps 已打 _dirty 标记）。
+    // 修复历史 bug——sync 曾只改内存不落库，导致 StepRecord 集合实际为空、dashboard 统计全 0。
+    await persistStepRecordsToCloud(cloud, store.StepRecord);
+    return result;
   },
 
   // E3: 当日步数。
@@ -190,6 +194,40 @@ async function loadCollection(cloudSdk, name) {
     skip += PAGE;
   }
   return all;
+}
+
+/**
+ * 云轨：把 syncSteps 在内存 store 上改动的 StepRecord 写回云库（幂等）。
+ * syncSteps 对每条改动 record 打 _dirty=true；_isNew=true 表示新建。
+ *   - _isNew（或无 _id）→ .add()（_id 由库生成）
+ *   - 有 _id 且 _dirty  → .update()
+ * 写回前剔除 _dirty / _isNew / _id 内部字段（不落库；_id 由库管理）。
+ * 单条失败不阻断（幂等可重跑），仅 console.warn 留痕（与 admin/tasks 写回一致）。
+ * 本地轨/单测不经此路径（直接调 syncSteps 纯函数注入 store）。
+ *
+ * @param {object} cloudSdk
+ * @param {object[]} records syncSteps 改过的 store.StepRecord（含 _id / _dirty / _isNew）
+ */
+async function persistStepRecordsToCloud(cloudSdk, records) {
+  const db = cloudSdk.database();
+  const dirty = (records || []).filter((r) => r && r._dirty);
+  for (const r of dirty) {
+    // 剔除内部标记 + _id：add 时库生成 _id；update 时用 doc(_id) 定位、_id 不入 data。
+    const doc = Object.assign({}, r);
+    delete doc._dirty;
+    delete doc._isNew;
+    delete doc._id;
+    try {
+      if (r._isNew || !r._id) {
+        await db.collection('StepRecord').add({ data: doc });
+      } else {
+        await db.collection('StepRecord').doc(r._id).update({ data: doc });
+      }
+    } catch (err) {
+      // 单条失败不阻断（幂等可重跑），仅留痕。
+      console.warn('[写回失败]', 'StepRecord(' + (r._id || 'new:' + r.date) + ')', (err && err.message) || err);
+    }
+  }
 }
 
 // 需登录态（requireUser）的 action：sync/today/history/trend 均需 OPENID（与 activity.current 游客通道不同）。
