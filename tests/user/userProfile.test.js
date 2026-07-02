@@ -41,6 +41,8 @@ describe('user.profile 纯函数', () => {
       expect(out.dept_id).toBe('d_01');
       expect(out.join_status).toBe('joined');
       expect(out.total_steps).toBe(12500);
+      // is_admin 缺失兜底 false（该 user 未置管理员）
+      expect(out.is_admin).toBe(false);
     });
 
     it('phone_masked 缺失但 phone 存在时，按完整号兜底脱敏（不下发完整号）', () => {
@@ -62,6 +64,17 @@ describe('user.profile 纯函数', () => {
     it('join_status 缺失兜底为 pending', () => {
       const out = projectProfile({});
       expect(out.join_status).toBe('pending');
+    });
+
+    it('is_admin===true 下发为 true（前端 admin 入口门禁依赖此字段）', () => {
+      expect(projectProfile({ is_admin: true }).is_admin).toBe(true);
+    });
+
+    it('is_admin 缺失/非布尔 true 兜底为 false（严格防误授权）', () => {
+      expect(projectProfile({}).is_admin).toBe(false);
+      expect(projectProfile({ is_admin: false }).is_admin).toBe(false);
+      expect(projectProfile({ is_admin: 'true' }).is_admin).toBe(false); // 字符串 'true' 不认
+      expect(projectProfile({ is_admin: 1 }).is_admin).toBe(false); // 数字 1 不认
     });
   });
 

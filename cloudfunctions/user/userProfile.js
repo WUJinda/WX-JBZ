@@ -3,7 +3,7 @@
  *
  * 红线：
  *   - 不下发原始 phone / openid / unionid（§8 敏感字段）；
- *   - 只下发：脱敏手机号、部门、累计步数、昵称、头像、报名状态。
+ *   - 只下发：脱敏手机号、部门、累计步数、昵称、头像、报名状态、管理员标志 is_admin。
  *
  * 本地轨：db 以依赖注入方式传入（mock 集合可单测）；步数为占位（真实聚合留后续阶段）。
  */
@@ -27,10 +27,10 @@ function projectSteps(raw) {
  * 纯函数：不写库、不下发敏感字段。
  *
  * 入参 user 形态（来自 User 集合读取结果）：
- *   { nickname, avatar, phone, phone_masked?, dept_id, join_status, ... }
+ *   { nickname, avatar, phone, phone_masked?, dept_id, join_status, is_admin?, ... }
  *
  * @param {object} user
- * @returns {object} { nickname, avatar, phone_masked, dept_id, dept_name?, join_status, total_steps }
+ * @returns {object} { nickname, avatar, phone_masked, dept_id, dept_name?, join_status, is_admin, total_steps }
  */
 function projectProfile(user) {
   const u = user || {};
@@ -43,6 +43,9 @@ function projectProfile(user) {
     dept_id: u.dept_id || null,
     dept_name: u.dept_name || '', // 可选，需 join 时补（B5 阶段为占位空串）
     join_status: u.join_status || 'pending',
+    // is_admin 非敏感（布尔标志），下发供前端 admin 入口门禁（profile.js adminVisible）。
+    // 严格 ===true：只认布尔 true，防止字符串 'true'/1 等误判管理员（控制台须填布尔）。
+    is_admin: u.is_admin === true,
     total_steps: projectSteps(u.total_steps)
   };
 }
