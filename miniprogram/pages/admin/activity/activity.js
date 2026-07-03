@@ -8,14 +8,13 @@
 //   - 本页只展示/提交活动配置字段（name/cover_url/start_time/end_time/rules/publish），无敏感字段。
 //   - 本地轨：getApp().api 不存在 → 提前 return 占位提示；api.call 失败 → .catch 错误提示，不白屏。
 const { validateActivityForm, formatPublishState } = require('./activityCalc');
-
-const ACTIVITY_ID = 'a_demo_001';
+const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
     pageLabel: '活动配置',
     // 表单字段
-    activityId: ACTIVITY_ID,
+    activityId: '',
     name: '',
     cover_url: '',
     start_time: '', // YYYY-MM-DD
@@ -30,6 +29,9 @@ Page({
   },
 
   onLoad() {
+    if (!enterAdminGuard('/pages/admin/activity/activity')) return;
+    // F1：编辑当前活动（从全局上下文取 activity_id）；空则视为新建（save 时后端处理）。
+    this.setData({ activityId: getApp().getActivityId() });
     this.refreshPublishText();
   },
 

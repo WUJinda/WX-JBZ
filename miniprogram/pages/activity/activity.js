@@ -2,6 +2,12 @@
 // 活动主页（启动页，游客可见）—— 对齐 PRD F7 R7.1~R7.4，开发计划阶段 C2。
 const { calcCountdown, calcProgress, deriveCta, STATUS } = require('./activityCalc');
 
+// F2：空态活动（云函数失败/活动未发布时用，替代旧 mockActivity 的假时间窗 2026-07-01~07-21）。
+const EMPTY_ACTIVITY = {
+  activity_id: '', name: '', cover_url: '', start_time: null, end_time: null,
+  status: 'pending', rules: '', overview: { total_steps: 0, participant_count: 0 }
+};
+
 Page({
   data: {
     // 活动信息（来自 activity.current）
@@ -22,8 +28,13 @@ Page({
   },
 
   onShow() {
-    // 每次展示刷新倒计时（时间在推进）
-    if (this.data.activity) this.refreshDerived();
+    // P1-9：每次展示刷新倒计时；距上次加载 >30s 重新拉活动（节流避免频繁打云函数）。
+    this.refreshDerived();
+    const now = Date.now();
+    if (!this._lastLoadTs || now - this._lastLoadTs > 30000) {
+      this._lastLoadTs = now;
+      this.loadActivity();
+    }
   },
 
   /**
@@ -34,10 +45,10 @@ Page({
   loadActivity() {
     const app = getApp();
     const api = app && app.api;
-    const fallback = () => this.applyActivity(this.mockActivity(), 'pending');
+    // F2：失败/无 api 用空态（不再回退 mock 假活动时间窗），页面显示"活动未发布/加载失败"。
+    const fallback = () => this.applyActivity(EMPTY_ACTIVITY, 'pending');
 
     if (!api || typeof api.call !== 'function') {
-      // 本地轨 / 无 api 句柄：直接用 mock
       fallback();
       return;
     }
@@ -57,7 +68,16 @@ Page({
    * @param {string} [joinStatus]
    */
   applyActivity(data, joinStatus) {
-    const activity = data || this.mockActivity();
+    const activity = data || EMPTY_ACTIVITY;
+    // F1：写入全局活动上下文，供各页读 activity_id（替代硬编码 a_demo_001）。
+    const app = getApp();
+    if (app && app.globalData) {
+      app.globalData.currentActivity = {
+        activity_id: activity.activity_id || '',
+        name: activity.name || '',
+        status: activity.status || ''
+      };
+    }
     this.setData({ activity, joinStatus: joinStatus === 'joined' ? 'joined' : 'pending' }, () => {
       this.refreshDerived();
       this.setData({ loading: false });
@@ -102,20 +122,5 @@ Page({
       wx.switchTab({ url: '/pages/rank/rank' });
       return;
     }
-  },
-
-  /** 本地轨兜底 mock 活动（与 activityStatus.mockCurrentActivity 对齐）。 */
-  mockActivity() {
-    return {
-      activity_id: 'a_demo_001',
-      name: '2026 员工健步走',
-      cover_url: '',
-      start_time: '2026-07-01T00:00:00+08:00',
-      end_time: '2026-07-21T23:59:59+08:00',
-      status: 'pending',
-      rules: '活动规则示例：活动期间每日同步微信运动步数，累计计入个人与部门排行。',
-      overview: { total_steps: 0, participant_count: 0 },
-      join_status: 'pending'
-    };
   }
 });

@@ -45,8 +45,18 @@ describe('dept.list 纯函数（D1）', () => {
   });
 
   describe('listDepartments 主逻辑', () => {
-    it('默认走 mock 源，返回部门列表（含 member_count）', async () => {
-      const { list } = await listDepartments();
+    it('F5：source 缺省抛错（不再回退 mock，避免假部门）', async () => {
+      await expect(listDepartments()).rejects.toThrow(/source|数据源/);
+      await expect(listDepartments({})).rejects.toThrow(/source|数据源/);
+    });
+
+    it('source 为空数组返回空列表（合法：管理员未录部门）', async () => {
+      const { list } = await listDepartments({ source: [] });
+      expect(list).toEqual([]);
+    });
+
+    it('注入 MOCK_DEPARTMENTS 源返回部门列表（含 member_count）', async () => {
+      const { list } = await listDepartments({ source: MOCK_DEPARTMENTS });
       expect(list.length).toBe(MOCK_DEPARTMENTS.length);
       expect(list[0]).toHaveProperty('dept_id');
       expect(list[0]).toHaveProperty('name');
@@ -58,6 +68,22 @@ describe('dept.list 纯函数（D1）', () => {
         source: [{ dept_id: 'x1', name: 'X1', member_count: 3 }]
       });
       expect(list).toEqual([{ dept_id: 'x1', name: 'X1', member_count: 3 }]);
+    });
+
+    it('注入 counts 时用聚合人数覆盖 member_count（云轨实时聚合）', async () => {
+      const { list } = await listDepartments({
+        source: [
+          { dept_id: 'd1', name: '一部', member_count: 0 },
+          { dept_id: 'd2', name: '二部', member_count: 0 },
+          { dept_id: 'd3', name: '三部', member_count: 0 }
+        ],
+        counts: { d1: 3, d2: 0 } // d3 不在 counts → 回退 doc.member_count(0)
+      });
+      expect(list).toEqual([
+        { dept_id: 'd1', name: '一部', member_count: 3 },
+        { dept_id: 'd2', name: '二部', member_count: 0 },
+        { dept_id: 'd3', name: '三部', member_count: 0 }
+      ]);
     });
   });
 });

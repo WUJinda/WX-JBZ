@@ -8,13 +8,14 @@
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
-const { authMiddleware } = require('../common/authMiddleware');
+const { authMiddleware, assertUserExists } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, notImplemented } = require('../common/errors');
 const { getProfile } = require('./userProfile');
 const { joinDepartment } = require('./userJoin');
 const { buildStats } = require('./userStats');
-const { mockCurrentActivity } = require('../activity/activityStatus');
+const { getActiveActivityId, getActiveActivity } = require('../activity/activityResolver');
+const { loadByWhere } = require('../common/db');
 
 // handler 表：action -> handler。
 const handlers = {
@@ -32,15 +33,8 @@ const handlers = {
     const deptId = event && event.dept_id;
     const db = cloud.database();
 
-    // 按 _openid 取当前 user（云轨真实库；单测不经此路径）
-    const userRes = await db.collection('User').where({ _openid: openid }).get();
-    const users = (userRes && userRes.data) || [];
-    if (users.length === 0) {
-      const e = require('../common/errors');
-      throw e.BizError(e.CODE.AUTH_USER_NOT_FOUND, 'join: user not found');
-    }
-    // 取部门源（Department 集合可能未初始化 → 用 mock 兜底，joinDepartment 内部处理）
-    const store = { User: users };
+    // context.user 已由 main 的 requireUser 统一校验查得（P1-1，避免重复查 User）。
+    const store = { User: [context.user] };
     try {
       const deptRes = await db.collection('Department').get();
       store.Department = (deptRes && deptRes.data) || [];
@@ -63,11 +57,14 @@ const handlers = {
   // 需登录态（requireUser）。复用有效步数口径（与 steps.today/history 一致）。
   stats: async (event, context) => {
     const openid = context && context.openid;
-    const userId = (event && event.user_id) || openid;
-    const activityId = (event && event.activity_id) || 'a_demo_001';
-    const activity = (event && event.activity) || loadActivity(cloud);
+    const userId = openid; // P0-1：身份仅 OPENID，禁止 event.user_id（防越权读他人统计）
+    // F1：缺省 activity_id 查库当前活动（替代 a_demo_001）；activity 缺省查实际活动文档（替代 mock）。
+    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
+    const activity = (event && event.activity) || (await getActiveActivity(cloud)) || null;
     const records = await loadUserRecords(cloud, 'StepRecord', userId, activityId);
-    return buildStats({ records, activity });
+    // P1-11：从 RankCache personal 单文档查本人排名（替代 buildStats 写死 null）。
+    const myRank = await loadMyRank(cloud, activityId, userId);
+    return buildStats({ records, activity, myRank });
   }
 };
 
@@ -102,14 +99,23 @@ async function loadUserRecords(cloudSdk, name, userId, activityId) {
 }
 
 /**
- * 载入活动文档（本地轨用 mock；云轨按 activity_id 查库）。
+ * 从 RankCache personal 单文档查本人排名行（P1-11，供 user.stats 的 my_rank）。
  * @param {object} cloudSdk
- * @returns {object}
+ * @param {string} activityId
+ * @param {string} userId
+ * @returns {Promise<object|null>} 本人排名行 {rank,total_steps,...} 或 null（未进榜/未聚合/查询失败）
  */
-function loadActivity(cloudSdk) {
-  // 本地轨：用 mockCurrentActivity（与 activity.current 一致）。
-  // 云轨：可按 activity_id 查 Activity 集合；本阶段先以 mock 兜底，保证 total_days 可算。
-  return mockCurrentActivity();
+async function loadMyRank(cloudSdk, activityId, userId) {
+  if (!activityId || !userId) return null;
+  try {
+    const docs = await loadByWhere(cloudSdk, 'RankCache', { type: 'personal', activity_id: activityId });
+    const doc = docs[0];
+    return (doc && Array.isArray(doc.rows)
+      ? doc.rows.find((r) => r && r.user_id === userId) || null
+      : null);
+  } catch (err) {
+    return null;
+  }
 }
 
 // 需登录态（requireUser）的 action：必须有 OPENID 且 User 存在。
@@ -132,6 +138,10 @@ exports.main = async (event) => {
       getWXContext: cloud.getWXContext,
       requireUser
     });
+    // P1-1：requireUser 的 DB 校验（统一入口，避免每个 handler 重复查 User）。
+    if (requireUser) {
+      context.user = await assertUserExists(cloud.database(), context.openid);
+    }
     const data = await handler(event, context);
     return ok(data);
   } catch (err) {

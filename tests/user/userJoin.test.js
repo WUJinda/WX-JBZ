@@ -70,10 +70,11 @@ describe('user.join 纯函数（D1）', () => {
       expect(user.joined_at).toBe('2026-06-26T10:00:00.000Z');
     });
 
-    it('Department 注入源缺失时用 mock 兜底', async () => {
+    it('F5：Department 注入源缺失时抛错（不再回退 mock，避免 join 到假部门）', async () => {
       const store = { User: [{ _openid: 'oU', join_status: 'pending' }] };
-      const out = await joinDepartment({ store, openid: 'oU', deptId: 'd_02', now: NOW });
-      expect(out.dept_name).toBe('产品部');
+      await expect(
+        joinDepartment({ store, openid: 'oU', deptId: 'd_02', now: NOW })
+      ).rejects.toMatchObject({ code: CODE.BIZ_DEPT_NOT_FOUND });
     });
   });
 

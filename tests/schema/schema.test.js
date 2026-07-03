@@ -114,24 +114,18 @@ describe('集合 schema 定义（B1）', () => {
     expect(COLLECTIONS.StepRecord.fields.sync_count.onlyServer).toBe(true);
   });
 
-  it('RankCache 集合结构合法（§5.6/§6.6：字段齐全 + (type,activity_id,rank) 与 (type,activity_id,ref_id) 两索引）', () => {
+  it('RankCache 集合结构合法（§5.6/§6.6 P0-3 单文档：type/activity_id/rows/updated_at + (type,activity_id) 唯一索引）', () => {
     const rc = COLLECTIONS.RankCache;
     expect(rc).toBeDefined();
     expect(Array.isArray(rc.indexes)).toBe(true);
-    // 字段齐全
-    for (const f of ['_id', 'type', 'activity_id', 'rank', 'ref_id', 'total_steps', 'first_reach_at', 'nickname', 'dept_id', 'dept_name', 'member_count', 'avg_steps', 'small_sample', 'updated_at']) {
+    // 单文档顶层字段齐全（rank/ref_id/total_steps 等在 rows 数组内，见 rows.desc）
+    for (const f of ['_id', 'type', 'activity_id', 'rows', 'updated_at']) {
       expect(rc.fields[f], `RankCache 缺少字段: ${f}`).toBeDefined();
     }
-    // 索引：(type, activity_id, rank) 分页主索引
-    const rankIdx = rc.indexes.find(
-      (i) => i.fields.type && i.fields.activity_id && i.fields.rank
-    );
-    expect(rankIdx, 'RankCache 缺少 (type,activity_id,rank) 索引').toBeDefined();
-    // 索引：(type, activity_id, ref_id) 我的排名定位
-    const refIdx = rc.indexes.find(
-      (i) => i.fields.type && i.fields.activity_id && i.fields.ref_id
-    );
-    expect(refIdx, 'RankCache 缺少 (type,activity_id,ref_id) 索引').toBeDefined();
+    // (type, activity_id) 唯一索引：每 type+activity 一个文档（P0-3 单文档覆盖写）
+    const taIdx = rc.indexes.find((i) => i.fields.type && i.fields.activity_id);
+    expect(taIdx, 'RankCache 缺少 (type,activity_id) 索引').toBeDefined();
+    expect(taIdx.unique).toBe(true);
   });
 
   it('RankCache type 枚举含 personal/dept', () => {

@@ -18,10 +18,13 @@ const ACTIVITY_ID = 'a_demo_001';
 // 北京时间 07-03 12:00 = UTC 07-03 04:00
 const NOW = new Date('2026-07-03T04:00:00Z'); // today = 2026-07-03
 
-function user(_id, nickname, deptId, joinStatus) {
+// 注意：真实链路里 User._id（云库自动主键）与 _openid 不同，且 StepRecord.user_id 存的是 openid。
+// 这里令 _id 带 'rec_' 前缀、_openid = 入参，刻意让 _id ≠ _openid，
+// 以验证 rankAggregate 是「以 _openid 关联」（正确）而非「以 _id 关联」（会导致 nickname/dept 全空）。
+function user(openid, nickname, deptId, joinStatus) {
   return {
-    _id,
-    _openid: 'op_' + _id,
+    _id: 'rec_' + openid,
+    _openid: openid,
     nickname,
     dept_id: deptId || '',
     join_status: joinStatus || 'joined'
@@ -37,11 +40,12 @@ function dept(deptId, name, memberCount) {
   };
 }
 
-function rec(userId, date, steps, opts) {
+// user_id 存 openid（与 User._openid 对齐），模拟真实 steps handler 行为。
+function rec(openid, date, steps, opts) {
   const o = opts || {};
   return {
-    user_id: userId,
-    _openid: 'op_' + userId,
+    user_id: openid,
+    _openid: openid,
     activity_id: ACTIVITY_ID,
     date,
     steps,
@@ -315,8 +319,8 @@ describe('aggregateRanking 部门榜（total/avg/member_count + 小部门）', (
   });
 });
 
-describe('aggregateRanking 幂等（覆盖写 RankCache）', () => {
-  it('同输入跑两次 RankCache 结果一致（覆盖写，无残留）', async () => {
+describe('aggregateRanking 幂等（覆盖写 RankCache 单文档，P0-3）', () => {
+  it('同输入跑两次 RankCache 结果一致（单文档覆盖写，无残留/无翻倍）', async () => {
     const baseStore = () => makeStore({
       StepRecord: [
         rec('u1', '2026-07-01', 100, { locked: true }),
@@ -326,50 +330,61 @@ describe('aggregateRanking 幂等（覆盖写 RankCache）', () => {
       Department: [dept('d1', '一组')]
     });
 
-    // 第一次跑。
     const store1 = baseStore();
     const r1 = await aggregateRanking({ store: store1, activityId: ACTIVITY_ID, now: NOW });
     const cacheAfter1 = JSON.parse(JSON.stringify(store1.RankCache));
 
-    // 第二次跑（store 已有第一次的缓存，应覆盖写，结果一致）。
+    // 第二次跑（store 已有第一次的缓存文档，应覆盖写 rows，结果一致、文档数不翻倍）。
     const r2 = await aggregateRanking({ store: store1, activityId: ACTIVITY_ID, now: NOW });
     const cacheAfter2 = JSON.parse(JSON.stringify(store1.RankCache));
 
     expect(cacheAfter1).toEqual(cacheAfter2);
     expect(r1.personal).toEqual(r2.personal);
     expect(r1.dept).toEqual(r2.dept);
-    // 验证覆盖写：不会因为跑两次而翻倍。
-    const personalCount = store1.RankCache.filter((r) => r.type === 'personal').length;
-    const deptCount = store1.RankCache.filter((r) => r.type === 'dept').length;
-    expect(personalCount).toBe(2);
-    expect(deptCount).toBe(1);
+    // 单文档：personal 1 个文档（rows 含 2 行），dept 1 个文档（rows 含 1 行），总 2 个文档不翻倍。
+    const personalDoc = store1.RankCache.find((d) => d.type === 'personal');
+    const deptDoc = store1.RankCache.find((d) => d.type === 'dept');
+    expect(personalDoc.rows).toHaveLength(2);
+    expect(deptDoc.rows).toHaveLength(1);
+    expect(store1.RankCache).toHaveLength(2);
   });
 
-  it('RankCache 含正确的 type/activity_id/updated_at 字段', async () => {
+  it('RankCache 单文档含正确的 type/activity_id/rows/updated_at', async () => {
     const store = makeStore({
       StepRecord: [rec('u1', '2026-07-01', 100, { locked: true })],
       User: [user('u1', '甲', 'd1')],
       Department: [dept('d1', '一组')]
     });
     await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
-    const p = store.RankCache.find((r) => r.type === 'personal');
+    const p = store.RankCache.find((d) => d.type === 'personal');
     expect(p.activity_id).toBe(ACTIVITY_ID);
     expect(p.updated_at).toBe(NOW.toISOString());
-    expect(p.rank).toBe(1);
-    expect(p.ref_id || p.user_id).toBe('u1');
+    expect(Array.isArray(p.rows)).toBe(true);
+    expect(p.rows[0].rank).toBe(1);
+    expect(p.rows[0].user_id).toBe('u1');
   });
 
-  it('overwriteRankCache 覆盖写：旧文档被清空（无残留）', () => {
+  it('overwriteRankCache 单文档覆盖写：同 (type,activity_id) 替换 rows、不同 activity 各自独立', () => {
+    // 预置一个 'old' activity 的 personal 文档（模拟其他活动）。
     const store = { RankCache: [
-      { type: 'personal', activity_id: 'old', rank: 1, user_id: 'x' }
+      { type: 'personal', activity_id: 'old', rows: [{ rank: 1, user_id: 'x' }], updated_at: 't0' }
     ] };
     overwriteRankCache(store, 'personal', ACTIVITY_ID, [
       { rank: 1, user_id: 'u1', total_steps: 100 }
     ], '2026-07-03T04:00:00.000Z');
-    // old activity 的文档保留，新 activity 的写入
-    const newDocs = store.RankCache.filter((r) => r.activity_id === ACTIVITY_ID);
-    expect(newDocs).toHaveLength(1);
-    expect(newDocs[0].user_id).toBe('u1');
+    // 'old' activity 文档保留，ACTIVITY_ID 新增一个文档。
+    expect(store.RankCache).toHaveLength(2);
+    const newDoc = store.RankCache.find((d) => d.activity_id === ACTIVITY_ID && d.type === 'personal');
+    expect(newDoc.rows[0].user_id).toBe('u1');
+    // 再次覆盖写同 (type,activity_id)：替换 rows，文档数不增加。
+    overwriteRankCache(store, 'personal', ACTIVITY_ID, [
+      { rank: 1, user_id: 'u2', total_steps: 200 }
+    ], '2026-07-03T05:00:00.000Z');
+    expect(store.RankCache).toHaveLength(2);
+    const replaced = store.RankCache.find((d) => d.activity_id === ACTIVITY_ID && d.type === 'personal');
+    expect(replaced.rows).toHaveLength(1);
+    expect(replaced.rows[0].user_id).toBe('u2');
+    expect(replaced.updated_at).toBe('2026-07-03T05:00:00.000Z');
   });
 });
 

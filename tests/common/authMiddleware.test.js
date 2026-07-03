@@ -1,5 +1,11 @@
-const { getOpenid, authMiddleware } = require('../../cloudfunctions/common/authMiddleware');
+const {
+  getOpenid,
+  authMiddleware,
+  assertUserExists,
+  assertJoined
+} = require('../../cloudfunctions/common/authMiddleware');
 const { CODE, BizError } = require('../../cloudfunctions/common/errors');
+const { createMockDb } = require('../helpers/mockDb');
 
 describe('authMiddleware 鉴权骨架', () => {
   describe('getOpenid', () => {
@@ -57,5 +63,39 @@ describe('authMiddleware 鉴权骨架', () => {
       expect(ctx).not.toHaveProperty('token');
       expect(ctx.openid).toBe('oTOKEN_FREE');
     });
+  });
+});
+
+describe('assertUserExists', () => {
+  it('openid 对应 User 存在时返回该 user', async () => {
+    const { db } = createMockDb({ User: [{ _openid: 'oABC', join_status: 'joined' }] });
+    const user = await assertUserExists(db, 'oABC');
+    expect(user._openid).toBe('oABC');
+  });
+
+  it('openid 缺失时抛 AUTH_NO_OPENID', async () => {
+    const { db } = createMockDb({});
+    await expect(assertUserExists(db, '')).rejects.toMatchObject({ code: CODE.AUTH_NO_OPENID });
+  });
+
+  it('无对应用户时抛 AUTH_USER_NOT_FOUND', async () => {
+    const { db } = createMockDb({ User: [{ _openid: 'other' }] });
+    await expect(assertUserExists(db, 'oABC')).rejects.toMatchObject({
+      code: CODE.AUTH_USER_NOT_FOUND
+    });
+  });
+});
+
+describe('assertJoined', () => {
+  it('join_status=joined 时通过', () => {
+    expect(() => assertJoined({ join_status: 'joined' })).not.toThrow();
+  });
+
+  it('join_status 非 joined 时抛 AUTH_JOIN_STATUS_DENIED', () => {
+    expect(() => assertJoined({ join_status: 'pending' })).toThrow();
+  });
+
+  it('user 为空时抛 AUTH_JOIN_STATUS_DENIED', () => {
+    expect(() => assertJoined(null)).toThrow();
   });
 });

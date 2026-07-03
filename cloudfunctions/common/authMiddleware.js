@@ -4,9 +4,12 @@
  * 身份完全以 cloud.getWXContext().OPENID 为可信来源。
  * 不存储 / 不下发 / 不校验任何自管 token。
  *
- * 本轮只做「取 OPENID」骨架：
+ * 职责分层：
  *   - getOpenid(getWXContext)：从注入的 getWXContext 取 OPENID，纯函数可单测；
- *   - authMiddleware(options)：入口中间件骨架，本轮不实现查 User 表的 DB 逻辑（留 TODO）。
+ *   - authMiddleware(options)：入口中间件，同步取 OPENID + 记录 require* 意图（不查库，零 token）；
+ *   - assertUserExists(db, openid)：requireUser 的 DB 实现（异步查 User 存在）；
+ *   - assertJoined(user)：requireJoined 的实现（校验报名状态）。
+ *   （requireAdmin 由 common/adminGuard.js 的 assertAdmin 承担。）
  */
 
 const { CODE, BizError } = require('./errors');
@@ -52,26 +55,56 @@ function authMiddleware(options) {
 
   const context = { openid };
 
-  // TODO: requireUser / requireAdmin 的 DB 校验逻辑留给后续轮次。
-  // 本轮只保证能可信地拿到 openid，绝不引入任何 token 概念。
-  //
-  // 占位说明（当前行为）：
-  //   - requireUser / requireAdmin 当前为占位空骨架，传 true 不做任何 DB 校验；
-  //   - User 存在性由各 handler 内按 _openid 查库保证（见 user/index.js 的 getProfile、
-  //     rank/index.js 的 personal/dept 查询等，查不到即抛 AUTH_USER_NOT_FOUND）；
-  //   - 管理员权限由 admin/index.js 内的 assertAdmin(store, openid) 承担
-  //     （非 is_admin===true 抛 AUTH_NOT_ADMIN）；
-  //   - 云轨联调如需在入口统一校验（而非每个 handler 各自查库），再在此实现：
-  //       requireUser → db.collection('User').where({_openid: openid}).get() 校验存在；
-  //       requireAdmin → 在 requireUser 基础上校验 user.is_admin === true。
-  if (opts.requireUser) {
-    // 占位：见上方说明，当前不在此查库。
-  }
-  if (opts.requireAdmin) {
-    // 占位：见上方说明，管理员校验由各 handler 的 assertAdmin 承担。
+  // 设计说明（DB 校验由独立函数承担，保持本中间件同步、可单测、零 token）：
+  //   - 本中间件职责单一：可信地取 OPENID（微信侧不可伪造）。requireUser/requireAdmin/
+  //     requireJoined 仅作「声明式意图标记」（代码自文档化该 action 需要什么），不在此时查库；
+  //   - DB 校验由独立异步函数承担，在各 handler 入口显式调用，与 assertAdmin 同范式：
+  //       assertUserExists(db, openid) —— requireUser 的实现（查 User 存在并返回 user）；
+  //       assertJoined(user)          —— requireJoined 的实现（校验 join_status==='joined'）；
+  //       assertAdmin(store, openid)  —— requireAdmin 的实现（见 common/adminGuard.js）。
+  //   - 这样中间件签名保持同步，调用方（各 main）与单测零改动，校验仍真实落地。
+  if (opts.requireUser || opts.requireAdmin || opts.requireJoined) {
+    // 仅记录意图；实际 DB 校验在 handler 内调 assertUserExists/assertAdmin/assertJoined。
+    context.requires = {
+      user: !!opts.requireUser,
+      admin: !!opts.requireAdmin,
+      joined: !!opts.requireJoined
+    };
   }
 
   return context;
 }
 
-module.exports = { getOpenid, authMiddleware };
+/**
+ * 断言 openid 对应的 User 存在（requireUser 的 DB 实现，异步）。
+ * 供需要 requireUser 的 handler 入口显式调用（与 assertAdmin 同范式）。
+ *
+ * @param {object} db 云数据库句柄 cloud.database()
+ * @param {string} openid 调用者 openid（来自 wxContext）
+ * @returns {Promise<object>} 命中的 User 文档
+ * @throws {BizError} AUTH_NO_OPENID（openid 缺失）/ AUTH_USER_NOT_FOUND（无对应用户）
+ */
+async function assertUserExists(db, openid) {
+  if (!openid || typeof openid !== 'string') {
+    throw BizError(CODE.AUTH_NO_OPENID, 'assertUserExists: openid required');
+  }
+  const res = await db.collection('User').where({ _openid: openid }).limit(1).get();
+  const users = (res && res.data) || [];
+  if (users.length === 0) {
+    throw BizError(CODE.AUTH_USER_NOT_FOUND, 'assertUserExists: user not found for openid');
+  }
+  return users[0];
+}
+
+/**
+ * 断言用户已报名（requireJoined 的实现，同步）。配合 assertUserExists 使用。
+ * @param {object} user assertUserExists 返回的 User 文档
+ * @throws {BizError} AUTH_JOIN_STATUS_DENIED（join_status !== 'joined'）
+ */
+function assertJoined(user) {
+  if (!user || user.join_status !== 'joined') {
+    throw BizError(CODE.AUTH_JOIN_STATUS_DENIED, 'assertJoined: user not joined（报名后可用）');
+  }
+}
+
+module.exports = { getOpenid, authMiddleware, assertUserExists, assertJoined };

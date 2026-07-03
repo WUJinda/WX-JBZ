@@ -38,6 +38,12 @@ Page({
     api
       .call('user', { action: 'profile' })
       .then((data) => {
+        const isAdmin = !!(data && data.is_admin === true);
+        // P1-7：写入全局上下文，供 admin 页 enterAdminGuard 守卫读取。
+        if (app && app.globalData) {
+          app.globalData.isAdmin = isAdmin;
+          app.globalData.loggedIn = true; // profile 成功 = User 存在 = 已登录
+        }
         self.setData({
           loading: false,
           nickname: (data && data.nickname) || '',
@@ -47,7 +53,7 @@ Page({
           joinStatus: (data && data.join_status) || 'pending',
           totalSteps: (data && data.total_steps) || 0,
           // 后台入口仅管理员可见：is_admin===true 才显示（本地轨失败保持 false）
-          adminVisible: !!(data && data.is_admin === true)
+          adminVisible: isAdmin
         });
       })
       .catch((err) => {
@@ -58,6 +64,8 @@ Page({
 
   onPullDownRefresh() {
     this.loadProfile();
+    // P2：结束下拉动画（loadProfile 异步，数据稍后 setData，动画先停避免卡死）。
+    wx.stopPullDownRefresh();
   },
 
   /** 进入后台管理（admin 页非 tabBar，用 navigateTo）。 */

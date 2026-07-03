@@ -126,7 +126,7 @@ const COLLECTIONS = {
     ],
     fields: {
       _id: { type: 'string', desc: '主键（云数据库自动生成）' },
-      user_id: { type: 'string', desc: '用户 id（业务键，对齐 User._id）' },
+      user_id: { type: 'string', desc: '用户 id（业务键，= 用户 openid；rankAggregate 以 User._openid 关联，非 User._id）' },
       _openid: { type: 'string', onlyServer: true, desc: '🔒 微信 openid（冗余便于聚合，不下发原始值）' },
       activity_id: { type: 'string', desc: '所属活动 ID' },
       date: { type: 'string', desc: '步数日期 YYYY-MM-DD（北京时间）' },
@@ -139,12 +139,10 @@ const COLLECTIONS = {
   },
 
   RankCache: {
-    description: '排行榜缓存（对齐技术架构 §5.6/§6.6，PRD R5/R6，由 tasks.rankAggregate 覆盖写）',
+    description: '排行榜缓存（对齐技术架构 §5.6/§6.6，PRD R5/R6，由 tasks.rankAggregate 覆盖写）。P0-3 单文档：每 (type, activity_id) 一个文档，rows 为整榜行数组；覆盖写 = 一次原子 update，无并发 double（替代旧每排名一行文档的「先 add 后 remove」非原子流程）。',
     indexes: [
-      // 个人榜/部门榜分页 + 我的排名查询主索引。
-      { name: 'idx_rankcache_type_activity_rank', fields: { type: 1, activity_id: 1, rank: 1 }, unique: false },
-      // 我的排名定位（personal=user_id / dept=dept_id）。
-      { name: 'idx_rankcache_type_activity_ref', fields: { type: 1, activity_id: 1, ref_id: 1 }, unique: false }
+      // 单文档定位主索引：每 (type, activity_id) 唯一一个文档。
+      { name: 'idx_rankcache_type_activity', fields: { type: 1, activity_id: 1 }, unique: true }
     ],
     fields: {
       _id: { type: 'string', desc: '主键（云数据库自动生成）' },
@@ -154,36 +152,13 @@ const COLLECTIONS = {
         desc: '缓存类型：personal 个人榜 / dept 部门榜'
       },
       activity_id: { type: 'string', desc: '所属活动 ID' },
-      rank: { type: 'int', desc: '排名（按 type 各自排序，从 1 起）' },
-      ref_id: {
-        type: 'string',
-        desc: '排名对象 id：personal=user_id / dept=dept_id（定位我的排名用）'
+      rows: {
+        type: 'array',
+        desc:
+          '整榜行数组（按 rank 升序；覆盖写时整体替换）。每行结构：' +
+          '{rank, ref_id, total_steps, first_reach_at(仅personal), nickname(仅personal), user_id(仅personal,=ref_id), ' +
+          'dept_id(personal:deptMembers过滤/dept:=ref_id), dept_name, member_count(仅dept), avg_steps(仅dept), small_sample(仅dept)}'
       },
-      total_steps: { type: 'int', desc: '总步数（personal=个人有效步数 / dept=部门成员累加）' },
-      first_reach_at: {
-        type: 'date',
-        optional: true,
-        desc: '首次达成时间（personal：按 synced_at 升序累加首次 ≥ total_steps 的 synced_at；dept 无此字段）'
-      },
-      nickname: { type: 'string', optional: true, desc: '脱敏昵称（personal，已脱敏；dept 无此字段）' },
-      dept_id: {
-        type: 'string',
-        optional: true,
-        desc: '所属部门 id（personal：便于 deptMembers 过滤；dept：即 ref_id）'
-      },
-      dept_name: { type: 'string', optional: true, desc: '部门名（personal/dept 均可带，展示用）' },
-      member_count: {
-        type: 'int',
-        optional: true,
-        desc: '部门有效成员数（dept，R6.2：已报名+至少一次有效同步）'
-      },
-      avg_steps: { type: 'int', optional: true, desc: '部门人均步数（dept，=total/member_count）' },
-      small_sample: {
-        type: 'boolean',
-        optional: true,
-        desc: '小部门标记（dept，member_count<minMembers 时 true，排人均主榜之后但仍展示，§657）'
-      },
-      user_id: { type: 'string', optional: true, desc: '用户 id（personal，冗余便于查询；=ref_id）' },
       updated_at: { type: 'date', desc: '最近聚合时间（覆盖写时更新）' }
     }
   }

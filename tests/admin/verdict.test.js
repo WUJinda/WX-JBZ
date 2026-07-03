@@ -103,10 +103,13 @@ describe('applyVerdict（异常裁定）', () => {
     expect(err.code).toBe(CODE.SYS_DB_ERROR);
   });
 
-  it('裁定后写 synced_at（追溯裁定时间）', () => {
+  it('裁定不改 synced_at（保护 first_reach_at 排序），裁定时间写 verdict_at（P1-5）', () => {
     const store = makeStore();
     applyVerdict(store, { recordId: 'r1', action: 'ignore', now: 'JUDGE_TIME' });
-    expect(store.StepRecord[0].synced_at).toBe('JUDGE_TIME');
+    // synced_at 保持原值 'old'——它是同步时间，被 rankAggregate 的 first_reach_at 排序依赖，裁定不污染。
+    expect(store.StepRecord[0].synced_at).toBe('old');
+    // 裁定时间走独立 verdict_at 字段。
+    expect(store.StepRecord[0].verdict_at).toBe('JUDGE_TIME');
   });
 });
 

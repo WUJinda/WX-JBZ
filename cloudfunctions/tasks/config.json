@@ -1,14 +1,9 @@
 {
   "triggers": [
     {
-      "name": "rankAggregateTimer",
+      "name": "scheduledTimer",
       "type": "timer",
       "config": "0 */10 * * * * *"
-    },
-    {
-      "name": "dailyLockTimer",
-      "type": "timer",
-      "config": "0 0 12 * * * *"
     }
   ]
 }

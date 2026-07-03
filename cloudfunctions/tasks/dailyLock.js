@@ -29,17 +29,31 @@ const LOCK_DEFAULT_CONFIG = {
 };
 
 /**
- * 算「昨日」date（YYYY-MM-DD，北京时间）。
- * 以 now 减 1 天后所在日为准（口径与 stepsQuery 的 today 一致，仅偏移 -1 日）。
+ * 算「昨日」date（YYYY-MM-DD，按 offsetMinutes 时区）。
+ *
+ * P1-13 口径：先算「今日」北京日字符串（与 stepsQuery today 一致），再日历减 1 天。
+ *   不用「now.getTime()-24h」——中国无 DST 时虽等价，但日历减法语义更明确，
+ *   且 event.now 非法（getTime→NaN，dateFromTimestamp 返回 ''）时这里显式抛错，
+ *   而非返回空串导致 lockYesterday 去匹配 date==='' 的诡异记录。
  *
  * @param {Date} nowDate
- * @param {number} offsetMinutes 时区偏移
+ * @param {number} offsetMinutes 时区偏移（分钟），北京 480
  * @returns {string} YYYY-MM-DD
+ * @throws {Error} nowDate 非法（算不出今日字符串）
  */
 function computeYesterdayDate(nowDate, offsetMinutes) {
-  // 复用 dateFromTimestamp：先减 24h 得「昨日同时刻」的秒级时间戳。
-  const ms = nowDate.getTime() - 24 * 60 * 60 * 1000;
-  return dateFromTimestamp(Math.floor(ms / 1000), offsetMinutes);
+  const todayStr = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), offsetMinutes);
+  if (!todayStr) {
+    throw new Error('computeYesterdayDate: invalid nowDate (no today derivable)');
+  }
+  // 今日 YYYY-MM-DD → Date.UTC 当日 0 点 → 减 1 天 → 按 UTC 格式化昨日。
+  const parts = todayStr.split('-').map(Number);
+  const todayUtc0 = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  const yd = new Date(todayUtc0 - 24 * 60 * 60 * 1000);
+  const yy = yd.getUTCFullYear();
+  const ym = String(yd.getUTCMonth() + 1).padStart(2, '0');
+  const ydd = String(yd.getUTCDate()).padStart(2, '0');
+  return yy + '-' + ym + '-' + ydd;
 }
 
 /**

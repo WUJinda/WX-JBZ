@@ -3,6 +3,9 @@
  * personal 分页+我的排名定位+总人数+updated_at；
  * dept metric avg/total 切换+我的部门排名；
  * deptMembers 按 dept_id 过滤+本人标记。
+ *
+ * P0-3：RankCache 单文档形态——每 (type,activity_id) 一个文档 {type,activity_id,rows:[...],updated_at}。
+ *       getCacheRows 从单文档读 rows，readPersonal/readDept/readDeptMembers 断言不变。
  */
 const {
   readPersonal,
@@ -16,10 +19,16 @@ const {
 const ACTIVITY_ID = 'a_demo_001';
 const UPDATED_AT = '2026-07-03T04:00:00.000Z';
 
+// P0-3 单文档 helper：把行数组包成一个 RankCache 文档。
+function pCache(rows) {
+  return [{ type: 'personal', activity_id: ACTIVITY_ID, rows, updated_at: UPDATED_AT }];
+}
+function dCache(rows) {
+  return [{ type: 'dept', activity_id: ACTIVITY_ID, rows, updated_at: UPDATED_AT }];
+}
+
 function pRow(rank, userId, total, firstReachAt, deptId, nickname) {
   return {
-    type: 'personal',
-    activity_id: ACTIVITY_ID,
     rank,
     user_id: userId,
     ref_id: userId,
@@ -34,8 +43,6 @@ function pRow(rank, userId, total, firstReachAt, deptId, nickname) {
 
 function dRow(rank, deptId, total, memberCount, avg, small, deptName) {
   return {
-    type: 'dept',
-    activity_id: ACTIVITY_ID,
     rank,
     dept_id: deptId,
     ref_id: deptId,
@@ -80,11 +87,11 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
   });
 
   it('按 rank 升序返回，附 totalCount + updatedAt', async () => {
-    const store = { RankCache: [
+    const store = { RankCache: pCache([
       pRow(2, 'u2', 200, 't2', 'd1'),
       pRow(1, 'u1', 300, 't1', 'd1'),
       pRow(3, 'u3', 100, 't3', 'd1')
-    ] };
+    ]) };
     const result = await readPersonal({ store, activityId: ACTIVITY_ID, userId: 'u1' });
     expect(result.list.map((r) => r.rank)).toEqual([1, 2, 3]);
     expect(result.totalCount).toBe(3);
@@ -92,11 +99,11 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
   });
 
   it('分页：page=1,pageSize=2 取前两条', async () => {
-    const store = { RankCache: [
+    const store = { RankCache: pCache([
       pRow(1, 'u1', 300, 't1', 'd1'),
       pRow(2, 'u2', 200, 't2', 'd1'),
       pRow(3, 'u3', 100, 't3', 'd1')
-    ] };
+    ]) };
     const result = await readPersonal({
       store, activityId: ACTIVITY_ID, page: 1, pageSize: 2
     });
@@ -107,11 +114,11 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
   });
 
   it('分页：page=2,pageSize=2 取第三条', async () => {
-    const store = { RankCache: [
+    const store = { RankCache: pCache([
       pRow(1, 'u1', 300, 't1', 'd1'),
       pRow(2, 'u2', 200, 't2', 'd1'),
       pRow(3, 'u3', 100, 't3', 'd1')
-    ] };
+    ]) };
     const result = await readPersonal({
       store, activityId: ACTIVITY_ID, page: 2, pageSize: 2
     });
@@ -120,10 +127,10 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
   });
 
   it('myRank：按 user_id 定位我的排名（含 rank/total_steps）', async () => {
-    const store = { RankCache: [
+    const store = { RankCache: pCache([
       pRow(1, 'u1', 300, 't1', 'd1'),
       pRow(2, 'u2', 200, 't2', 'd1')
-    ] };
+    ]) };
     const result = await readPersonal({ store, activityId: ACTIVITY_ID, userId: 'u2' });
     expect(result.myRank).not.toBeNull();
     expect(result.myRank.rank).toBe(2);
@@ -132,7 +139,7 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
   });
 
   it('myRank：未进榜（无该用户）→ null', async () => {
-    const store = { RankCache: [pRow(1, 'u1', 300, 't1', 'd1')] };
+    const store = { RankCache: pCache([pRow(1, 'u1', 300, 't1', 'd1')]) };
     const result = await readPersonal({ store, activityId: ACTIVITY_ID, userId: 'uX' });
     expect(result.myRank).toBeNull();
   });
@@ -149,11 +156,11 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
 
 describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）', () => {
   // 构造：d1 avg=300 total=900(3人)，d2 avg=200 total=1000(5人)，d3(小部门) avg=500 total=500(1人)
-  const store = { RankCache: [
+  const store = { RankCache: dCache([
     dRow(1, 'd1', 900, 3, 300, false, '一组'),
     dRow(2, 'd2', 1000, 5, 200, false, '二组'),
     dRow(3, 'd3', 500, 1, 500, true, '三组') // 小部门
-  ] };
+  ]) };
 
   it('默认 metric=avg：主榜按 avg desc，小部门排后', async () => {
     const result = await readDept({ store, activityId: ACTIVITY_ID });
@@ -194,6 +201,14 @@ describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）',
     expect(smallIdx).toBeGreaterThan(mainIdx); // 小部门在主榜之后
   });
 
+  it('metric 重排不污染源 RankCache 文档的 rows（P1-8 深拷贝）', async () => {
+    // 同一 store 连续用 avg 和 total 两次读：源文档 rows 的 rank 不应被重排污染。
+    await readDept({ store, activityId: ACTIVITY_ID, metric: 'total' }); // 会重排赋 rank
+    const doc = store.RankCache[0];
+    // 源 rows 仍按原始 rank（d1=1,d2=2,d3=3），未被 total 重排改写。
+    expect(doc.rows.map((r) => r.rank)).toEqual([1, 2, 3]);
+  });
+
   it('无数据返回空 + myDeptRank=null', async () => {
     const result = await readDept({ store: { RankCache: [] }, activityId: ACTIVITY_ID, deptIdOfUser: 'd1' });
     expect(result.list).toEqual([]);
@@ -202,12 +217,12 @@ describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）',
 });
 
 describe('readDeptMembers 部门内成员排名（按 dept_id 过滤 + is_me）', () => {
-  const store = { RankCache: [
+  const store = { RankCache: pCache([
     pRow(1, 'u1', 300, 't1', 'd1', '甲'),
     pRow(2, 'u2', 200, 't2', 'd1', '乙'),
     pRow(3, 'u3', 100, 't3', 'd1', '丙'),
     pRow(1, 'u4', 500, 't4', 'd2', '丁') // 其他部门
-  ] };
+  ]) };
 
   it('按 dept_id 过滤，重排部门内 rank（从 1 起）', async () => {
     const result = await readDeptMembers({
@@ -265,5 +280,12 @@ describe('readDeptMembers 部门内成员排名（按 dept_id 过滤 + is_me）'
       expect(r.phone).toBeUndefined();
       expect(r.sync_count).toBeUndefined();
     });
+  });
+
+  it('deptMembers 重排不污染源 RankCache 文档的 rows（P1-8 深拷贝）', async () => {
+    await readDeptMembers({ store, activityId: ACTIVITY_ID, deptId: 'd1', currentUserId: 'u1' });
+    const doc = store.RankCache[0];
+    // 源 rows 不应被加上 dept_rank 字段（深拷贝隔离）。
+    expect(doc.rows.every((r) => r.dept_rank === undefined)).toBe(true);
   });
 });

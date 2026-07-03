@@ -10,8 +10,7 @@
 //   - 本地轨：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → .catch 静默占位，不白屏不崩。
 //   - admin 页是 navigateTo 进入（非 tabBar）。
 const { buildDeptOptions, hasMore, formatJoinStatus, DEFAULT_PAGE_SIZE } = require('./usersCalc');
-
-const ACTIVITY_ID = 'a_demo_001';
+const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
@@ -39,6 +38,7 @@ Page({
   },
 
   onShow() {
+    if (!enterAdminGuard('/pages/admin/users/users')) return;
     // 首次进入：同时拉用户列表与部门选项。
     this.loadDeptOptions();
     this.loadUsers(true);
@@ -106,6 +106,7 @@ Page({
 
   /** 确认改部门 → admin.changeDept。 */
   onChangeDeptConfirm() {
+    if (this._changingDept) return; // P2 防重锁（避免快速双击重复调 changeDept）
     const userId = this.data.currentUserId;
     if (!userId) return;
     const options = this.data.deptOptions;
@@ -124,6 +125,7 @@ Page({
       return;
     }
 
+    this._changingDept = true;
     api
       .call(
         'admin',
@@ -131,12 +133,14 @@ Page({
         { loading: '保存中' }
       )
       .then(() => {
+        this._changingDept = false;
         this.setData({ showDeptPicker: false, currentUserId: '', currentDeptId: '' });
         wx.showToast({ title: '已更新', icon: 'success' });
         // 刷新当前列表（重置到第 1 页，保持筛选态）。
         this.loadUsers(true);
       })
       .catch(() => {
+        this._changingDept = false;
         // 本地轨：云函数未部署 → 静默占位，不白屏。
         this.setData({ showDeptPicker: false });
         wx.showToast({ title: '更新失败，请重试', icon: 'none' });
@@ -187,7 +191,7 @@ Page({
         'admin',
         {
           action: 'users',
-          activity_id: ACTIVITY_ID,
+          activity_id: getApp().getActivityId(),
           dept_id: this.data.deptId,
           keyword: this.data.keyword,
           page,

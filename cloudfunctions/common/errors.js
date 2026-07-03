@@ -31,7 +31,8 @@ const CODE = {
   // 系统类 5xxx
   SYS_DB_ERROR: 5001,
   SYS_EXTERNAL_ERROR: 5002,
-  SYS_NOT_IMPLEMENTED: 5003
+  SYS_NOT_IMPLEMENTED: 5003,
+  SYS_CONFLICT: 5004 // 写冲突（唯一索引冲突，upsert 重试用）
 };
 
 /**

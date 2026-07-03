@@ -20,6 +20,8 @@ const DEFAULT_PAGE_SIZE = 50; // R5.4：分页默认 50/页
 
 /**
  * 取某活动某 type 的 RankCache 行（按 rank 升序）。
+ * P0-3 单文档：从 (type, activity_id) 的单个文档读 doc.rows。
+ * P1-8：返回每行的浅拷贝，避免 readDept/readDeptMembers 改 r.rank/dept_rank 时污染源 doc.rows。
  * @param {object} store
  * @param {string} type 'personal' | 'dept'
  * @param {string} activityId
@@ -27,10 +29,13 @@ const DEFAULT_PAGE_SIZE = 50; // R5.4：分页默认 50/页
  */
 function getCacheRows(store, type, activityId) {
   if (!store || !Array.isArray(store.RankCache)) return [];
-  return store.RankCache
-    .filter((r) => r && r.type === type && r.activity_id === activityId)
-    .slice()
-    .sort((a, b) => (a.rank || 0) - (b.rank || 0));
+  const doc = store.RankCache.find(
+    (d) => d && d.type === type && d.activity_id === activityId
+  );
+  const rows = doc && Array.isArray(doc.rows) ? doc.rows : [];
+  return rows
+    .map((r) => (r ? Object.assign({}, r) : r))
+    .sort((a, b) => ((a && a.rank) || 0) - ((b && b.rank) || 0));
 }
 
 /**

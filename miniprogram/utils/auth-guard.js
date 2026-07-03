@@ -54,4 +54,21 @@ function canEnterAdmin(path, state) {
   return typeof path === 'string' && path.indexOf('/pages/admin/') === 0;
 }
 
-module.exports = { PAGES, nextRoute, canEnterAdmin };
+/**
+ * 运行时 admin 路由守卫（P1-7）：在 admin 页 onShow/onLoad 顶部调用。
+ * 从 globalData 读 {loggedIn, isAdmin}（profile 下发 is_admin 后写入），非管理员 redirectTo login。
+ * 取代旧 canEnterAdmin「定义了但无页面接入」的死代码状态。
+ * @param {string} pagePath 当前页路径（如 '/pages/admin/users/users'）
+ * @returns {boolean} 是否允许进入（false 时已触发 redirectTo login）
+ */
+function enterAdminGuard(pagePath) {
+  const app = typeof getApp === 'function' ? getApp() : null;
+  const gd = (app && app.globalData) || {};
+  const allowed = canEnterAdmin(pagePath, { loggedIn: !!gd.loggedIn, isAdmin: !!gd.isAdmin });
+  if (!allowed && typeof wx !== 'undefined' && wx.redirectTo) {
+    wx.redirectTo({ url: PAGES.LOGIN });
+  }
+  return allowed;
+}
+
+module.exports = { PAGES, nextRoute, canEnterAdmin, enterAdminGuard };

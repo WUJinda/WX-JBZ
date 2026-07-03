@@ -17,8 +17,6 @@ const {
 } = require('./rankCalc');
 const { hasMore } = require('../../utils/pagination');
 
-const ACTIVITY_ID = 'a_demo_001';
-
 Page({
   data: {
     // Tab：个人榜 / 部门榜
@@ -155,7 +153,7 @@ Page({
         'rank',
         {
           action: 'personal',
-          activity_id: ACTIVITY_ID,
+          activity_id: app.getActivityId(),
           page,
           page_size: this.data.personalPageSize
         },
@@ -195,12 +193,27 @@ Page({
   },
 
   /** 加载部门榜。reset=true 重新加载第 1 页。 */
-  loadDept(reset) {
+  async loadDept(reset) {
     const app = getApp();
     const api = app && app.api;
     if (!api || typeof api.call !== 'function') {
       this.setData({ deptList: [], deptHasMore: false, errorMsg: '' });
       return;
+    }
+    // P1-12：部门榜「我的贡献」依赖 myRank.total_steps；若空（用户直进 dept tab 未加载 personal），
+    //   先单独查 personal 拿本人 total_steps，避免贡献占比恒 0。
+    if (!(this.data.myRank && this.data.myRank.total_steps != null)) {
+      try {
+        const pd = await api.call(
+          'rank',
+          { action: 'personal', activity_id: app.getActivityId(), page: 1, page_size: 1 },
+          { loading: false, silent: true }
+        );
+        const myRank = (pd && pd.myRank) || null;
+        if (myRank) this.setData({ myRank });
+      } catch (e) {
+        // 占位：myRank 保持空，贡献占比显示 0。
+      }
     }
     const page = reset ? 1 : this.data.deptPage;
     if (reset) {
@@ -213,7 +226,7 @@ Page({
         'rank',
         {
           action: 'dept',
-          activity_id: ACTIVITY_ID,
+          activity_id: app.getActivityId(),
           metric: this.data.metric,
           page,
           page_size: this.data.deptPageSize
@@ -277,7 +290,7 @@ Page({
         'rank',
         {
           action: 'deptMembers',
-          activity_id: ACTIVITY_ID,
+          activity_id: app.getActivityId(),
           dept_id: deptId,
           page,
           page_size: this.data.memberPageSize

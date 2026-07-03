@@ -17,8 +17,9 @@ const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const { ok, fail } = require('../common/response');
-const { CODE, notImplemented } = require('../common/errors');
+const { CODE, BizError, notImplemented } = require('../common/errors');
 const { authMiddleware } = require('../common/authMiddleware');
+const { loadByWhere } = require('../common/db');
 const { assertAdmin } = require('../common/adminGuard');
 const { getCurrent } = require('./activityStatus');
 const { saveActivity } = require('./activitySave');
@@ -40,17 +41,54 @@ function safeOpenid(getWXContext) {
 
 // handler 表：action -> handler。handler 只做「取上下文 → 调纯函数 → 组装出入参」。
 const handlers = {
-  // C1: 当前活动 + 状态推算 + 全员概览（游客可调）
-  // 本地轨：mock 当前活动 / 概览 / join_status（真实云读留云轨联调 / D1 / G）
+  // C1: 当前活动 + 状态推算 + 全员概览（游客可调）。
+  // 云轨：读真实 Activity / User / RankCache（修复硬伤：原硬编码 joinStatus=pending、overview=0）。
+  // getCurrent 纯函数在 activity/overview 缺省时走本地 mock（供本地轨/单测），此处显式注入真实数据。
   current: async (event) => {
     const openid = safeOpenid(cloud.getWXContext);
-    // 游客 join_status 恒为 pending（本地轨 mock；真实 user.join 留 D1）
-    const joinStatus = 'pending';
-    return getCurrent({
-      openid,
-      joinStatus,
-      overview: { total_steps: 0, participant_count: 0 }
-    });
+    const now = (event && event.now) || undefined;
+    const db = cloud.database();
+
+    // 1. 真实活动：读 Activity 集合（管理员经 save 发布）。
+    //    F2：空集合不回退 mock（旧 mock 带假时间窗 2026-07-01~07-21 会误导用户），
+    //    返回空态让前端显示"活动未发布/未开始"。
+    const activities = await loadByWhere(cloud, 'Activity');
+    const activity = (activities && activities[0]) || {
+      activity_id: '', name: '', cover_url: '', start_time: null, end_time: null, rules: ''
+    };
+
+    // 2. 真实报名状态：按 openid 查 User（游客 openid 空 → pending）。
+    let joinStatus = 'pending';
+    if (openid) {
+      try {
+        const uRes = await db.collection('User').where({ _openid: openid }).limit(1).get();
+        const users = (uRes && uRes.data) || [];
+        if (users.length && users[0].join_status === 'joined') joinStatus = 'joined';
+      } catch (err) {
+        joinStatus = 'pending';
+      }
+    }
+
+    // 3. 真实概览：participant_count=已报名人数；total_steps=个人榜有效步数之和（tasks 预聚合）。
+    //    任一查询失败 → 该项降级 0（不阻断活动主页展示）。
+    let overview = { total_steps: 0, participant_count: 0 };
+    try {
+      const joinedRes = await db.collection('User').where({ join_status: 'joined' }).count();
+      const participantCount = (joinedRes && joinedRes.total) || 0;
+      const aid = activity.activity_id || '';
+      // P0-3 单文档：personal 榜存为一个文档 {type,activity_id,rows:[...]}，total_steps 在 rows 内。
+      //   旧多文档逻辑（直接读 r.total_steps）在单文档化后恒 undefined → overview.total_steps 恒 0（已修）。
+      const rankDocs = await loadByWhere(cloud, 'RankCache', { type: 'personal', activity_id: aid });
+      const pDoc = rankDocs[0];
+      const personalTotal = (pDoc && Array.isArray(pDoc.rows))
+        ? pDoc.rows.reduce((s, r) => s + (Number(r.total_steps) || 0), 0)
+        : 0;
+      overview = { total_steps: personalTotal, participant_count: participantCount };
+    } catch (err) {
+      // 降级：overview 保持 { total_steps: 0, participant_count: 0 }。
+    }
+
+    return getCurrent({ activity, openid, joinStatus, overview, now });
   },
 
   // I: 活动配置/发布（管理员）。R8.1 由 deriveStatus 天然满足，无 published 字段。
@@ -58,8 +96,8 @@ const handlers = {
     // 管理员鉴权：取 openid（强制非空）+ assertAdmin（非管理员 AUTH_NOT_ADMIN）。
     const context = authMiddleware({ getWXContext: cloud.getWXContext });
     const store = {
-      User: await loadCollection(cloud, 'User'),
-      Activity: await loadCollection(cloud, 'Activity')
+      User: await loadByWhere(cloud, 'User'),
+      Activity: await loadByWhere(cloud, 'Activity')
     };
     assertAdmin(store, context.openid);
 
@@ -83,38 +121,8 @@ const handlers = {
   }
 };
 
-/**
- * 载入集合全部文档（云轨真实库，照 tasks/index.js 范式）。
- * 本地轨/单测不经此 handler，直接调纯函数注入 store。
- *
- * TODO 云轨优化：当前全量拉集合（含 _openid / phone 等敏感字段）入内存，
- *   User 量大时有 OOM 风险。对查询类 action 改用 DB 端 `.field()` 投影（仅取必要字段）
- *   + `.where()` 过滤，避免全量拉敏感集合入内存；当前全量拉取仅为本地轨/早期简化。
- *
- * @param {object} cloudSdk
- * @param {string} name
- * @returns {Promise<object[]>}
- */
-async function loadCollection(cloudSdk, name) {
-  let all = [];
-  try {
-    const db = cloudSdk.database();
-    const PAGE = 100;
-    let skip = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const res = await db.collection(name).skip(skip).limit(PAGE).get();
-      const data = (res && res.data) || [];
-      all = all.concat(data);
-      if (data.length < PAGE) break;
-      skip += PAGE;
-    }
-  } catch (err) {
-    // 集合未创建：返回空数组兜底。
-    all = [];
-  }
-  return all;
-}
+// loadCollection 已统一迁移至 common/db.js 的 loadByWhere（P0-5）；current/save 改用
+// loadByWhere（current 的 RankCache 按 type+activity_id 精确查单文档算 overview）。
 
 /**
  * 云轨：Activity upsert 写回（存在则 update，不存在则 add）。本地轨单测不经此路径。
@@ -147,8 +155,8 @@ async function upsertActivityToCloud(cloudSdk, activity, activityId, now) {
       await db.collection('Activity').add({ data: payload });
     }
   } catch (err) {
-    // 单条失败不阻断（幂等可重跑），仅留痕。
-    console.warn('[写回失败]', 'Activity.upsert(' + activityId + ')', (err && err.message) || err);
+    // P1-3：写库失败上抛（不再静默吞致前端假成功）。
+    throw BizError(CODE.SYS_DB_ERROR, 'Activity.upsert 写回失败(' + activityId + '): ' + ((err && err.message) || err));
   }
 }
 

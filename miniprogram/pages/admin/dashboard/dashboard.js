@@ -10,8 +10,7 @@
 //   - 本地轨云函数未部署：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → 静默 catch → 空态占位，不白屏不崩。
 //   - admin 页是 navigateTo 进入（非 tabBar），onModuleTap 用 wx.navigateTo 跳子页。
 const { formatRate, normalizeDailyActive, isEmptyDashboard } = require('./dashboardCalc');
-
-const ACTIVITY_ID = 'a_demo_001';
+const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
@@ -35,6 +34,7 @@ Page({
   },
 
   onShow() {
+    if (!enterAdminGuard('/pages/admin/dashboard/dashboard')) return;
     this.loadDashboard();
   },
 
@@ -56,7 +56,7 @@ Page({
     api
       .call(
         'admin',
-        { action: 'dashboard', activity_id: ACTIVITY_ID },
+        { action: 'dashboard', activity_id: getApp().getActivityId() },
         { loading: false, silent: true }
       )
       .then((data) => {

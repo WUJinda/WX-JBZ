@@ -112,7 +112,7 @@ function projectStep(rec) {
  * @param {object} params
  * @param {object} params.store mock db 的 store 引用（{ StepRecord: object[], Activity?: object[] }）
  * @param {string} params.openid 当前用户 openid（handler 从 wxContext 取）
- * @param {string} params.userId 用户 id（业务键，对齐 User._id）
+ * @param {string} params.userId 用户 id（业务键，= openid；handler 以 openid 传入，rankAggregate 以 User._openid 关联）
  * @param {string} params.activityId 活动 id
  * @param {Array<{timestamp:number, step:number}>} params.stepInfoList 解密后的近 30 天步数
  * @param {object} [params.activity] 活动文档（含 start_time/end_time）；缺省则不强加活动期过滤

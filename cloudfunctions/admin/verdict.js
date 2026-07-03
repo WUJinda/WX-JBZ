@@ -25,7 +25,7 @@ const VALID_ACTIONS = new Set(['ignore', 'zero']);
  * @param {object} params
  * @param {string} params.recordId StepRecord._id
  * @param {string} params.action 'ignore' | 'zero'
- * @param {string} params.now 当前时间 ISO（写 synced_at，便于追溯裁定时间）
+ * @param {string} params.now 当前时间 ISO（写 verdict_at 追溯裁定时间；P1-5 不再改 synced_at）
  * @returns {{recordId: string, action: string, steps: number, abnormal: boolean, verdict_action: string, verdict_at: string}}
  */
 function applyVerdict(store, params) {
@@ -50,14 +50,14 @@ function applyVerdict(store, params) {
   if (action === 'zero') {
     rec.steps = 0;
     rec.abnormal = false;
-    if (now) rec.synced_at = now;
   } else {
     // ignore：保留 steps，清 abnormal。
     rec.abnormal = false;
-    if (now) rec.synced_at = now;
   }
 
-  // 裁定留痕：记录裁定动作与时间，便于区分「同步为 0」与「裁定置 0」（R8.4 可追溯）。
+  // 裁定留痕：记录裁定动作与时间（verdict_at），便于区分「同步为 0」与「裁定置 0」（R8.4 可追溯）。
+  // P1-5：不再改 synced_at——它是步数同步时间，被 rankAggregate 的 first_reach_at 同分排序依赖，
+  //   裁定时改写会污染排序依据。裁定时间走独立 verdict_at 字段（applyVerdictToCloud 同步一致）。
   rec.verdict_action = action;
   if (now) rec.verdict_at = now;
 

@@ -10,8 +10,7 @@
 //   - 本地轨：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → .catch 静默占位，不白屏不崩。
 //   - admin 页是 navigateTo 进入（非 tabBar）。
 const { hasMore, verdictLabel, formatSteps, DEFAULT_PAGE_SIZE } = require('./abnormalCalc');
-
-const ACTIVITY_ID = 'a_demo_001';
+const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
@@ -27,6 +26,7 @@ Page({
   },
 
   onShow() {
+    if (!enterAdminGuard('/pages/admin/abnormal/abnormal')) return;
     this.loadAbnormal(true);
   },
 
@@ -43,6 +43,7 @@ Page({
 
   /** 异常裁定：忽略 / 置零。dataset.verdict 为 'ignore' | 'zero'。 */
   onVerdict(e) {
+    if (this._judging) return; // P2 防重锁（避免快速双击重复裁定）
     const recordId = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.recordId;
     const verdict = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.verdict;
     if (!recordId) return;
@@ -57,6 +58,7 @@ Page({
       return;
     }
 
+    this._judging = true;
     api
       .call(
         'admin',
@@ -68,11 +70,13 @@ Page({
         { loading: '处理中' }
       )
       .then(() => {
+        this._judging = false;
         wx.showToast({ title: '已处理', icon: 'success' });
         // 刷新列表（裁定后该记录应从异常列表移除：abnormal=false）。
         this.loadAbnormal(true);
       })
       .catch(() => {
+        this._judging = false;
         // 本地轨：云函数未部署 → 静默占位，不白屏。
         wx.showToast({ title: '处理失败，请重试', icon: 'none' });
       });
@@ -98,7 +102,7 @@ Page({
         'admin',
         {
           action: 'abnormalList',
-          activity_id: ACTIVITY_ID,
+          activity_id: getApp().getActivityId(),
           page,
           page_size: this.data.pageSize
         },

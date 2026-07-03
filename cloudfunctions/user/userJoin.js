@@ -72,10 +72,9 @@ async function joinDepartment(params) {
     throw BizError(CODE.SYS_DB_ERROR, 'join: store.User is required');
   }
 
-  // 部门源：优先用注入的 Department 集合，否则用 deptList 的 mock 兜底。
-  const depts = Array.isArray(store.Department) && store.Department.length > 0
-    ? store.Department
-    : require('./../dept/deptList').MOCK_DEPARTMENTS;
+  // F5：部门源用注入的 Department（handler 查真实集合）；不再回退 MOCK_DEPARTMENTS——
+  //   避免管理员未录部门时用户 join 到假部门。空数组时 findDept 返回 null → 抛 BIZ_DEPT_NOT_FOUND。
+  const depts = Array.isArray(store.Department) ? store.Department : [];
   const dept = findDept(deptId, depts);
   if (!dept) {
     throw BizError(CODE.BIZ_DEPT_NOT_FOUND, 'join: dept not found');

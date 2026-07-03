@@ -105,10 +105,13 @@ function computeFirstReachAt(validRecs, totalSteps) {
 function buildPersonalRanking({ store, activityId, today }) {
   const records = getActivityRecords(store, activityId);
 
-  // 用户表：_id → user（便于关联 dept_id/nickname）。
+  // 用户表：_openid → user（便于关联 dept_id/nickname）。
+  // 关键：StepRecord.user_id 实际存的是 openid（steps handler 以 openid 作 user_id，
+  // 见 steps/index.js `userId = event.user_id || openid`），故必须以 User._openid 为 key 关联；
+  // 若误用 User._id（云库自动主键，与 openid 无关）作 key 会查不到 → nickname/dept 全空。
   const userMap = new Map();
   (Array.isArray(store.User) ? store.User : []).forEach((u) => {
-    if (u && u._id) userMap.set(u._id, u);
+    if (u && u._openid) userMap.set(u._openid, u);
   });
 
   // 按用户分组有效记录。
@@ -127,10 +130,11 @@ function buildPersonalRanking({ store, activityId, today }) {
     // R5.5：total_steps=0 不进榜。
     if (!entry.total || entry.total <= 0) continue;
     const user = userMap.get(userId) || {};
-    // 仅展示已报名用户（join_status === 'joined'）；无 User 文档的裸记录视为未报名，不进榜。
-    // 但为兼容本地轨裸 store（无 User），若 store 无 User 集合则放行（默认进榜）。
     const hasUserCollection = Array.isArray(store.User);
-    if (hasUserCollection && user.join_status && user.join_status !== 'joined') continue;
+    // 仅展示已报名用户（join_status === 'joined'）；查不到 User（未建号/已退出）的裸步数记录不进榜
+    // （user 为 {} 时 join_status 为 undefined → !== 'joined' → 不进榜）。
+    // 本地轨裸 store（无 User 集合）放行（默认进榜），兼容无 User 的最小 store。
+    if (hasUserCollection && user.join_status !== 'joined') continue;
 
     const firstReachAt = computeFirstReachAt(entry.recs, entry.total);
     const deptId = user.dept_id || '';
@@ -242,33 +246,29 @@ function buildDeptRanking({ store, activityId, personalRows, minMembers }) {
 }
 
 /**
- * 覆盖写 RankCache（幂等）。
- * 删除该 (type, activity_id) 下全部旧文档，再插入新行。
+ * 覆盖写 RankCache（幂等，P0-3 单文档）。
+ * 每 (type, activity_id) 一个文档 {type, activity_id, rows:[...], updated_at}；
+ * 覆盖写 = 找到该文档则替换其 rows+updated_at（保留 _id 库主键），找不到则 push 新文档。
+ * 单文档覆盖写 = 一次原子 update，天然无并发 double（旧多文档「先 add 后 remove」在并发聚合时会产生双倍行）。
  *
  * @param {object} store
  * @param {string} type 'personal' | 'dept'
  * @param {string} activityId
- * @param {object[]} rows
+ * @param {object[]} rows 整榜行数组（每行含 rank/user_id/total_steps 等，由 buildPersonalRanking/buildDeptRanking 产出）
  * @param {string} updatedAtIso
  */
 function overwriteRankCache(store, type, activityId, rows, updatedAtIso) {
   if (!store) return;
   if (!Array.isArray(store.RankCache)) store.RankCache = [];
-  // 删除该 type + activity_id 的全部旧文档（覆盖写，幂等）。
-  store.RankCache = store.RankCache.filter(
-    (r) => !(r && r.type === type && r.activity_id === activityId)
+  const docIdx = store.RankCache.findIndex(
+    (d) => d && d.type === type && d.activity_id === activityId
   );
-  // 插入新行。
-  for (const row of rows) {
-    const doc = Object.assign(
-      {
-        type,
-        activity_id: activityId,
-        updated_at: updatedAtIso
-      },
-      row
-    );
-    store.RankCache.push(doc);
+  const newDoc = { type, activity_id: activityId, rows, updated_at: updatedAtIso };
+  if (docIdx >= 0) {
+    // 保留 _id（库主键），替换 rows/updated_at。
+    store.RankCache[docIdx] = Object.assign({}, store.RankCache[docIdx], newDoc);
+  } else {
+    store.RankCache.push(newDoc);
   }
 }
 

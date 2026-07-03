@@ -18,7 +18,6 @@ Page({
     jsCode: '',
     encryptedData: '',
     iv: '',
-    activityId: 'a_demo_001',
     // F4：步数展示（统计 / 趋势 / 排名入口 / 空态）
     activeDays: 0,
     totalDays: 0,
@@ -29,7 +28,8 @@ Page({
   },
 
   onLoad() {
-    this.refreshLoginCode();
+    // P1-10：不再预取 wx.login code——onSyncTap 时与 getWeRunData 同源获取
+    //   （预取的 code 会过期/可能与 getWeRunData 不同登录态 → 解密失败 STEP_DECRYPT_FAILED）。
   },
 
   onShow() {
@@ -152,7 +152,7 @@ Page({
         'steps',
         {
           action: 'sync',
-          activity_id: this.data.activityId,
+          activity_id: getApp().getActivityId(),
           code,
           encrypted_data: encryptedData,
           iv
@@ -217,7 +217,7 @@ Page({
     api
       .call(
         'user',
-        { action: 'stats', activity_id: this.data.activityId },
+        { action: 'stats', activity_id: getApp().getActivityId() },
         { loading: false, silent: true }
       )
       .then((data) => {
@@ -248,7 +248,7 @@ Page({
     api
       .call(
         'steps',
-        { action: 'trend', activity_id: this.data.activityId, range: r },
+        { action: 'trend', activity_id: getApp().getActivityId(), range: r },
         { loading: false, silent: true }
       )
       .then((data) => {

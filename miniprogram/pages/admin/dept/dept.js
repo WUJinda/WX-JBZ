@@ -9,8 +9,7 @@
 //   - 本地轨：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → .catch 静默占位，不白屏不崩。
 //   - admin 页是 navigateTo 进入（非 tabBar）。
 const { validateDeptName, formatDept } = require('./deptCalc');
-
-const ACTIVITY_ID = 'a_demo_001';
+const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
@@ -26,6 +25,7 @@ Page({
   },
 
   onShow() {
+    if (!enterAdminGuard('/pages/admin/dept/dept')) return;
     this.loadDeptList();
   },
 
@@ -59,6 +59,7 @@ Page({
 
   /** 确认提交：新建或编辑 → admin.deptManage。 */
   onFormConfirm() {
+    if (this._savingDept) return; // P2 防重锁
     const { valid, error } = validateDeptName(this.data.formName);
     if (!valid) {
       this.setData({ formError: error });
@@ -77,17 +78,20 @@ Page({
       return;
     }
 
-    const params = { action: 'deptManage', op, activity_id: ACTIVITY_ID, name: this.data.formName };
+    const params = { action: 'deptManage', op, activity_id: getApp().getActivityId(), name: this.data.formName };
     if (editingDept) params.dept_id = editingDept;
 
+    this._savingDept = true; // P2 防重锁（避免快速双击重复 create/update）
     api
       .call('admin', params, { loading: '保存中' })
       .then(() => {
+        this._savingDept = false;
         this.setData({ showForm: false, editingDept: '', formName: '', formError: '' });
         wx.showToast({ title: '已保存', icon: 'success' });
         this.loadDeptList();
       })
       .catch(() => {
+        this._savingDept = false;
         // 本地轨：云函数未部署 → 静默占位，不白屏。
         this.setData({ showForm: false });
         wx.showToast({ title: '保存失败，请重试', icon: 'none' });

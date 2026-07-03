@@ -8,12 +8,8 @@
 //   - wxml 不渲染完整 phone：预览样本在 js 层掩码后（保留前 3 后 2，中间 ****）再 setData。
 //   - 本地轨：getApp().api 不存在 → 提前 return 占位提示；api.call 失败 → .catch 错误提示，不白屏。
 const { previewPhones, formatImportResult } = require('./whitelistCalc');
-
-/** 掩码单个手机号：保留前 3 后 2，中间 ****（如 138****22）。仅用于 wxml 展示，不暴露完整号。 */
-function maskPhone(p) {
-  if (typeof p !== 'string' || p.length < 5) return p;
-  return p.slice(0, 3) + '****' + p.slice(-2);
-}
+const { maskPhone } = require('../../../utils/format');
+const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
@@ -25,6 +21,10 @@ Page({
     importing: false,
     resultText: '',
     errorMsg: ''
+  },
+
+  onLoad() {
+    if (!enterAdminGuard('/pages/admin/whitelist/whitelist')) return;
   },
 
   /** 文本变化：实时算预览（数量 + 掩码样本）。 */

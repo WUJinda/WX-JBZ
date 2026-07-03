@@ -64,9 +64,10 @@ function calcTotalDays(activity, today, offsetMinutes) {
  * @param {object} params
  * @param {object[]} params.records 该用户该活动的 StepRecord 子集（含有效与无效，内部按口径过滤）
  * @param {object} [params.activity] 活动文档（含 start_time；缺失则 total_days=0）
+ * @param {object} [params.myRank] 本人排名行（P1-11，handler 从 RankCache 查传入；缺省 null=未进榜/未聚合）
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
  * @param {object} [params.config] 配置覆盖（timezoneOffsetMinutes）
- * @returns {{today_steps:number, total_steps:number, total_days:number, active_days:number, my_rank:null}}
+ * @returns {{today_steps:number, total_steps:number, total_days:number, active_days:number, my_rank:object|null}}
  */
 function buildStats(params) {
   const p = params || {};
@@ -96,13 +97,13 @@ function buildStats(params) {
   // total_days：活动期天数（start_date ~ 今日）。
   const totalDays = calcTotalDays(p.activity, today, cfg.timezoneOffsetMinutes);
 
-  // my_rank：本地轨占位 null（真实排名留 F5）。
+  // my_rank：注入的本人排名（P1-11，handler 从 RankCache personal 查传入；null=未进榜/未聚合）。
   return {
     today_steps: todaySteps,
     total_steps: totalSteps,
     total_days: totalDays,
     active_days: activeDays,
-    my_rank: null
+    my_rank: p.myRank || null
   };
 }
 

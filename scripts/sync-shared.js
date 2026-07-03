@@ -69,26 +69,31 @@ const SHARED_MANIFEST = {
     'common/mask',
     'common/authMiddleware',
     'common/response',
+    'common/db',
     'activity/activityStatus',
+    'activity/activityResolver', // F1 getActiveActivityId/getActiveActivity
     'steps/stepsSync', // 经 user/userStats 引入 -> 带来 activityStatus + common/errors（已在列）
     'dept/deptList'    // user/userJoin 动态 require
   ],
   dept: [
     'common/errors',
     'common/authMiddleware',
-    'common/response'
+    'common/response',
+    'common/db'
   ],
   activity: [
     'common/errors',
     'common/authMiddleware',
     'common/response',
-    'common/adminGuard'
-    // activity/activityStatus 是 activity 包内同目录文件，原样复制即随包带走
+    'common/adminGuard',
+    'common/db'
+    // activity/activityStatus + activity/activityResolver 是包内同目录文件，原样复制即随包带走
   ],
   steps: [
     'common/errors',
     'common/authMiddleware',
-    'common/response'
+    'common/response',
+    'common/db'
     // steps/stepsSync 是 steps 包内同目录文件，原样复制即随包带走
     // activity/activityStatus 由 stepsSync 传递依赖 -> 注入
     ,
@@ -97,13 +102,17 @@ const SHARED_MANIFEST = {
   rank: [
     'common/errors',
     'common/authMiddleware',
-    'common/response'
+    'common/response',
+    'common/db',
+    'activity/activityResolver',
+    'activity/activityStatus'
   ],
   admin: [
     'common/errors',
     'common/authMiddleware',
     'common/response',
     'common/adminGuard',
+    'common/db',
     'steps/stepsSync',         // 经 admin/dashboard 引入
     'activity/activityStatus', // steps/stepsSync 的传递依赖
     'schema/initIndexes',      // 经 admin.ensureSchema 运维 action 引入
@@ -113,6 +122,8 @@ const SHARED_MANIFEST = {
     'common/errors',
     'common/mask',
     'common/response',
+    'common/db',
+    'activity/activityResolver', // F1 getActiveActivityId（resolver 依赖 activityStatus，已在列）
     'steps/stepsSync',           // 经 tasks/rankAggregate + tasks/dailyLock 引入
     'activity/activityStatus'    // steps/stepsSync 的传递依赖
   ]
