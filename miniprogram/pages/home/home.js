@@ -1,9 +1,13 @@
 // pages/home/home.js
 // 个人主页 + 步数同步入口（对齐 PRD F3 R3.1~R3.6，开发计划阶段 E4）。
 // F4：增量补齐步数展示（统计/趋势/参与天数/排名入口/空态），不破坏 E4 同步状态机。
+// 活动状态感知（homeStatus 纯函数）：按 active/ended/pending/none 切换显示模式——
+//   active 进行中（完整展示）/ ended 战绩归档（最终累计+趋势+排名，禁同步）/
+//   pending 未开始（空态预告）/ none 无活动（空态）。状态来自 globalData.currentActivity。
 const { STATES, transition, shouldThrottle } = require('./homeSync');
 const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
 const { handleNotLoggedIn } = require('../../utils/authGuard');
+const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData } = require('./homeStatus');
 
 Page({
   data: {
@@ -25,19 +29,91 @@ Page({
     myRank: null,
     trendRange: 7,
     trendList: [],
-    trendEmpty: true
+    trendEmpty: true,
+    // 活动状态感知（homeStatus 纯函数驱动）：unknown/active/ended/pending/none
+    activityStatus: ACT_STATUS.UNKNOWN,
+    activityName: ''
   },
 
   onLoad() {
     // P1-10：不再预取 wx.login code——onSyncTap 时与 getWeRunData 同源获取
     //   （预取的 code 会过期/可能与 getWeRunData 不同登录态 → 解密失败 STEP_DECRYPT_FAILED）。
+    // 3004 兜底标志：服务端判 ended 但本地时间窗口未到时强制 ended，下拉刷新时清除。
+    this._forceEnded = false;
   },
 
   onShow() {
     this.refreshLastSyncText();
-    // F4：进入主页主动加载统计 + 趋势（本地轨云函数未部署 → 失败占位，不阻塞同步功能）。
-    this.loadStats();
-    this.loadTrend(this.data.trendRange);
+    // 按活动状态决定显示模式（active/ended 加载数据；pending/none 空态；unknown 补调 current）。
+    this.ensureActivityStatus();
+  },
+
+  /**
+   * 推导当前活动状态并按态分发加载。
+   * 状态来源 globalData.currentActivity（activity 页 applyActivity 写入）；
+   * 冷启动 home 先于 activity 异步返回时 status 缺失 → 补调 activity.current 兜底。
+   */
+  ensureActivityStatus() {
+    // 3004 兜底：服务端判 ended 但本地时间窗口未到时（管理员提前改 end_time / 时钟偏差），
+    // _forceEnded 保持 ended 态到下次主动下拉刷新——避免 onShow 用 globalData 旧时间窗口
+    // 重算回 active（同步按钮反复横跳 → 再点再 3004）。
+    if (this._forceEnded) {
+      const app0 = getApp();
+      const ga0 = (app0 && app0.globalData && app0.globalData.currentActivity) || {};
+      this.setData({ activityStatus: ACT_STATUS.ENDED, activityName: ga0.name || this.data.activityName });
+      this.loadStats();
+      this.loadTrend(this.data.trendRange);
+      return;
+    }
+    const app = getApp();
+    const ga = (app && app.globalData && app.globalData.currentActivity) || {};
+    const status = deriveHomeStatus(ga, Date.now());
+    this.setData({ activityStatus: status, activityName: ga.name || '' });
+    if (needsFetchStatus(ga)) {
+      this.fetchActivityStatus();
+      return;
+    }
+    if (shouldLoadData(status)) {
+      this.loadStats();
+      this.loadTrend(this.data.trendRange);
+    }
+  },
+
+  /**
+   * 静默拉取当前活动并回写 globalData（activity.current 游客可调，无 1002）。
+   * 成功后重新推导状态并按态加载；失败 → 空态（home 不依赖活动信息也能渲染空态）。
+   */
+  fetchActivityStatus() {
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      this.setData({ activityStatus: ACT_STATUS.NONE });
+      return;
+    }
+    api
+      .call('activity', { action: 'current' }, { loading: false, silent: true })
+      .then((data) => {
+        const d = data || {};
+        if (app && app.globalData) {
+          app.globalData.currentActivity = {
+            activity_id: d.activity_id || '',
+            name: d.name || '',
+            start_time: d.start_time != null ? d.start_time : null,
+            end_time: d.end_time != null ? d.end_time : null,
+            status: d.status || ''
+          };
+        }
+        const status = deriveHomeStatus(d, Date.now());
+        this.setData({ activityStatus: status, activityName: d.name || '' });
+        if (shouldLoadData(status)) {
+          this.loadStats();
+          this.loadTrend(this.data.trendRange);
+        }
+      })
+      .catch(() => {
+        // current 游客可调、不抛 1002；失败统一空态（不阻断 home 渲染）。
+        this.setData({ activityStatus: ACT_STATUS.NONE });
+      });
   },
 
   /**
@@ -177,7 +253,14 @@ Page({
         wx.hideLoading();
         // 1002 未登录 → 守卫引导登录（sync 需登录态）。
         if (handleNotLoggedIn(err)) return;
-        if (err && err.code === 3003) {
+        if (err && err.code === 3004) {
+          // STEP_ACTIVITY_CLOSED（R3.5）：活动已结束禁同步。状态过时仍点到同步的兜底。
+          // 置 _forceEnded：保持 ended 态到下次下拉刷新，避免 onShow 用 globalData 旧
+          // 时间窗口回滚到 active（同步按钮反复横跳 → 再点再 3004）。
+          this._forceEnded = true;
+          this.apply({ type: 'CLOUD_FAIL', payload: { message: '活动已结束，无法同步' } });
+          this.setData({ activityStatus: ACT_STATUS.ENDED });
+        } else if (err && err.code === 3003) {
           // STEP_SYNC_LIMIT 频控（R3.3）
           this.apply({ type: 'CLOUD_RATE_LIMIT' });
         } else {
@@ -201,12 +284,13 @@ Page({
     });
   },
 
-  /** 下拉刷新：重置 + 重新同步。 */
+  /** 下拉刷新：重置 + 重新探测活动状态（pending→active 跨态切换），成功后按态加载。 */
   onPullDownRefresh() {
+    // 主动刷新：清除 3004 兜底的强制 ended，重新探测真实状态（允许 ended→active 恢复）。
+    this._forceEnded = false;
     this.apply({ type: 'RESET' });
     this.refreshLastSyncText();
-    this.loadStats();
-    this.loadTrend(this.data.trendRange);
+    this.fetchActivityStatus();
     wx.stopPullDownRefresh();
   },
 

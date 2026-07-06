@@ -46,7 +46,7 @@ Page({
     const app = getApp();
     const api = app && app.api;
     // F2：失败/无 api 用空态（不再回退 mock 假活动时间窗），页面显示"活动未发布/加载失败"。
-    const fallback = () => this.applyActivity(EMPTY_ACTIVITY, 'pending');
+    const fallback = () => this.applyActivity(EMPTY_ACTIVITY, 'pending', { persist: false });
 
     if (!api || typeof api.call !== 'function') {
       fallback();
@@ -67,14 +67,22 @@ Page({
    * @param {object} data activity.current 出参
    * @param {string} [joinStatus]
    */
-  applyActivity(data, joinStatus) {
+  applyActivity(data, joinStatus, options) {
     const activity = data || EMPTY_ACTIVITY;
+    const opts = options || {};
     // F1：写入全局活动上下文，供各页读 activity_id（替代硬编码 a_demo_001）。
+    // persist=false（current 失败的 fallback 空态）跳过写回——避免覆盖 home 等其它页已成功
+    // 获取的真实活动，导致 globalData 被空态污染（回 home 后误显示"暂无活动"）。
     const app = getApp();
-    if (app && app.globalData) {
+    if (opts.persist !== false && app && app.globalData) {
       app.globalData.currentActivity = {
         activity_id: activity.activity_id || '',
         name: activity.name || '',
+        // 写入时间窗口：home 用 start_time/end_time + 当前时间实时推算状态（与后端 deriveStatus 同口径），
+        // 不再依赖 status 字符串快照——后者会过时（活动跨 end_time 后仍卡 pending）且 home 多次 onShow 时
+        // 易与在途的 fetchActivityStatus 竞态（pending 一闪 → ended）。
+        start_time: activity.start_time != null ? activity.start_time : null,
+        end_time: activity.end_time != null ? activity.end_time : null,
         status: activity.status || ''
       };
     }

@@ -1,93 +1,119 @@
-<!-- 个人主页 + 步数同步入口（对齐 PRD F3） -->
+<!-- 个人主页 + 步数同步入口（对齐 PRD F3）。
+     活动状态感知：active 完整展示 / ended 战绩归档（最终累计+趋势+排名，禁同步）/
+     pending 未开始 / none 无活动（空态）。 -->
 <view class="home-page">
   <view class="page-title">{{pageLabel}}</view>
 
-  <!-- 今日步数 / 累计步数 -->
-  <view class="steps-block">
-    <view class="steps-card">
-      <text class="steps-label">今日步数</text>
-      <text class="steps-value">{{todaySteps}}</text>
+  <!-- 状态横幅（非 active 态显示；对齐 activity 页 status-badge 配色） -->
+  <view class="status-badge status-{{activityStatus}}" wx:if="{{activityStatus === 'ended' || activityStatus === 'pending' || activityStatus === 'none'}}">{{activityStatus === 'ended' ? '活动已结束' : (activityStatus === 'pending' ? '活动未开始' : '暂无活动')}}</view>
+
+  <!-- 进行中 / 已结束：有数据可展示 -->
+  <block wx:if="{{activityStatus === 'active' || activityStatus === 'ended'}}">
+    <!-- 步数卡：active 双卡（今日/累计）；ended 单卡（最终累计） -->
+    <view class="steps-block" wx:if="{{activityStatus === 'active'}}">
+      <view class="steps-card">
+        <text class="steps-label">今日步数</text>
+        <text class="steps-value">{{todaySteps}}</text>
+      </view>
+      <view class="steps-card">
+        <text class="steps-label">累计步数</text>
+        <text class="steps-value">{{totalSteps}}</text>
+      </view>
     </view>
-    <view class="steps-card">
-      <text class="steps-label">累计步数</text>
-      <text class="steps-value">{{totalSteps}}</text>
-    </view>
-  </view>
-
-  <!-- 同步按钮（idle / failed 状态可点；syncing 中禁用） -->
-  <button
-    class="sync-btn {{syncState === 'syncing' || syncState === 'authing' ? 'sync-btn-loading' : ''}}"
-    bindtap="onSyncTap"
-    disabled="{{syncState === 'syncing' || syncState === 'authing'}}"
-  >
-    <block wx:if="{{syncState === 'authing'}}">授权中...</block>
-    <block wx:elif="{{syncState === 'syncing'}}">同步中...</block>
-    <block wx:else>同步微信步数</block>
-  </button>
-
-  <!-- 最近同步时间 -->
-  <view class="last-sync" wx:if="{{lastSyncText}}">最近同步：{{lastSyncText}}</view>
-
-  <!-- 错误提示 -->
-  <view class="error-tip" wx:if="{{errorMsg}}">{{errorMsg}}</view>
-
-  <!-- 拒绝授权后：重新授权引导（openSetting） -->
-  <view class="auth-denied-block" wx:if="{{syncState === 'authDenied'}}">
-    <text class="auth-denied-tip">需授权「微信运动」数据访问才能参与排名</text>
-    <button class="resetting-btn" open-type="openSetting" bindopensetting="onOpenSetting">
-      前往设置开启授权
-    </button>
-  </view>
-
-  <!-- F4：参与天数 / 活动进度 -->
-  <view class="days-block">
-    <view class="days-card">
-      <text class="days-label">已参与天数</text>
-      <text class="days-value">{{activeDays}}</text>
-    </view>
-    <view class="days-card">
-      <text class="days-label">活动期天数</text>
-      <text class="days-value">{{totalDays}}</text>
-    </view>
-  </view>
-
-  <!-- F4：我的排名入口（R4.4：myRank 为空时引导完成同步） -->
-  <view class="rank-entry" bindtap="onMyRankTap">
-    <text class="rank-entry-title">我的排名</text>
-    <text class="rank-entry-value" wx:if="{{myRank !== null}}">第 {{myRank}} 名</text>
-    <text class="rank-entry-tip" wx:else>完成同步后查看排名</text>
-    <text class="rank-entry-arrow">›</text>
-  </view>
-
-  <!-- F4：步数趋势（R4.2：近 7/30 天切换；R4.3：无数据展示占位） -->
-  <view class="trend-block">
-    <view class="trend-header">
-      <text class="trend-title">步数趋势</text>
-      <view class="trend-tabs">
-        <text
-          class="trend-tab {{trendRange === 7 ? 'trend-tab-active' : ''}}"
-          data-range="7"
-          bindtap="onTrendRange"
-        >近7天</text>
-        <text
-          class="trend-tab {{trendRange === 30 ? 'trend-tab-active' : ''}}"
-          data-range="30"
-          bindtap="onTrendRange"
-        >近30天</text>
+    <view class="steps-block" wx:else>
+      <view class="steps-card steps-card-single">
+        <text class="steps-label">最终累计步数</text>
+        <text class="steps-value">{{totalSteps}}</text>
       </view>
     </view>
 
-    <!-- 纯 CSS 柱状图（柱高百分比归一化） -->
-    <view class="trend-bars" wx:if="{{!trendEmpty}}">
-      <view class="trend-bar-wrap" wx:for="{{trendList}}" wx:key="date">
-        <view class="trend-bar" style="height:{{item.heightPct}}%"></view>
-        <text class="trend-bar-date">{{item.date}}</text>
+    <!-- 同步入口：仅 active 态显示 -->
+    <block wx:if="{{activityStatus === 'active'}}">
+      <!-- 同步按钮（idle / failed 状态可点；syncing 中禁用） -->
+      <button
+        class="sync-btn {{syncState === 'syncing' || syncState === 'authing' ? 'sync-btn-loading' : ''}}"
+        bindtap="onSyncTap"
+        disabled="{{syncState === 'syncing' || syncState === 'authing'}}"
+      >
+        <block wx:if="{{syncState === 'authing'}}">授权中...</block>
+        <block wx:elif="{{syncState === 'syncing'}}">同步中...</block>
+        <block wx:else>同步微信步数</block>
+      </button>
+
+      <!-- 最近同步时间 -->
+      <view class="last-sync" wx:if="{{lastSyncText}}">最近同步：{{lastSyncText}}</view>
+
+      <!-- 错误提示 -->
+      <view class="error-tip" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+
+      <!-- 拒绝授权后：重新授权引导（openSetting） -->
+      <view class="auth-denied-block" wx:if="{{syncState === 'authDenied'}}">
+        <text class="auth-denied-tip">需授权「微信运动」数据访问才能参与排名</text>
+        <button class="resetting-btn" open-type="openSetting" bindopensetting="onOpenSetting">
+          前往设置开启授权
+        </button>
+      </view>
+    </block>
+
+    <!-- ended 态：归档提示替代同步入口 -->
+    <view class="archived-tip" wx:else>活动已结束，步数已归档</view>
+
+    <!-- F4：参与天数 / 活动进度（active + ended 共用） -->
+    <view class="days-block">
+      <view class="days-card">
+        <text class="days-label">已参与天数</text>
+        <text class="days-value">{{activeDays}}</text>
+      </view>
+      <view class="days-card">
+        <text class="days-label">活动期天数</text>
+        <text class="days-value">{{totalDays}}</text>
       </view>
     </view>
 
-    <!-- R4.3 空态占位 -->
-    <view class="trend-empty" wx:else>
-      暂无数据，请点击同步步数
+    <!-- F4：我的排名入口（active：myRank 空时引导同步；ended：空时显示无排名） -->
+    <view class="rank-entry" bindtap="onMyRankTap">
+      <text class="rank-entry-title">我的排名</text>
+      <text class="rank-entry-value" wx:if="{{myRank !== null}}">第 {{myRank}} 名</text>
+      <text class="rank-entry-tip" wx:else>{{activityStatus === 'ended' ? '暂无排名数据' : '完成同步后查看排名'}}</text>
+      <text class="rank-entry-arrow">›</text>
     </view>
+
+    <!-- F4：步数趋势（R4.2：近 7/30 天切换；R4.3：无数据展示占位） -->
+    <view class="trend-block">
+      <view class="trend-header">
+        <text class="trend-title">步数趋势</text>
+        <view class="trend-tabs">
+          <text
+            class="trend-tab {{trendRange === 7 ? 'trend-tab-active' : ''}}"
+            data-range="7"
+            bindtap="onTrendRange"
+          >近7天</text>
+          <text
+            class="trend-tab {{trendRange === 30 ? 'trend-tab-active' : ''}}"
+            data-range="30"
+            bindtap="onTrendRange"
+          >近30天</text>
+        </view>
+      </view>
+
+      <!-- 纯 CSS 柱状图（柱高百分比归一化） -->
+      <view class="trend-bars" wx:if="{{!trendEmpty}}">
+        <view class="trend-bar-wrap" wx:for="{{trendList}}" wx:key="date">
+          <view class="trend-bar" style="height:{{item.heightPct}}%"></view>
+          <text class="trend-bar-date">{{item.date}}</text>
+        </view>
+      </view>
+
+      <!-- R4.3 空态占位（ended 态文案调整：活动结束不再引导同步） -->
+      <view class="trend-empty" wx:else>
+        {{activityStatus === 'ended' ? '暂无步数记录' : '暂无数据，请点击同步步数'}}
+      </view>
+    </view>
+  </block>
+
+  <!-- 未开始 / 无活动 / 加载中：整页空态 -->
+  <view class="empty-state" wx:elif="{{activityStatus === 'pending' || activityStatus === 'none' || activityStatus === 'unknown'}}">
+    <view class="empty-title">{{activityStatus === 'pending' ? '活动尚未开始' : (activityStatus === 'none' ? '暂无进行中的活动' : '加载中...')}}</view>
+    <view class="empty-desc">{{activityStatus === 'pending' ? '请关注后续通知，活动开始后即可同步步数' : (activityStatus === 'none' ? '请关注后续活动通知' : '')}}</view>
   </view>
 </view>

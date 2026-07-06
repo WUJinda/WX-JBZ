@@ -1,6 +1,19 @@
 /* pages/home/home.wxss */
 .home-page { padding: 32rpx; }
 .page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+
+/* 活动状态横幅（对齐 activity 页 status-badge 配色：active 绿 / ended 灰 / pending 浅灰） */
+.status-badge {
+  display: inline-block;
+  padding: 6rpx 24rpx;
+  border-radius: 24rpx;
+  font-size: 24rpx;
+  margin-bottom: 24rpx;
+}
+.status-badge.status-ended { color: #fff; background: #999; }
+.status-badge.status-pending { color: #888; background: #f2f3f5; }
+.status-badge.status-none { color: #888; background: #f2f3f5; }
+
 .steps-block { display: flex; justify-content: space-between; margin-bottom: 32rpx; }
 .steps-card {
   flex: 1;
@@ -10,6 +23,9 @@
   border-radius: 16rpx;
   text-align: center;
 }
+/* ended 态：最终累计步数单卡（满宽 + 加大数值） */
+.steps-card-single { flex: none; width: 100%; padding: 40rpx 24rpx; }
+.steps-card-single .steps-value { font-size: 56rpx; }
 .steps-label { display: block; font-size: 26rpx; color: #888; margin-bottom: 12rpx; }
 .steps-value { display: block; font-size: 48rpx; font-weight: 700; color: #1a1a1a; }
 .sync-btn {
@@ -26,6 +42,17 @@
 .auth-denied-block { margin-top: 32rpx; text-align: center; }
 .auth-denied-tip { display: block; font-size: 26rpx; color: #e64340; margin-bottom: 16rpx; }
 .resetting-btn { background: #fff; color: #07c160; border: 1rpx solid #07c160; border-radius: 48rpx; font-size: 28rpx; }
+
+/* ended 态：归档提示（替代同步按钮，静态不可点） */
+.archived-tip {
+  text-align: center;
+  font-size: 26rpx;
+  color: #888;
+  padding: 24rpx;
+  background: #f7f8fa;
+  border-radius: 48rpx;
+  margin-bottom: 16rpx;
+}
 
 /* F4：参与天数 / 活动进度 */
 .days-block { display: flex; justify-content: space-between; margin-top: 32rpx; margin-bottom: 16rpx; }
@@ -109,4 +136,19 @@
   font-size: 26rpx;
   color: #999;
   padding: 60rpx 0;
+}
+
+/* 空态（未开始 / 无活动 / 加载中） */
+.empty-state {
+  text-align: center;
+  padding: 120rpx 32rpx;
+}
+.empty-title {
+  font-size: 32rpx;
+  color: #555;
+  margin-bottom: 16rpx;
+}
+.empty-desc {
+  font-size: 26rpx;
+  color: #999;
 }
