@@ -69,8 +69,10 @@ function calcCountdown(activity, now) {
     );
   }
 
-  // 兜底：信息不全视为已结束归零
-  return { status: STATUS.ENDED, label: '已结束', days: 0, hours: 0, minutes: 0, targetTs: NaN };
+  // 兜底：信息不全保守视为未开始（与后端 deriveStatus / 前端 homeStatus 同口径：缺时间→pending）。
+  // 原实现返 ENDED：current 失败的 EMPTY_ACTIVITY 兜底（start/end=null）会被算成「已结束」，
+  // 与在途的真实活动请求竞态覆盖时，出现「活动未开始 → 活动已结束」的闪烁。改 PENDING 消除该路径。
+  return { status: STATUS.PENDING, label: '距开始', days: 0, hours: 0, minutes: 0, targetTs: NaN };
 }
 
 /**

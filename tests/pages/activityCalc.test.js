@@ -84,6 +84,19 @@ describe('活动主页计算纯函数（C2）', () => {
       calcCountdown(a, '2026-07-10T00:00:00Z');
       expect(JSON.stringify(a)).toBe(snap);
     });
+
+    it('缺时间信息（start/end=null）兜底 PENDING（不误显示已结束——修复「未开始→已结束」闪烁）', () => {
+      // EMPTY_ACTIVITY（current 失败兜底）start/end=null，须保守视为未开始，
+      // 不能算成已结束（否则与在途的真实活动请求竞态覆盖时会出「未开始 → 已结束」闪烁）。
+      const cd = calcCountdown({ start_time: null, end_time: null }, Date.now());
+      expect(cd.status).toBe(STATUS.PENDING);
+      expect(cd.label).toBe('距开始');
+    });
+
+    it('start/end 字段缺失（undefined）兜底 PENDING', () => {
+      const cd = calcCountdown({}, Date.now());
+      expect(cd.status).toBe(STATUS.PENDING);
+    });
   });
 
   describe('calcProgress（进度 R7.1）', () => {

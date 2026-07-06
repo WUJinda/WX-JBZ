@@ -89,10 +89,18 @@ Page({
     this._pendingAvatarTempPath = e.detail.avatarUrl;
   },
 
-  // nickname input 失焦取最终值（type=nickname 微信异步填充，须 bindblur）。
-  onNicknameBlur(e) {
+  // nickname input 过程值实时同步：type=nickname 点击「使用微信昵称」时，微信异步填入 input
+  // 内部 value 并经 bindinput 派发；须即时同步回 data.nickname，否则受控 value="{{nickname}}"
+  // 会用旧值覆盖微信填充，导致「点了微信昵称却填不进去」。bindblur 仅作失焦兜底。
+  onNicknameInput(e) {
     const v = (e && e.detail && e.detail.value) || '';
     this.setData({ nickname: v });
+  },
+
+  // nickname input 失焦兜底取最终值（个别基础库异步填充到 blur 才完整）。
+  onNicknameBlur(e) {
+    const v = (e && e.detail && e.detail.value) || '';
+    if (v) this.setData({ nickname: v });
   },
 
   /** 上传头像临时文件到云存储，返回 fileID。 */

@@ -31,6 +31,7 @@
           value="{{nickname}}"
           placeholder="请输入昵称（1-20字）"
           maxlength="20"
+          bindinput="onNicknameInput"
           bindblur="onNicknameBlur"
         />
       </view>

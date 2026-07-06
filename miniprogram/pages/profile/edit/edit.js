@@ -4,7 +4,9 @@
 // 用微信「头像昵称填写能力」：
 //   - 头像：<button open-type="chooseAvatar" bindchooseavatar> → e.detail.avatarUrl 为临时文件（wxfile://），
 //           需 wx.cloud.uploadFile 上传云存储得 fileID 才能持久化（临时路径重启失效）。
-//   - 昵称：<input type="nickname" bindblur> 取最终值（bindinput 过程值常为空，微信异步填充）。
+//   - 昵称：<input type="nickname"> 必须绑 bindinput 实时同步过程值——点击「使用微信昵称」时
+//           微信异步填入内部 value 并经 bindinput 派发；若只绑 bindblur，受控 value="{{nickname}}"
+//           会用旧 data 值覆盖微信填充，表现为「昵称填不进去」。bindblur 仅作失焦兜底。
 //
 // 提交：调 user.update（更新 User.nickname/avatar）。校验复用 editCalc.validateNickname（与后端同口径）。
 // 红线：本页只展示/提交昵称头像，不涉及手机号 / openid（手机号变更走注销重注册）。
@@ -62,10 +64,21 @@ Page({
     this._pendingAvatarTempPath = e.detail.avatarUrl;
   },
 
-  /** nickname input 失焦取最终值（type=nickname 微信异步填充，须 bindblur）。 */
-  onNicknameBlur(e) {
+  /**
+   * nickname input 过程值实时同步（修复点）。
+   * type=nickname 点击「使用微信昵称」时，微信异步把昵称填入 input 内部 value，
+   * 须借 bindinput 即时同步回 data.nickname——否则受控 value="{{nickname}}"
+   * 会用旧的 data 值覆盖微信的填充，导致「点了微信昵称却填不进去、反复点也无效」。
+   */
+  onNicknameInput(e) {
     const v = (e && e.detail && e.detail.value) || '';
     this.setData({ nickname: v });
+  },
+
+  /** nickname input 失焦兜底取最终值（个别基础库异步填充到 blur 才完整）。 */
+  onNicknameBlur(e) {
+    const v = (e && e.detail && e.detail.value) || '';
+    if (v) this.setData({ nickname: v });
   },
 
   /** 上传头像临时文件到云存储，返回 fileID。 */

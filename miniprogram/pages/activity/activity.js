@@ -24,6 +24,10 @@ Page({
   },
 
   onLoad() {
+    // 标记加载时间，避免 onShow 紧随其后因 _lastLoadTs 未设再发一次 current——
+    // onLoad + onShow 双发并发请求时，若一成功一失败，失败走 EMPTY_ACTIVITY 兜底，
+    // 后返回的会覆盖先返回的真实态，造成状态横跳（修复「未开始 → 已结束」闪烁）。
+    this._lastLoadTs = Date.now();
     this.loadActivity();
   },
 
