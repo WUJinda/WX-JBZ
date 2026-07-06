@@ -36,5 +36,7 @@ desktop.ini
 # === Claude Code 运行时（个人本地 / 临时状态，不入库） ===
 .claude/settings.local.json
 .claude/loop-state.json
+.claude/skills/
 res
 assets/
+.gitnexus
