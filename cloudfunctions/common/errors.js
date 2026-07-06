@@ -21,6 +21,7 @@ const CODE = {
   BIZ_ACTIVITY_ENDED: 2003,
   BIZ_DEPT_NOT_FOUND: 2004,
   BIZ_PARAM_MISSING: 2005,   // 缺少必要参数
+  BIZ_SELF_DEMOTE_FORBIDDEN: 2006, // 禁止自我降级（管理员不能取消自己的管理员身份）
 
   // 步数类 3xxx
   STEP_AUTH_FAILED: 3001,      // getWeRunData 授权失败

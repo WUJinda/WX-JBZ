@@ -99,11 +99,12 @@ function normalizePhone(phone) {
  * @param {string} params.openid 当前用户 openid（由 handler 从 wxContext 取）
  * @param {string} params.phone 已解密的完整手机号（可带 +86/空格等格式）
  * @param {object} params.db 数据库句柄
- * @returns {Promise<object>} { verified: true, phone_masked }
+ * @param {string} [params.superAdminPhone] 超管手机号（handler 注入 process.env.SUPER_ADMIN_PHONE；命中则授予 is_admin）
+ * @returns {Promise<object>} { verified: true, phone_masked, is_admin? }（is_admin 仅命中超管时出现）
  * @throws {BizError} 非白名单 / 非合法手机号 / User 不存在
  */
 async function verifyPhone(params) {
-  const { openid, phone: rawPhone, db } = params || {};
+  const { openid, phone: rawPhone, db, superAdminPhone } = params || {};
   if (!openid || typeof openid !== 'string') {
     throw BizError(CODE.AUTH_NO_OPENID, 'verifyPhone: openid required');
   }
@@ -139,12 +140,20 @@ async function verifyPhone(params) {
     throw BizError(CODE.AUTH_USER_NOT_FOUND, 'verifyPhone: user not found, login first');
   }
 
-  await userCol.where({ _openid: openid }).update({
-    data: { phone, phone_masked, updated_at: new Date() }
-  });
+  // 超管授予：若配置了 superAdminPhone 且当前手机号（归一化后）匹配，则一并写 is_admin:true。
+  // superAdminPhone 由 handler 注入（读 process.env.SUPER_ADMIN_PHONE），本纯函数不直接读 env，
+  // 保持可单测。两侧均经 normalizePhoneInput 归一化，容忍环境变量录入格式差异（+86/空格等）。
+  // 冷启动机制：第一个超管由此产生；之后超管可在 app 内用 admin.setAdmin 任命他人。
+  const grantAdmin = !!superAdminPhone && normalizePhoneInput(superAdminPhone) === phone;
 
-  // 仅下发脱敏手机号（红线：完整手机号留在后端）
-  return { verified: true, phone_masked };
+  const updateData = { phone, phone_masked, updated_at: new Date() };
+  if (grantAdmin) updateData.is_admin = true;
+  await userCol.where({ _openid: openid }).update({ data: updateData });
+
+  // 仅下发脱敏手机号（红线：完整手机号留在后端）；命中超管时附带 is_admin 标记。
+  const result = { verified: true, phone_masked };
+  if (grantAdmin) result.is_admin = true;
+  return result;
 }
 
 module.exports = {

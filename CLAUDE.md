@@ -49,6 +49,13 @@ npm run verify:dist         # 校验 dist 产物完整性(共享层注入 + requ
 - `assertUserExists(db, openid)`、`assertJoined(user)`、`assertAdmin(store, openid)` 在 handler 入口按需显式调用,各自抛对应 `BizError`。
 - 入参里的 `user_id` **不可信**(防越权读写他人数据),用户身份一律用 `context.openid`。敏感字段(`_openid`/`sync_count`/`phone`)用 `loadByWhere` 的 field 投影剔除。
 
+### 超管与角色任命(管理员从哪来)
+
+`User.is_admin` 默认 `false`,注册不会让人变管理员——两角色分离本身已就位(`activity.save` + `admin.*` 共 9 个 action 入口都过 `assertAdmin`,普通用户调即 `AUTH_NOT_ADMIN`)。**唯一要解决的是「第一个管理员怎么产生」:**
+- **冷启动**:`auth` 云函数环境变量 `SUPER_ADMIN_PHONE`(纯数字 11 位,**绝不入源码**)。`authPhone.verifyPhone` 验证手机号命中该号时一并写 `is_admin:true`(`handlePhone` 读 env 注入 `superAdminPhone`,纯函数可测)。或直接在云数据库 `User` 把自己的 `is_admin` 改 `true`(等价、最快)。
+- **任命他人**:管理员在「用户管理」页点开关 → `admin.setAdmin`(`assertAdmin` 守卫)→ `setAdminRole` 纯函数写 `User.is_admin`。**禁止自我降级**(`BIZ_SELF_DEMOTE_FORBIDDEN:2006`,防误操作后无人可管)。
+- 前端入口:管理员在 `profile` 页「后台管理」+ `home` 页顶部「管理后台」/ 空态「去创建活动」均可进后台(均 `is_admin` 守卫)。
+
 ### 步数同步主路径(session_key 用后即弃)
 
 `steps.sync`:前端每次带**最新** `wx.login` code + `getWeRunData` 的 encryptedData/iv → 云函数当次 `code2Session` 换新鲜 `session_key` → 立即解密 → **绝不落库、绝不下发**(微信规则下每次 `wx.login` 会让旧 key 失效,长存必然解密失败)。

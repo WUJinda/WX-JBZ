@@ -25,6 +25,10 @@ describe('errors 模块', () => {
     expect(CODE.BIZ_PARAM_MISSING).not.toBe(CODE.STEP_ACTIVITY_CLOSED);
   });
 
+  it('BIZ_SELF_DEMOTE_FORBIDDEN 码值为 2006（禁止自我降级，2xxx 业务类）', () => {
+    expect(CODE.BIZ_SELF_DEMOTE_FORBIDDEN).toBe(2006);
+  });
+
   it('BizError 构造出带 code 的 Error', () => {
     const err = BizError(CODE.AUTH_NO_OPENID, 'openid missing');
     expect(err).toBeInstanceOf(Error);

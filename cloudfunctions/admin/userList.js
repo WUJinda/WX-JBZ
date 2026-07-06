@@ -2,7 +2,7 @@
  * admin.queryUsers 纯函数（对齐技术架构 §122，PRD F8 用户管理）。
  *
  * 职责：从 store.User 筛选（deptId 等值；keyword 模糊匹配 nickname/phone_masked，大小写不敏感）+ 本地分页。
- *   - projectUser 下发白名单字段：nickname/avatar/phone_masked/dept_id/join_status/joined_at/created_at。
+ *   - projectUser 下发白名单字段：nickname/avatar/phone_masked/dept_id/join_status/joined_at/created_at/is_admin。
  *   - 绝不下发 _openid / phone（红线，逐字段白名单）。
  *   - DEFAULT_PAGE_SIZE=50。
  *
@@ -21,7 +21,8 @@ const USER_FIELDS = [
   'dept_id',
   'join_status',
   'joined_at',
-  'created_at'
+  'created_at',
+  'is_admin' // 后台需显示角色 + 提供任命/撤销入口（admin.setAdmin）；非敏感字段
 ];
 
 /**

@@ -23,6 +23,7 @@ const { parseWhitelist } = require('./whitelistParse');
 const { applyWhitelistImport } = require('./whitelistImport');
 const { queryUsers } = require('./userList');
 const { changeUserDept } = require('./changeDept');
+const { setAdminRole } = require('./adminRole');
 const { queryAbnormal } = require('./abnormalList');
 const { applyVerdict } = require('./verdict');
 const { createDept, updateDept, deleteDept } = require('./deptManage');
@@ -88,6 +89,26 @@ const handlers = {
     });
     // 写回 User.dept_id（幂等）。
     await updateUserDeptToCloud(cloud, result.userId, result.deptId, result.updatedAt);
+    return result;
+  },
+
+  // 任命/撤销管理员（管理员互任）：assertAdmin → setAdminRole → 写回 User.is_admin。
+  // callerOpenid 用于「禁止自我降级」判定（管理员不能取消自己的管理员身份，防误操作后无人可管）。
+  setAdmin: async (event, context) => {
+    const store = {
+      User: await loadByWhere(cloud,'User')
+    };
+    assertAdmin(store, context.openid);
+
+    const now = (event && event.now) || new Date().toISOString();
+    const result = setAdminRole(store, {
+      userId: event && event.user_id,
+      isAdmin: !!(event && event.is_admin),
+      callerOpenid: context.openid,
+      now
+    });
+    // 写回 User.is_admin（幂等）。
+    await updateAdminRoleToCloud(cloud, result.userId, result.isAdmin, result.updatedAt);
     return result;
   },
 
@@ -256,6 +277,21 @@ async function updateUserDeptToCloud(cloudSdk, userId, deptId, updatedAt) {
   } catch (err) {
     // P1-3：写库失败上抛（不再静默吞致前端假成功）。
     throw BizError(CODE.SYS_DB_ERROR, 'User.dept_id 写回失败(' + userId + '): ' + ((err && err.message) || err));
+  }
+}
+
+/**
+ * 云轨：写回 User.is_admin（幂等）。
+ */
+async function updateAdminRoleToCloud(cloudSdk, userId, isAdmin, updatedAt) {
+  const db = cloudSdk.database();
+  try {
+    await db.collection('User').doc(userId).update({
+      data: { is_admin: isAdmin, updated_at: updatedAt }
+    });
+  } catch (err) {
+    // P1-3：写库失败上抛（不再静默吞致前端假成功）。
+    throw BizError(CODE.SYS_DB_ERROR, 'User.is_admin 写回失败(' + userId + '): ' + ((err && err.message) || err));
   }
 }
 

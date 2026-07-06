@@ -2,6 +2,19 @@
 .home-page { padding: 32rpx; }
 .page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
 
+/* 管理员常驻入口（首页直达后台） */
+.admin-shortcut {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.admin-shortcut-title { flex: 1; font-size: 28rpx; color: #07c160; font-weight: 600; }
+.admin-shortcut-arrow { font-size: 32rpx; color: #ccc; }
+
 /* 活动状态横幅（对齐 activity 页 status-badge 配色：active 绿 / ended 灰 / pending 浅灰） */
 .status-badge {
   display: inline-block;
@@ -151,4 +164,13 @@
 .empty-desc {
   font-size: 26rpx;
   color: #999;
+}
+.empty-admin-btn {
+  display: inline-block;
+  margin-top: 32rpx;
+  padding: 16rpx 48rpx;
+  background: #07c160;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 28rpx;
 }

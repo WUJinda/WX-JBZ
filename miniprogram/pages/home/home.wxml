@@ -4,6 +4,12 @@
 <view class="home-page">
   <view class="page-title">{{pageLabel}}</view>
 
+  <!-- 管理员常驻入口（仅 is_admin=true 显示）：直达后台 -->
+  <view class="admin-shortcut" wx:if="{{isAdmin}}" bindtap="onAdminEntry">
+    <text class="admin-shortcut-title">管理后台</text>
+    <text class="admin-shortcut-arrow">›</text>
+  </view>
+
   <!-- 状态横幅（非 active 态显示；对齐 activity 页 status-badge 配色） -->
   <view class="status-badge status-{{activityStatus}}" wx:if="{{activityStatus === 'ended' || activityStatus === 'pending' || activityStatus === 'none'}}">{{activityStatus === 'ended' ? '活动已结束' : (activityStatus === 'pending' ? '活动未开始' : '暂无活动')}}</view>
 
@@ -115,5 +121,7 @@
   <view class="empty-state" wx:elif="{{activityStatus === 'pending' || activityStatus === 'none' || activityStatus === 'unknown'}}">
     <view class="empty-title">{{activityStatus === 'pending' ? '活动尚未开始' : (activityStatus === 'none' ? '暂无进行中的活动' : '加载中...')}}</view>
     <view class="empty-desc">{{activityStatus === 'pending' ? '请关注后续通知，活动开始后即可同步步数' : (activityStatus === 'none' ? '请关注后续活动通知' : '')}}</view>
+    <!-- 管理员：空态直达创建/编辑活动（none 创建 / pending 编辑未开始的活动） -->
+    <view class="empty-admin-btn" wx:if="{{isAdmin && (activityStatus === 'none' || activityStatus === 'pending')}}" bindtap="onCreateActivity">{{activityStatus === 'none' ? '去创建活动' : '编辑活动'}}</view>
   </view>
 </view>

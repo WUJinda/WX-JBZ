@@ -147,6 +147,61 @@ Page({
       });
   },
 
+  /**
+   * 设为/取消管理员 → admin.setAdmin。
+   * 取消需二次确认（误点代价高——被取消者立即失去后台入口）。
+   * 自我降级（取消自己）由后端 setAdminRole 抛 2006 拦截，前端据 message 提示。
+   */
+  onToggleAdmin(e) {
+    if (this._togglingAdmin) return; // 防重锁
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+    const userId = ds.userId;
+    // wxml data-* 经 dataset 传值可能为 boolean 或字符串，统一兼容。
+    const curIsAdmin = ds.isAdmin === true || ds.isAdmin === 'true';
+    if (!userId) return;
+    const nextIsAdmin = !curIsAdmin;
+
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      wx.showToast({ title: '云能力未就绪', icon: 'none' });
+      return;
+    }
+
+    const run = () => {
+      this._togglingAdmin = true;
+      api
+        .call('admin', { action: 'setAdmin', user_id: userId, is_admin: nextIsAdmin }, { loading: '保存中' })
+        .then(() => {
+          this._togglingAdmin = false;
+          // 本地刷新该行（避免整表重拉，保留分页/筛选态）。
+          const list = this.data.list.map((u) =>
+            u && u._id === userId ? Object.assign({}, u, { is_admin: nextIsAdmin }) : u
+          );
+          this.setData({ list });
+          wx.showToast({ title: nextIsAdmin ? '已设为管理员' : '已取消管理员', icon: 'success' });
+        })
+        .catch((err) => {
+          this._togglingAdmin = false;
+          // 2006 自我降级 / 1003 非管理员 → 提示具体原因；其它兜底「操作失败」。
+          wx.showToast({ title: (err && err.message) || '操作失败，请重试', icon: 'none' });
+        });
+    };
+
+    if (nextIsAdmin) {
+      run();
+    } else {
+      // 取消管理员：二次确认。
+      wx.showModal({
+        title: '取消管理员',
+        content: '确定取消该用户的管理员身份？',
+        success: (res) => {
+          if (res.confirm) run();
+        }
+      });
+    }
+  },
+
   /** 拉取部门选项（dept.list）。本地轨失败 → 静默空选项。 */
   loadDeptOptions() {
     const app = getApp();

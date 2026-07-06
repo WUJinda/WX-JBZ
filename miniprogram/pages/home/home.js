@@ -32,7 +32,9 @@ Page({
     trendEmpty: true,
     // 活动状态感知（homeStatus 纯函数驱动）：unknown/active/ended/pending/none
     activityStatus: ACT_STATUS.UNKNOWN,
-    activityName: ''
+    activityName: '',
+    // 管理员快捷入口（仅 is_admin=true 显示）：顶部「管理后台」+ 空态「去创建活动」
+    isAdmin: false
   },
 
   onLoad() {
@@ -44,8 +46,40 @@ Page({
 
   onShow() {
     this.refreshLastSyncText();
+    this.loadAdminFlag();
     // 按活动状态决定显示模式（active/ended 加载数据；pending/none 空态；unknown 补调 current）。
     this.ensureActivityStatus();
+  },
+
+  /**
+   * 加载管理员标识（决定首页是否显示管理入口）。
+   * 优先读 globalData.isAdmin（profile 已写入），命中即不请求；
+   * 冷启动 home 先于 profile 时兜底调一次 user.profile。
+   */
+  loadAdminFlag() {
+    const app = getApp();
+    if (app && app.globalData && typeof app.globalData.isAdmin === 'boolean') {
+      this.setData({ isAdmin: app.globalData.isAdmin });
+      return;
+    }
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') return;
+    api
+      .call('user', { action: 'profile' }, { loading: false, silent: true })
+      .then((data) => {
+        const isAdmin = !!(data && data.is_admin === true);
+        // 与 profile.js 同口径：user.profile 成功 = User 存在 = 已登录，须同步写 loggedIn，
+        // 否则冷启动从首页「管理后台」入口直进 admin 页会被 enterAdminGuard 拦回登录页
+        // （loggedIn 全项目仅 profile.js 写入；home 绕过 profile 时会漏写）。
+        if (app && app.globalData) {
+          app.globalData.isAdmin = isAdmin;
+          app.globalData.loggedIn = true;
+        }
+        this.setData({ isAdmin });
+      })
+      .catch(() => {
+        // 未登录 / 本地轨：保持 isAdmin=false（管理入口不显示）。
+      });
   },
 
   /**
@@ -372,5 +406,17 @@ Page({
   onMyRankTap() {
     if (typeof wx === 'undefined' || !wx.switchTab) return;
     wx.switchTab({ url: '/pages/rank/rank' });
+  },
+
+  /** 管理员：进入后台首页（dashboard）。admin 页非 tabBar，用 navigateTo。 */
+  onAdminEntry() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/admin/dashboard/dashboard' });
+  },
+
+  /** 管理员：空态直达创建/编辑活动（活动配置页）。 */
+  onCreateActivity() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/admin/activity/activity' });
   }
 });

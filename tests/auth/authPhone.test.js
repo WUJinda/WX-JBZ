@@ -154,4 +154,62 @@ describe('auth.phone 纯函数', () => {
       expect(out.verified).toBe(true);
     });
   });
+
+  describe('超管授予（superAdminPhone，首个超管冷启动）', () => {
+    it('命中 superAdminPhone：一并写 is_admin:true，返回带 is_admin', async () => {
+      const { db, store } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', phone: '', phone_masked: '', is_admin: false }]
+      });
+      const out = await verifyPhone({
+        openid: 'oU',
+        phone: '13812341234',
+        db,
+        superAdminPhone: '13812341234'
+      });
+      expect(out.verified).toBe(true);
+      expect(out.is_admin).toBe(true);
+      expect(store.User[0].is_admin).toBe(true);
+    });
+
+    it('superAdminPhone 带 +86 前缀归一化后仍命中（无空格形式 +86138...）', async () => {
+      const { db, store } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', phone: '', phone_masked: '', is_admin: false }]
+      });
+      const out = await verifyPhone({
+        openid: 'oU',
+        phone: '13812341234',
+        db,
+        // normalizePhoneInput 仅识别「紧跟 11 位数字的 +86」前缀；
+        // 故环境变量配超管号应使用纯数字或无空格 +86 形式（与白名单录入同口径）。
+        superAdminPhone: '+8613812341234'
+      });
+      expect(out.is_admin).toBe(true);
+      expect(store.User[0].is_admin).toBe(true);
+    });
+
+    it('不命中 superAdminPhone：不改 is_admin，返回值不带 is_admin', async () => {
+      const { db, store } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', phone: '', phone_masked: '', is_admin: false }]
+      });
+      const out = await verifyPhone({
+        openid: 'oU',
+        phone: '13812341234',
+        db,
+        superAdminPhone: '13900000000'
+      });
+      expect(out.verified).toBe(true);
+      expect(out).not.toHaveProperty('is_admin');
+      expect(store.User[0].is_admin).toBe(false);
+    });
+
+    it('未传 superAdminPhone：不改 is_admin（向后兼容）', async () => {
+      const { db, store } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', phone: '', phone_masked: '', is_admin: false }]
+      });
+      const out = await verifyPhone({ openid: 'oU', phone: '13812341234', db });
+      expect(out.verified).toBe(true);
+      expect(out).not.toHaveProperty('is_admin');
+      expect(store.User[0].is_admin).toBe(false);
+    });
+  });
 });

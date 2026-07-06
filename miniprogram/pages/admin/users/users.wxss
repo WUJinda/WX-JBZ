@@ -73,9 +73,20 @@
   min-width: 0;
 }
 .nickname {
+  display: flex;
+  align-items: center;
   font-size: 30rpx;
   color: #1a1a1a;
   font-weight: 500;
+}
+.admin-badge {
+  margin-left: 12rpx;
+  font-size: 20rpx;
+  color: #fff;
+  background: #07c160;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  font-weight: 400;
 }
 .meta {
   font-size: 24rpx;
@@ -91,13 +102,30 @@
   padding: 2rpx 12rpx;
   border-radius: 8rpx;
 }
-.change-dept-btn {
+.row-actions {
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.change-dept-btn {
   font-size: 24rpx;
   color: #07c160;
   border: 1rpx solid #07c160;
   border-radius: 24rpx;
   padding: 8rpx 20rpx;
+}
+.admin-btn {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #07c160;
+  border: 1rpx solid #07c160;
+  border-radius: 24rpx;
+  padding: 8rpx 20rpx;
+}
+.admin-btn-danger {
+  color: #e64c45;
+  border-color: #e64c45;
 }
 
 /* 分页加载 */

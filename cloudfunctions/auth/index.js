@@ -86,7 +86,8 @@ async function handlePhone({ cloud, event, context }) {
   // 解密取真实手机号（红线：不读 event.phone 明文）。
   const phone = await decryptPhone({ cloud, code: event && event.code });
   // event.phone 明文在此被彻底忽略——故意不引用它进入业务。
-  return verifyPhone({ openid, phone, db });
+  // 超管手机号由环境变量注入（绝不入源码），verifyPhone 命中则授予 is_admin（首个超管冷启动）。
+  return verifyPhone({ openid, phone, db, superAdminPhone: process.env.SUPER_ADMIN_PHONE || '' });
 }
 
 // handler 表：action -> handler。handler 只做「取上下文 → 调纯函数 → 组装出入参」。

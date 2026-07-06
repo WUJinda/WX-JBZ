@@ -43,7 +43,10 @@
     <view class="user-row" wx:for="{{list}}" wx:key="_id">
       <image class="avatar" src="{{item.avatar}}" mode="aspectFill"></image>
       <view class="info">
-        <view class="nickname">{{item.nickname || '未命名'}}</view>
+        <view class="nickname">
+          <text>{{item.nickname || '未命名'}}</text>
+          <text class="admin-badge" wx:if="{{item.is_admin}}">管理员</text>
+        </view>
         <view class="meta">
           <text class="phone">{{item.phone_masked}}</text>
           <text class="dot">·</text>
@@ -53,12 +56,20 @@
           <text class="join-status">{{item.joinStatusText}}</text>
         </view>
       </view>
-      <view
-        class="change-dept-btn"
-        data-user-id="{{item._id}}"
-        data-dept-id="{{item.dept_id}}"
-        bindtap="onOpenDeptPicker"
-      >改部门</view>
+      <view class="row-actions">
+        <view
+          class="change-dept-btn"
+          data-user-id="{{item._id}}"
+          data-dept-id="{{item.dept_id}}"
+          bindtap="onOpenDeptPicker"
+        >改部门</view>
+        <view
+          class="admin-btn {{item.is_admin ? 'admin-btn-danger' : ''}}"
+          data-user-id="{{item._id}}"
+          data-is-admin="{{item.is_admin}}"
+          bindtap="onToggleAdmin"
+        >{{item.is_admin ? '取消管理员' : '设为管理员'}}</view>
+      </view>
     </view>
   </view>
 

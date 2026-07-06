@@ -444,7 +444,7 @@ describe('mask.js 脱敏纯函数挂载（G1）', () => {
 });
 
 describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
-  it('admin/index.js 的 handlers 表挂载 7 个 action（不再 not implemented）', () => {
+  it('admin/index.js 的 handlers 表挂载 8 个 action（不再 not implemented）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     expect(src).toMatch(/\bwhitelistImport\s*:\s*async/);
     expect(src).toMatch(/\busers\s*:\s*async/);
@@ -453,6 +453,7 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/\bverdict\s*:\s*async/);
     expect(src).toMatch(/\bdashboard\s*:\s*async/);
     expect(src).toMatch(/\bdeptManage\s*:\s*async/);
+    expect(src).toMatch(/\bsetAdmin\s*:\s*async/);
   });
 
   it('admin/index.js require 全部纯函数模块', () => {
@@ -466,17 +467,18 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/require\(['"]\.\/verdict['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/deptManage['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/dashboard['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/adminRole['"]\)/);
   });
 
-  it('admin/index.js 全部 8 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
+  it('admin/index.js 全部 9 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     // 语义说明：每个管理员 handler 必须在入口调用 assertAdmin 做管理员守卫，
     // 漏一个 handler 会导致非管理员可绕过鉴权调用该 action。
-    // admin 共 8 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage/ensureSchema），
-    // 故 assertAdmin 语句调用必须精确出现 8 次（每个 handler 内 1 次）。
+    // admin 共 9 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage/setAdmin/ensureSchema），
+    // 故 assertAdmin 语句调用必须精确出现 9 次（每个 handler 内 1 次）。
     const actions = [
       'whitelistImport', 'users', 'changeDept',
-      'abnormalList', 'verdict', 'dashboard', 'deptManage', 'ensureSchema'
+      'abnormalList', 'verdict', 'dashboard', 'deptManage', 'setAdmin', 'ensureSchema'
     ];
     // 结构化断言：每个 handler 块内都含 assertAdmin（按 handler 名切分源码块）。
     for (const act of actions) {
@@ -507,19 +509,19 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src.slice(saveIdx, saveIdx + 800).includes('assertAdmin(')).toBe(true);
   });
 
-  it('assertAdmin 全仓调用总数 = 9（admin 8 + activity.save 1），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 10（admin 9 + activity.save 1），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
     const activitySrc = readSource('cloudfunctions/activity/index.js');
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(adminCount).toBe(8);
+    expect(adminCount).toBe(9);
     expect(activityCount).toBe(1);
-    expect(adminCount + activityCount).toBe(9);
+    expect(adminCount + activityCount).toBe(10);
   });
 
-  it('admin 纯函数模块文件存在（8 个）', () => {
+  it('admin 纯函数模块文件存在（9 个）', () => {
     const files = [
       'cloudfunctions/admin/adminGuard.js',
       'cloudfunctions/admin/whitelistParse.js',
@@ -529,7 +531,8 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
       'cloudfunctions/admin/abnormalList.js',
       'cloudfunctions/admin/verdict.js',
       'cloudfunctions/admin/deptManage.js',
-      'cloudfunctions/admin/dashboard.js'
+      'cloudfunctions/admin/dashboard.js',
+      'cloudfunctions/admin/adminRole.js'
     ];
     for (const rel of files) {
       expect(fs.existsSync(path.join(ROOT, rel)), `缺少纯函数模块: ${rel}`).toBe(true);
@@ -546,7 +549,8 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
       'cloudfunctions/admin/abnormalList.js',
       'cloudfunctions/admin/verdict.js',
       'cloudfunctions/admin/deptManage.js',
-      'cloudfunctions/admin/dashboard.js'
+      'cloudfunctions/admin/dashboard.js',
+      'cloudfunctions/admin/adminRole.js'
     ];
     for (const rel of modules) {
       const src = readSource(rel);
