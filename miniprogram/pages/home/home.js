@@ -3,6 +3,7 @@
 // F4：增量补齐步数展示（统计/趋势/参与天数/排名入口/空态），不破坏 E4 同步状态机。
 const { STATES, transition, shouldThrottle } = require('./homeSync');
 const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
+const { handleNotLoggedIn } = require('../../utils/authGuard');
 
 Page({
   data: {
@@ -174,6 +175,8 @@ Page({
       })
       .catch((err) => {
         wx.hideLoading();
+        // 1002 未登录 → 守卫引导登录（sync 需登录态）。
+        if (handleNotLoggedIn(err)) return;
         if (err && err.code === 3003) {
           // STEP_SYNC_LIMIT 频控（R3.3）
           this.apply({ type: 'CLOUD_RATE_LIMIT' });
@@ -231,7 +234,9 @@ Page({
           todaySteps: typeof d.today_steps === 'number' ? d.today_steps : this.data.todaySteps
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        // 1002 未登录 → 守卫引导登录（stats 需登录态）。
+        if (handleNotLoggedIn(err)) return;
         // 本地轨：云函数未部署 → 占位空态，不弹错误（同步功能照常）。
       });
   },
@@ -255,7 +260,8 @@ Page({
         const list = (data && data.list) || [];
         this.applyTrend(list, r);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (handleNotLoggedIn(err)) return;
         this.applyTrend([], r);
       });
   },

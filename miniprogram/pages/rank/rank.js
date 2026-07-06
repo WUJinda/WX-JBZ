@@ -16,6 +16,7 @@ const {
   DEFAULT_PAGE_SIZE
 } = require('./rankCalc');
 const { hasMore } = require('../../utils/pagination');
+const { handleNotLoggedIn } = require('../../utils/authGuard');
 
 Page({
   data: {
@@ -179,7 +180,9 @@ Page({
           errorMsg: ''
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        // 1002 未登录 → 守卫引导登录（rank.* 需登录态）。
+        if (handleNotLoggedIn(err)) return;
         // 本地轨：云函数未部署 → 空态占位，不弹错误（照 home.loadStats 模式）。
         this.setData({
           loading: false,
@@ -212,7 +215,8 @@ Page({
         const myRank = (pd && pd.myRank) || null;
         if (myRank) this.setData({ myRank });
       } catch (e) {
-        // 占位：myRank 保持空，贡献占比显示 0。
+        // 1002 未登录 → 守卫引导登录；否则占位（myRank 空，贡献占比 0）。
+        if (handleNotLoggedIn(e)) return;
       }
     }
     const page = reset ? 1 : this.data.deptPage;
@@ -257,7 +261,8 @@ Page({
           errorMsg: ''
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        if (handleNotLoggedIn(err)) return;
         this.setData({
           loading: false,
           loadingMore: false,
@@ -311,7 +316,8 @@ Page({
           errorMsg: ''
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        if (handleNotLoggedIn(err)) return;
         this.setData({
           loading: false,
           loadingMore: false,

@@ -6,6 +6,8 @@
 // api 实例从 getApp().api 取（与其余页一致，避免模块级 createApi 在本地轨发起真实 callFunction）。
 // 实际调用处在函数内取 app.api 并守卫。
 
+const { handleNotLoggedIn } = require('../../utils/authGuard');
+
 Page({
   data: {
     pageLabel: '个人资料',
@@ -36,7 +38,7 @@ Page({
       return;
     }
     api
-      .call('user', { action: 'profile' })
+      .call('user', { action: 'profile' }, { silent: true })
       .then((data) => {
         const isAdmin = !!(data && data.is_admin === true);
         // P1-7：写入全局上下文，供 admin 页 enterAdminGuard 守卫读取。
@@ -57,6 +59,8 @@ Page({
         });
       })
       .catch((err) => {
+        // 1002 AUTH_USER_NOT_FOUND（未登录建号）→ 统一守卫弹框引导去登录页（utils/authGuard）。
+        if (handleNotLoggedIn(err)) return;
         // 本地轨失败 → adminVisible 保持 false（入口不显示，符合「仅管理员可见」）
         self.setData({ loading: false, errorMsg: (err && err.message) || '加载失败', adminVisible: false });
       });
