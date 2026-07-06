@@ -187,12 +187,22 @@ const handlers = {
   // （ensureSchema 是幂等无害的运维操作，且控制台调试本身已具备云开发开发者权限边界）。
   ensureSchema: async (event, context) => {
     if (context && context.openid) {
+      // 小程序调用（必有 OPENID）：强制管理员守卫，与其他 action 一致。
       const store = {
         User: await loadByWhere(cloud,'User')
       };
       assertAdmin(store, context.openid);
+    } else if (process.env.SCHEMA_DEBUG_BYPASS === '1') {
+      // 显式调试旁路：仅当开发者手动设置环境变量 SCHEMA_DEBUG_BYPASS=1 时生效
+      // （云控制台无 wxContext 的建表/建索引场景）。默认生产关闭，杜绝匿名通道越权触发写库。
+      console.warn('[ensureSchema] SCHEMA_DEBUG_BYPASS=1，跳过管理员守卫（仅限调试，生产勿开）');
     } else {
-      console.warn('[ensureSchema] 无 openid，按云控制台调试模式执行（跳过管理员守卫）');
+      // 无 openid 且未开启显式旁路：拒绝。修正「无 openid 即放行」的隐式越权面
+      // （原实现假设「无 openid = 云控制台」，但该假设在匿名 HTTP 通道等场景不成立）。
+      throw BizError(
+        CODE.AUTH_NO_OPENID,
+        'ensureSchema: 需管理员身份；云控制台调试请设环境变量 SCHEMA_DEBUG_BYPASS=1'
+      );
     }
     return ensureSchema(cloud);
   }
@@ -321,8 +331,9 @@ exports.main = async (event) => {
       return fail(err.code, err.message);
     }
     // 取调用者 openid（仅取 OPENID，admin 守卫由 assertAdmin 承担）。
-    // ensureSchema 允许无 openid（云控制台调试模式）：控制台调试无 wxContext，
-    // authMiddleware 会抛 AUTH_NO_OPENID；此处对 ensureSchema 软取，由 handler 内决定是否守卫。
+    // ensureSchema 允许无 openid 透传到 handler：云控制台调试无 wxContext 时 authMiddleware 抛
+    // AUTH_NO_OPENID。handler 内按「有 openid→assertAdmin / 无 openid→须显式设环境变量
+    // SCHEMA_DEBUG_BYPASS=1 才放行，否则拒绝」处理，杜绝「无 openid 即放行」的隐式越权面。
     let context;
     try {
       context = authMiddleware({ getWXContext: cloud.getWXContext });

@@ -113,4 +113,22 @@ describe('deleteDept（删除部门）', () => {
     }
     expect(err.code).toBe(CODE.BIZ_DEPT_NOT_FOUND);
   });
+
+  it('部门下仍有成员 → 拒绝删除抛 SYS_DB_ERROR（孤儿数据防护）', () => {
+    const store = makeStore();
+    store.User = [
+      { _openid: 'oA', dept_id: 'd_01', join_status: 'joined' },
+      { _openid: 'oB', dept_id: 'd_01', join_status: 'pending' }
+    ];
+    let err;
+    try {
+      deleteDept(store, { deptId: 'd_01' });
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeTruthy();
+    expect(err.code).toBe(CODE.SYS_DB_ERROR);
+    // 部门未被删除（成员未转移前不可删）
+    expect(store.Department.find((d) => d.dept_id === 'd_01')).toBeTruthy();
+  });
 });

@@ -56,8 +56,7 @@ function genActivityId(ts) {
  * @param {Date|number} [params.now] 当前时间（默认 new Date()）
  * @returns {object} projectSavedActivity 结果（含推算 status）
  * @throws {BizError}
- *   - name 空 → SYS_DB_ERROR
- *   - start_time/end_time 缺失或非法 / start>=end → SYS_DB_ERROR
+ *   - name 空 / start_time、end_time 缺失或非法 / start>=end → BIZ_PARAM_MISSING
  *   - store.Activity 缺失 → SYS_DB_ERROR
  */
 function saveActivity(store, params) {
@@ -69,20 +68,21 @@ function saveActivity(store, params) {
     throw BizError(CODE.SYS_DB_ERROR, 'saveActivity: store.Activity is required');
   }
 
-  // name 必填
+  // name 必填（参数类错误 → BIZ_PARAM_MISSING，区别于下方 store 缺失的 SYS_DB_ERROR）
   const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (!name) {
-    throw BizError(CODE.SYS_DB_ERROR, 'saveActivity: name required');
+    throw BizError(CODE.BIZ_PARAM_MISSING, 'saveActivity: name required');
   }
 
   // 起止时间必填 + 合法 + 不可倒序（用 activityStatus._toTs 比较，与 deriveStatus 同源）
+  // 参数类错误 → BIZ_PARAM_MISSING（前端据此提示「参数缺失」而非「系统错误」）
   const startTs = _toTs(input.start_time);
   const endTs = _toTs(input.end_time);
   if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
-    throw BizError(CODE.SYS_DB_ERROR, 'saveActivity: start_time/end_time invalid');
+    throw BizError(CODE.BIZ_PARAM_MISSING, 'saveActivity: start_time/end_time invalid');
   }
   if (!(startTs < endTs)) {
-    throw BizError(CODE.SYS_DB_ERROR, 'saveActivity: start_time must be earlier than end_time');
+    throw BizError(CODE.BIZ_PARAM_MISSING, 'saveActivity: start_time must be earlier than end_time');
   }
 
   // 复用 deriveStatus 推算 status（now 缺省则 deriveStatus 内部取 new Date()）。

@@ -79,6 +79,9 @@ const COLLECTIONS = {
   Activity: {
     description: '活动（对齐技术架构 §5.4，PRD F7）',
     indexes: [
+      // activity_id 是活动业务主键，必须唯一——防 save upsert 的 TOCTOU 窗口产生重复活动文档
+      // （current 取 activities[0] 与 save 编辑的可能不是同一文档，导致显示/编辑错位）。
+      { name: 'idx_activity_id', fields: { activity_id: 1 }, unique: true },
       { name: 'idx_activity_status', fields: { status: 1 }, unique: false },
       { name: 'idx_activity_start', fields: { start_time: 1 }, unique: false }
     ],

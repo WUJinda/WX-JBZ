@@ -131,6 +131,18 @@ function deleteDept(store, params) {
     throw BizError(CODE.BIZ_DEPT_NOT_FOUND, 'deleteDept: dept not found');
   }
 
+  // 孤儿数据防护：若有 User 仍归属该部门，拒绝删除（强制管理员先转移/清除成员）。
+  // 避免 User.dept_id 悬空导致 userList 筛选 / 部门榜分布 / 部门下拉失真。
+  // store.User 可缺省（旧测试或非 deptManage handler 调用），缺省视为无成员不阻断。
+  const users = Array.isArray(store && store.User) ? store.User : [];
+  const memberCount = users.filter((u) => u && u.dept_id === deptId).length;
+  if (memberCount > 0) {
+    throw BizError(
+      CODE.SYS_DB_ERROR,
+      'deleteDept: 部门下仍有 ' + memberCount + ' 名成员，请先转移成员再删除'
+    );
+  }
+
   store.Department.splice(idx, 1);
   return { deptId, deleted: true };
 }

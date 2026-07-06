@@ -103,7 +103,7 @@ describe('saveActivity（正常路径）', () => {
 });
 
 describe('saveActivity（校验）', () => {
-  it('name 空 → SYS_DB_ERROR', () => {
+  it('name 空 → BIZ_PARAM_MISSING', () => {
     const store = makeStore([]);
     let err;
     try {
@@ -112,22 +112,22 @@ describe('saveActivity（校验）', () => {
       err = e;
     }
     expect(err).toBeTruthy();
-    expect(err.code).toBe(CODE.SYS_DB_ERROR);
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
     // 不应落库
     expect(store.Activity.length).toBe(0);
   });
 
-  it('name 缺失 → SYS_DB_ERROR', () => {
+  it('name 缺失 → BIZ_PARAM_MISSING', () => {
     let err;
     try {
       saveActivity(makeStore([]), { activity: { start_time: START, end_time: END } });
     } catch (e) {
       err = e;
     }
-    expect(err.code).toBe(CODE.SYS_DB_ERROR);
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
   });
 
-  it('start_time/end_time 倒序（start>=end）→ SYS_DB_ERROR', () => {
+  it('start_time/end_time 倒序（start>=end）→ BIZ_PARAM_MISSING', () => {
     let err;
     try {
       saveActivity(makeStore([]), {
@@ -136,20 +136,20 @@ describe('saveActivity（校验）', () => {
     } catch (e) {
       err = e;
     }
-    expect(err.code).toBe(CODE.SYS_DB_ERROR);
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
   });
 
-  it('start_time 缺失 → SYS_DB_ERROR', () => {
+  it('start_time 缺失 → BIZ_PARAM_MISSING', () => {
     let err;
     try {
       saveActivity(makeStore([]), { activity: { name: 'x', end_time: END } });
     } catch (e) {
       err = e;
     }
-    expect(err.code).toBe(CODE.SYS_DB_ERROR);
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
   });
 
-  it('start_time 非法（无法解析）→ SYS_DB_ERROR', () => {
+  it('start_time 非法（无法解析）→ BIZ_PARAM_MISSING', () => {
     let err;
     try {
       saveActivity(makeStore([]), {
@@ -158,7 +158,7 @@ describe('saveActivity（校验）', () => {
     } catch (e) {
       err = e;
     }
-    expect(err.code).toBe(CODE.SYS_DB_ERROR);
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
   });
 
   it('store.Activity 缺失 → SYS_DB_ERROR', () => {
