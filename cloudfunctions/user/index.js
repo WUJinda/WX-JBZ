@@ -14,6 +14,7 @@ const { CODE, notImplemented } = require('../common/errors');
 const { getProfile } = require('./userProfile');
 const { joinDepartment } = require('./userJoin');
 const { buildStats } = require('./userStats');
+const { updateProfile, cancelAccount } = require('./userAccount');
 const { getActiveActivityId, getActiveActivity } = require('../activity/activityResolver');
 const { loadByWhere } = require('../common/db');
 
@@ -65,8 +66,69 @@ const handlers = {
     // P1-11：从 RankCache personal 单文档查本人排名（替代 buildStats 写死 null）。
     const myRank = await loadMyRank(cloud, activityId, userId);
     return buildStats({ records, activity, myRank });
+  },
+  // 修改账号信息（昵称+头像）。requireUser（context.user 已由 main 统一查得，P1-1）。
+  // handler 只做「取上下文 → 调纯函数」，落库在 updateProfile 内完成。
+  update: async (event, context) => {
+    const openid = context && context.openid;
+    const db = cloud.database();
+    return updateProfile({
+      openid,
+      db,
+      nickname: event && event.nickname,
+      avatar: event && event.avatar,
+      now: new Date()
+    });
+  },
+  // 注销账号（删本人 User + StepRecord）。requireUser。
+  // wrapRemoveAll：真实库 where().remove() 单次上限 20 条，循环删除；cancelAccount 纯函数无感。
+  cancel: async (event, context) => {
+    const openid = context && context.openid;
+    const db = cloud.database();
+    return cancelAccount({ openid, db: wrapRemoveAll(db) });
   }
 };
+
+/**
+ * 包裹真实云数据库：where().remove() 循环删除直到清空。
+ *
+ * wx-server-sdk 的 collection().where().remove() 单次最多删 20 条；StepRecord 可能超量，
+ * 直接 remove 一次会漏删。本代理把 remove 语义改为「循环删到 removed=0」，
+ * 保持 cancelAccount 纯函数的调用形态不变（纯函数对注入 db 直接 remove 一次，mockDb 无此限）。
+ *
+ * 仅覆盖 collection(name).where(c).remove() 链路（cancelAccount 唯一用到的删除路径）；
+ * 其它链式方法不经过本代理（cancelAccount 不调 get/update/add）。
+ *
+ * @param {object} db cloud.database()
+ * @returns {object} 代理 db
+ */
+function wrapRemoveAll(db) {
+  return {
+    collection(name) {
+      const col = db.collection(name);
+      return {
+        where(c) {
+          const w = col.where(c);
+          return {
+            remove: async () => {
+              let total = 0;
+              // 循环上限保护：单用户 StepRecord 不可能超 2 万条（1000 轮×20）。
+              // 超限即异常库状态（权限/索引故障致 remove 持续返回非零但不实删），break 防死循环耗尽云函数超时。
+              let guard = 0;
+              while (guard++ < 1000) {
+                const r = await w.remove();
+                const n = (r && r.stats && r.stats.removed) || 0;
+                total += n;
+                if (n === 0) break; // 无更多匹配 → 终止
+              }
+              return { stats: { removed: total } };
+            }
+          };
+        }
+      };
+    }
+  };
+}
 
 /**
  * 载入某用户某活动的 StepRecord（云轨真实库）。
@@ -119,8 +181,8 @@ async function loadMyRank(cloudSdk, activityId, userId) {
 }
 
 // 需登录态（requireUser）的 action：必须有 OPENID 且 User 存在。
-// 与 activity.current 游客通道不同——join/stats 必须登录态。
-const REQUIRE_USER_ACTIONS = { join: true, stats: true };
+// 与 activity.current 游客通道不同——join/stats/update/cancel 必须登录态。
+const REQUIRE_USER_ACTIONS = { join: true, stats: true, update: true, cancel: true };
 
 exports.main = async (event) => {
   const action = event && event.action;

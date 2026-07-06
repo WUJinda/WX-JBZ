@@ -1,10 +1,7 @@
 // pages/profile/profile.js
 // 个人资料页（对齐 PRD F1，开发计划 B5）。
-// 展示脱敏手机号 / 部门 / 累计步数（步数为占位，真实聚合留后续阶段）。
+// 展示脱敏手机号 / 部门 / 累计步数 + 账号管理入口（编辑资料 / 登出 / 注销）。
 // 红线：本页只展示后端下发的脱敏字段，绝不展示完整手机号 / openid。
-
-// api 实例从 getApp().api 取（与其余页一致，避免模块级 createApi 在本地轨发起真实 callFunction）。
-// 实际调用处在函数内取 app.api 并守卫。
 
 const { handleNotLoggedIn } = require('../../utils/authGuard');
 
@@ -76,5 +73,78 @@ Page({
   onAdminEntry() {
     if (typeof wx === 'undefined' || !wx.navigateTo) return;
     wx.navigateTo({ url: '/pages/admin/dashboard/dashboard' });
+  },
+
+  /** 编辑资料（昵称 + 头像），navigateTo 到 edit 子页。 */
+  onEditProfile() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/profile/edit/edit' });
+  },
+
+  /** 登出：清本地状态 + 重置 globalData + 回登录页（OPENID 固定，无真正登出）。 */
+  onLogout() {
+    const self = this;
+    wx.showModal({
+      title: '登出',
+      content: '确定要登出当前账号吗？',
+      success: (res) => {
+        if (res.confirm) self.clearLocalAndRelaunch();
+      }
+    });
+  },
+
+  /** 注销账号：删本人 User + StepRecord（不可恢复），二次确认。 */
+  onCancelAccount() {
+    const self = this;
+    if (self._cancelling) return; // 防双击
+    wx.showModal({
+      title: '注销账号',
+      content: '将永久删除你的账号和全部步数记录，且不可恢复。确定注销？',
+      confirmText: '确认注销',
+      confirmColor: '#e64c45',
+      success: (res) => {
+        if (!res.confirm) return;
+        self._cancelling = true;
+        const app = getApp();
+        const api = app && app.api;
+        if (!api || typeof api.call !== 'function') {
+          self._cancelling = false;
+          wx.showToast({ title: '云能力未就绪', icon: 'none' });
+          return;
+        }
+        api
+          .call('user', { action: 'cancel' }, { loading: '注销中' })
+          .then(() => {
+            wx.showToast({ title: '已注销', icon: 'success' });
+            // 锁延迟到跳转前才释放：700ms toast 窗口内仍防双击（reLaunch 后页面销毁，锁无意义）。
+            setTimeout(() => {
+              self._cancelling = false;
+              self.clearLocalAndRelaunch();
+            }, 700);
+          })
+          .catch((err) => {
+            self._cancelling = false;
+            if (handleNotLoggedIn(err)) return;
+            wx.showToast({ title: '注销失败，请重试', icon: 'none' });
+          });
+      }
+    });
+  },
+
+  /** 登出/注销共用：清本地缓存 + 重置全局上下文 + reLaunch 到登录页。 */
+  clearLocalAndRelaunch() {
+    try {
+      wx.clearStorageSync();
+    } catch (e) {
+      // 清缓存失败不阻塞跳转
+    }
+    const app = getApp();
+    if (app && app.globalData) {
+      app.globalData.userInfo = null;
+      app.globalData.isAdmin = false;
+      app.globalData.loggedIn = false;
+      app.globalData.currentActivity = { activity_id: '', name: '', status: '' };
+    }
+    wx.reLaunch({ url: '/pages/login/login' });
   }
 });

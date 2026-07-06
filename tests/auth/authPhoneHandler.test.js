@@ -3,7 +3,8 @@
  *
  * 测 phone handler（handlePhone）的解密链路：
  *   1. 调 cloud.openapi.phonenumber.getPhoneNumber({code}) 解密取真实手机号；
- *   2. 真实手机号进入 verifyPhone 纯函数做白名单 + 更新；
+ *   2. 真实手机号进入 verifyPhone 纯函数做归一化+脱敏+更新（白名单受 PHONE_WHITELIST_REQUIRED
+ *      开关控制，当前 false=放开注册；切回 true 时白名单校验同步生效）；
  *   3. 能力缺失（openapi 缺失/非函数）→ SYS_EXTERNAL_ERROR(5002)；
  *   4. code 缺失 → SYS_EXTERNAL_ERROR(5002)；
  *   5. 红线：即使 event.phone 传了明文，也被忽略——进入业务的是解密号而非明文。
@@ -85,25 +86,28 @@ describe('auth.phone 云轨解密链路（handlePhone）', () => {
     expect(out.phone_masked).toBe('138****8000');
   });
 
-  it('红线反证：若解密号不在白名单（明文在白名单也无效）→ 抛 BIZ_NOT_IN_WHITELIST', async () => {
-    // 白名单只有「明文」号；解密号不在白名单 → 必须抛 NOT_IN_WHITELIST。
-    // 若 handler 误用明文则会通过——此 case 锁死「只信解密号」。
-    const { cloud } = createMockCloud({
+  it('红线反证：明文 phone 被忽略，落库的是解密号（而非明文）', async () => {
+    // 放开白名单（PHONE_WHITELIST_REQUIRED=false）后，红线聚焦「明文不可信」：
+    // 解密号 13800138000 与明文 13900139000 是不同的合法号，断言落库的是解密号
+    // → 证明 handler 用的是解密号、明文被彻底忽略（不可伪造）。
+    const { cloud, db } = createMockCloud({
       store: {
-        Whitelist: [{ phone: '99999999999' }],
         User: [{ _id: 'u_1', _openid: 'oUSER1', phone: '', phone_masked: '' }]
       },
       getPhoneNumber: async () => ({
         phoneInfo: { phoneNumber: '13800138000' }
       })
     });
-    await expect(
-      handlePhone({
-        cloud,
-        event: { action: 'phone', code: 'real-code', phone: '99999999999' },
-        context
-      })
-    ).rejects.toMatchObject({ code: CODE.BIZ_NOT_IN_WHITELIST });
+    const out = await handlePhone({
+      cloud,
+      // 故意传一个与解密号不同的合法明文 phone，验证它被忽略。
+      event: { action: 'phone', code: 'real-code', phone: '13900139000' },
+      context
+    });
+    expect(out.verified).toBe(true);
+    expect(out.phone_masked).toBe('138****8000');
+    // 落库的是解密号 13800138000，不是明文 13900139000
+    expect(db.collection('User')._store[0].phone).toBe('13800138000');
   });
 
   it('能力缺失：cloud.openapi.phonenumber 缺失 → 抛 SYS_EXTERNAL_ERROR(5002)', async () => {

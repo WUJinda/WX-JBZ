@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="hint" wx:if="{{loading}}">加载中…</view>
+
+  <block wx:if="{{!loading}}">
+    <!-- 头像（chooseAvatar：微信头像昵称填写能力，返回临时文件路径） -->
+    <view class="row">
+      <text class="label">头像</text>
+      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image class="avatar" src="{{avatar}}" mode="aspectFill" />
+      </button>
+    </view>
+
+    <!-- 昵称（type=nickname：微信昵称填写能力，bindblur 取最终值） -->
+    <view class="row">
+      <text class="label">昵称</text>
+      <input
+        class="nickname-input"
+        type="nickname"
+        value="{{nickname}}"
+        placeholder="请输入昵称（1-20字）"
+        maxlength="20"
+        bindblur="onNicknameBlur"
+      />
+    </view>
+
+    <view class="hint error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
+
+    <button
+      class="save-btn"
+      type="primary"
+      loading="{{submitting}}"
+      disabled="{{submitting}}"
+      bindtap="onSave"
+    >保存</button>
+  </block>
+</view>

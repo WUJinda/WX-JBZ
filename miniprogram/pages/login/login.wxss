@@ -22,27 +22,51 @@
   margin: 12rpx 0;
   color: #1890ff;
 }
-.user-card {
-  display: flex;
-  align-items: center;
-  padding: 16rpx 0;
-}
-.avatar {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 50%;
-  margin-right: 16rpx;
-}
-.nickname {
-  font-size: 30rpx;
-}
 .hint {
-  color: #e64c45;
+  color: #999;
   font-size: 26rpx;
   margin: 16rpx 0;
 }
-.success {
-  color: #52c41a;
+.hint.error {
+  color: #e64c45;
+}
+
+/* 步骤 2：昵称头像表单 */
+.profile-form {
+  margin: 16rpx 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.label {
+  color: #666;
   font-size: 28rpx;
-  margin-top: 16rpx;
+}
+/* chooseAvatar 按钮：去掉 button 默认样式，只承载头像 */
+.avatar-btn {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  line-height: normal;
+  min-width: 0;
+}
+.avatar-btn::after {
+  border: none;
+}
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #f0f0f0;
+}
+.nickname-input {
+  flex: 1;
+  text-align: right;
+  font-size: 28rpx;
+  color: #333;
+  margin-left: 24rpx;
 }

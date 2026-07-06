@@ -1042,4 +1042,135 @@ describe('activity.save action 挂载与共享 adminGuard（I）', () => {
   });
 });
 
+describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 + profile 入口 + edit 页）', () => {
+  it('user/index.js 的 handlers 表挂载 update / cancel（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/\bupdate\s*:\s*async/);
+    expect(src).toMatch(/\bcancel\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/userAccount['"]\)/);
+  });
+
+  it('user.update / user.cancel 走 requireUser（需登录态）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/update:\s*true/);
+    expect(src).toMatch(/cancel:\s*true/);
+  });
+
+  it('user/index.js 含 wrapRemoveAll（绕过 where().remove() 单次 20 条上限）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/function wrapRemoveAll/);
+    expect(src).toMatch(/wrapRemoveAll\(db\)/);
+  });
+
+  it('userAccount.js 纯函数模块存在且不调真实云 API', () => {
+    expect(fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userAccount.js'))).toBe(true);
+    const src = readSource('cloudfunctions/user/userAccount.js');
+    expect(src).toMatch(/function updateProfile/);
+    expect(src).toMatch(/function cancelAccount/);
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(src).not.toMatch(/cloud\.database\(\)/);
+  });
+
+  it('authPhone.js 白名单开关：导出 PHONE_WHITELIST_REQUIRED 常量且默认 false（放开注册）', () => {
+    const src = readSource('cloudfunctions/auth/authPhone.js');
+    expect(src).toMatch(/const PHONE_WHITELIST_REQUIRED = false/);
+    expect(src).toMatch(/PHONE_WHITELIST_REQUIRED/);
+    // verifyPhone 支持测试用 requireWhitelist 覆盖（handler 不传，安全）
+    expect(src).toMatch(/requireWhitelist/);
+  });
+
+  it('login.wxml 注册向导：保留一键登录/手机号/openSetting，新增 chooseAvatar + nickname input', () => {
+    const wxml = readSource('miniprogram/pages/login/login.wxml');
+    // 保留（既有断言元素不破坏）
+    expect(wxml).toMatch(/onLoginTap/);
+    expect(wxml).toMatch(/open-type=["']getPhoneNumber["']/);
+    expect(wxml).toMatch(/open-type=["']openSetting["']/);
+    expect(wxml).toMatch(/onOpenSetting/);
+    // 新增：头像昵称填写能力
+    expect(wxml).toMatch(/open-type=["']chooseAvatar["']/);
+    expect(wxml).toMatch(/bindchooseavatar=["']onChooseAvatar["']/);
+    expect(wxml).toMatch(/type=["']nickname["']/);
+    expect(wxml).toMatch(/onNicknameBlur/);
+    expect(wxml).toMatch(/onSubmitProfile/);
+  });
+
+  it('login.js 注册向导：按 join_status/registered 分流；提交资料调 user.update；手机号后跳 dept', () => {
+    const js = readSource('miniprogram/pages/login/login.js');
+    expect(js).toMatch(/join_status === 'joined'/);
+    expect(js).toMatch(/data && data\.registered/);
+    expect(js).toMatch(/action:\s*['"]update['"]/);
+    expect(js).toMatch(/action:\s*['"]phone['"]/);
+    expect(js).toMatch(/\/pages\/dept\/dept/);
+    // 复用 editCalc（昵称校验与后端同口径）
+    expect(js).toMatch(/require\(['"]\.\.\/profile\/edit\/editCalc['"]\)/);
+  });
+
+  it('profile.wxml 账号管理入口：编辑资料 / 登出 / 注销（保留 adminVisible/onAdminEntry）', () => {
+    const wxml = readSource('miniprogram/pages/profile/profile.wxml');
+    expect(wxml).toMatch(/wx:if="\{\{adminVisible\}\}"/);
+    expect(wxml).toMatch(/onAdminEntry/);
+    expect(wxml).toMatch(/onEditProfile/);
+    expect(wxml).toMatch(/onLogout/);
+    expect(wxml).toMatch(/onCancelAccount/);
+  });
+
+  it('profile.js 实现 onEditProfile / onLogout / onCancelAccount，且注销调 user.cancel + 清本地 reLaunch', () => {
+    const js = readSource('miniprogram/pages/profile/profile.js');
+    expect(js).toMatch(/onEditProfile/);
+    expect(js).toMatch(/onLogout/);
+    expect(js).toMatch(/onCancelAccount/);
+    expect(js).toMatch(/action:\s*['"]cancel['"]/);
+    expect(js).toMatch(/clearStorageSync|clearStorage/);
+    expect(js).toMatch(/reLaunch/);
+    // 保留既有逻辑（不破坏 H2 断言）
+    expect(js).toMatch(/is_admin === true/);
+  });
+
+  it('profile/edit 子页存在并引用 editCalc；提交调 user.update；含 chooseAvatar + nickname input', () => {
+    expect(fs.existsSync(path.join(ROOT, 'miniprogram/pages/profile/edit/edit.js'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'miniprogram/pages/profile/edit/edit.wxml'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'miniprogram/pages/profile/edit/editCalc.js'))).toBe(true);
+    const js = readSource('miniprogram/pages/profile/edit/edit.js');
+    expect(js).toMatch(/require\(['"]\.\/editCalc['"]\)/);
+    expect(js).toMatch(/action:\s*['"]update['"]/);
+    const wxml = readSource('miniprogram/pages/profile/edit/edit.wxml');
+    expect(wxml).toMatch(/open-type=["']chooseAvatar["']/);
+    expect(wxml).toMatch(/type=["']nickname["']/);
+  });
+
+  it('editCalc.js 纯函数模块存在（validateNickname/buildAvatarCloudPath/isAvatarChanged）', () => {
+    expect(fs.existsSync(path.join(ROOT, 'miniprogram/pages/profile/edit/editCalc.js'))).toBe(true);
+    const src = readSource('miniprogram/pages/profile/edit/editCalc.js');
+    expect(src).toMatch(/function validateNickname/);
+    expect(src).toMatch(/function buildAvatarCloudPath/);
+    expect(src).toMatch(/function isAvatarChanged/);
+  });
+
+  it('app.json 登记 profile/edit 页', () => {
+    const src = readSource('miniprogram/app.json');
+    expect(src).toMatch(/"pages\/profile\/edit\/edit"/);
+  });
+
+  it('红线：profile/login/edit 三页 wxml 不绑定 _openid / sync_count / 完整 phone', () => {
+    const files = [
+      'miniprogram/pages/profile/profile.wxml',
+      'miniprogram/pages/login/login.wxml',
+      'miniprogram/pages/profile/edit/edit.wxml'
+    ];
+    for (const rel of files) {
+      const src = readSource(rel);
+      expect(src).not.toMatch(/\{\{[^}]*_openid/);
+      expect(src).not.toMatch(/\{\{[^}]*sync_count/);
+      const lines = src.split('\n');
+      for (const line of lines) {
+        // 精确匹配 phone 作为独立字段（{{phone}} / {{xxx.phone}}）；
+        // 排除 phoneMasked / phone_masked / phoneDenied / 'phone' 字面量等含 phone 子串的非数据绑定
+        if (/\{\{[^}]*\bphone\b\s*[\}.]/.test(line)) {
+          throw new Error(`${rel} 疑似绑定完整 phone: ${line.trim()}`);
+        }
+      }
+    }
+  });
+});
+
 

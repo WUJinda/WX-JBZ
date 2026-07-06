@@ -6,6 +6,7 @@
     "pages/home/home",
     "pages/rank/rank",
     "pages/profile/profile",
+    "pages/profile/edit/edit",
     "pages/admin/dashboard/dashboard",
     "pages/admin/activity/activity",
     "pages/admin/whitelist/whitelist",

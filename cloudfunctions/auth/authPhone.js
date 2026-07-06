@@ -7,8 +7,8 @@
  *
  * 红线：
  *   - 完整手机号仅后端做白名单匹配，不下发前端；
- *   - 白名单校验在后端（PRD R1.5）；
- *   - 不在白名单 → 抛 BIZ_NOT_IN_WHITELIST。
+ *   - 白名单校验在后端（PRD R1.5），受 PHONE_WHITELIST_REQUIRED 开关控制：
+ *     开关 true 时不在白名单 → 抛 BIZ_NOT_IN_WHITELIST；false 时任意合法手机号通过。
  *
  * 手机号归一化（#7）：白名单匹配两侧统一过 normalizePhoneInput——
  *   去 +86/86 国家码前缀 + 去空格/横线等分隔，仅留数字。这样白名单录入带格式
@@ -17,6 +17,17 @@
 
 const { CODE, BizError } = require('../common/errors');
 const { maskPhone } = require('../common/mask');
+
+/**
+ * 手机号白名单开关（PRD 决策：放开注册，任意手机号可注册）。
+ *   true  = 强制企业白名单（isInWhitelist 不命中 → 抛 BIZ_NOT_IN_WHITELIST）；
+ *   false = 任意解密成功的手机号均可注册（仍走微信解密链路，防伪造明文）。
+ *
+ * 安全红线：此值写死在后端源码，变更只能改这一行重新部署。
+ *   verifyPhone 的 requireWhitelist 形参仅用于单测显式覆盖，handler 永不透传
+ *   （前端 event 可伪造，若由 event 控制则任意前端可绕过白名单）。
+ */
+const PHONE_WHITELIST_REQUIRED = false;
 
 /**
  * 手机号归一化：trim + 去 +86/86 国家码前缀 + 仅保留数字。
@@ -103,11 +114,20 @@ async function verifyPhone(params) {
   // 归一化（去 +86/空格/横线）+ 校验 11 位 + 脱敏；phone 为归一化后的纯 11 位号。
   const { phone, phone_masked } = normalizePhone(rawPhone);
 
-  // 白名单校验（后端按归一化完整手机号匹配；isInWhitelist 内部两侧再归一化兜底）
-  const wlRes = await db.collection('Whitelist').where({ phone }).get();
-  const wl = (wlRes && wlRes.data) || [];
-  if (!isInWhitelist(phone, wl)) {
-    throw BizError(CODE.BIZ_NOT_IN_WHITELIST, '非企业员工：手机号不在白名单');
+  // 白名单校验：受 PHONE_WHITELIST_REQUIRED 控制。
+  // requireWl 取值：params.requireWhitelist 为 boolean 时用它（仅单测显式覆盖），
+  //                否则取模块常量。handler 永不透传此参数 → 生产行为由常量决定。
+  const requireWl =
+    typeof params.requireWhitelist === 'boolean'
+      ? params.requireWhitelist
+      : PHONE_WHITELIST_REQUIRED;
+  if (requireWl) {
+    // 后端按归一化完整手机号匹配；isInWhitelist 内部两侧再归一化兜底。
+    const wlRes = await db.collection('Whitelist').where({ phone }).get();
+    const wl = (wlRes && wlRes.data) || [];
+    if (!isInWhitelist(phone, wl)) {
+      throw BizError(CODE.BIZ_NOT_IN_WHITELIST, '非企业员工：手机号不在白名单');
+    }
   }
 
   // 更新当前 openid 的 User（写归一化 phone，保证库内手机号格式一致）
@@ -127,4 +147,11 @@ async function verifyPhone(params) {
   return { verified: true, phone_masked };
 }
 
-module.exports = { normalizePhoneInput, isValidPhone, isInWhitelist, normalizePhone, verifyPhone };
+module.exports = {
+  normalizePhoneInput,
+  isValidPhone,
+  isInWhitelist,
+  normalizePhone,
+  verifyPhone,
+  PHONE_WHITELIST_REQUIRED
+};

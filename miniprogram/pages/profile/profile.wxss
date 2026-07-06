@@ -72,3 +72,32 @@
   font-size: 36rpx;
   color: #ccc;
 }
+/* 账号管理 section（编辑资料 / 登出 / 注销） */
+.account-section {
+  margin-top: 32rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+.acct-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28rpx 24rpx;
+  border-bottom: 1rpx solid #f5f5f5;
+}
+.acct-row:last-child {
+  border-bottom: none;
+}
+.acct-label {
+  font-size: 30rpx;
+  color: #1a1a1a;
+}
+.acct-label.danger {
+  color: #e64c45;
+}
+.acct-arrow {
+  font-size: 36rpx;
+  color: #ccc;
+}

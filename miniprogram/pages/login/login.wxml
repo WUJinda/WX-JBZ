@@ -7,35 +7,54 @@
     <button class="btn-primary" bindtap="onLoginTap">微信一键登录</button>
   </block>
 
-  <!-- 已登录态：展示头像昵称，进入手机号验证 -->
-  <block wx:if="{{authState === 'logged'}}">
-    <view class="user-card">
-      <image class="avatar" src="{{userInfo.avatarUrl}}" mode="aspectFill" />
-      <view class="nickname">{{userInfo.nickName}}</view>
-    </view>
-  </block>
-
   <!-- 授权被拒绝引导：openSetting 重授权 -->
   <block wx:if="{{authDenied}}">
     <view class="hint">需要微信授权才能参与活动</view>
     <button class="btn-secondary" open-type="openSetting" bindopensetting="onOpenSetting">前往设置重新授权</button>
   </block>
 
-  <!-- 步骤 2：手机号验证（仅已登录后展示） -->
-  <block wx:if="{{authState === 'logged' || authState === 'phoneVerifying'}}">
-    <view class="step">第 2 步：验证手机号（仅企业员工可参与）</view>
+  <!-- 步骤 2：设置昵称和头像（chooseAvatar + nickname input） -->
+  <block wx:if="{{authState === 'profile'}}">
+    <view class="step">第 2 步：设置昵称和头像</view>
+    <view class="profile-form">
+      <view class="row">
+        <text class="label">头像</text>
+        <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+          <image class="avatar" src="{{avatar}}" mode="aspectFill" />
+        </button>
+      </view>
+      <view class="row">
+        <text class="label">昵称</text>
+        <input
+          class="nickname-input"
+          type="nickname"
+          value="{{nickname}}"
+          placeholder="请输入昵称（1-20字）"
+          maxlength="20"
+          bindblur="onNicknameBlur"
+        />
+      </view>
+      <view class="hint error" wx:if="{{profileDenied}}">昵称或头像提交失败，请重试</view>
+    </view>
+    <button
+      class="btn-primary"
+      loading="{{submitting}}"
+      disabled="{{submitting}}"
+      bindtap="onSubmitProfile"
+    >下一步</button>
+  </block>
+
+  <!-- 步骤 3：验证手机号（getPhoneNumber → auth.phone 解密） -->
+  <block wx:if="{{authState === 'phone'}}">
+    <view class="step">第 3 步：验证手机号</view>
+    <view class="hint">将作为你的账号手机号，用于身份核实</view>
     <!-- open-type=getPhoneNumber：微信手机号快速验证 -->
     <button class="btn-primary" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">微信手机号快速验证</button>
   </block>
 
-  <!-- 手机号校验失败/非白名单引导 -->
+  <!-- 手机号校验失败/解密失败引导 -->
   <block wx:if="{{phoneDenied}}">
-    <view class="hint">手机号验证未通过，可能非企业员工或已拒绝授权</view>
+    <view class="hint">手机号验证未通过，可能未开通快速验证组件或已拒绝授权</view>
     <button class="btn-secondary" bindtap="onRetryPhone">重新验证</button>
-  </block>
-
-  <!-- 手机号验证成功 -->
-  <block wx:if="{{authState === 'phoneVerified'}}">
-    <view class="success">手机号已验证：{{phoneMasked}}</view>
   </block>
 </view>

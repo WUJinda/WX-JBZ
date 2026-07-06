@@ -1,13 +1,18 @@
 /**
  * 授权状态机纯函数（对齐开发计划 B4：授权状态机单测）。
  *
- * 把页面里的状态流转逻辑抽出成纯函数，便于在 Node 下单测，
- * 不耦合 wx 运行时。页面 Page() 内部按这些转移驱动 data.authState。
+ * 把页面里的状态流转逻辑抽出成纯函数，便于在 Node 下单测，不耦合 wx 运行时。
+ *
+ * 定位说明：当前 login 页采用简化三态（init / profile / phone）直接 setData 驱动，
+ * 并未 require / 调用本 transition——本模块作为「授权流程语义规范 + 单测锚点」保留
+ * （PROFILE_START 仅 logged 可进、PROFILE_DENIED 留 profile 等守卫描述了正确流转，供页面实现对照）。
+ * 后续若页面接入，须对齐状态值（页面 'phone' ↔ STATES.PHONE_VERIFYING）。
  *
  * 状态：
  *   init            初始（未登录）
  *   logging         登录中（wx.login + getUserProfile 进行中）
- *   logged          已登录，待手机号验证
+ *   logged          已登录（一键登录建号成功，待填昵称头像）
+ *   profile         填写昵称头像（chooseAvatar + nickname input）
  *   phoneVerifying  手机号验证中
  *   phoneVerified   手机号验证通过（可前往部门选择）
  *
@@ -16,6 +21,9 @@
  *   LOGIN_OK        wx.login + getUserProfile 成功（携带 userInfo）
  *   LOGIN_DENIED    getUserProfile 被拒绝
  *   SETTING_GRANTED openSetting 后用户授予了 scope.userInfo
+ *   PROFILE_START   进入昵称头像填写步骤（logged → profile）
+ *   PROFILE_OK      昵称头像提交成功（profile → phoneVerifying）
+ *   PROFILE_DENIED  昵称头像校验失败（标记 profileDenied）
  *   PHONE_START     开始手机号验证
  *   PHONE_OK        手机号验证通过（携带 phoneMasked）
  *   PHONE_DENIED    getPhoneNumber 被拒绝 / 非白名单
@@ -25,6 +33,7 @@ const STATES = {
   INIT: 'init',
   LOGGING: 'logging',
   LOGGED: 'logged',
+  PROFILE: 'profile',
   PHONE_VERIFYING: 'phoneVerifying',
   PHONE_VERIFIED: 'phoneVerified'
 };
@@ -61,6 +70,26 @@ function transition(state, event) {
       // openSetting 授予后重新开始登录流程
       s.authDenied = false;
       s.authState = STATES.LOGGING;
+      break;
+    case 'PROFILE_START':
+      // 登录建号后进入昵称头像填写步骤（仅 logged 可进，防越序）
+      if (cur === STATES.LOGGED) {
+        s.authState = STATES.PROFILE;
+        s.profileDenied = false;
+      }
+      break;
+    case 'PROFILE_OK':
+      // 昵称头像提交成功 → 进入手机号验证步骤
+      if (cur === STATES.PROFILE) {
+        s.authState = STATES.PHONE_VERIFYING;
+        s.phoneDenied = false;
+      }
+      break;
+    case 'PROFILE_DENIED':
+      // 昵称头像校验失败：留在 profile 步骤并标记，便于前端提示重试
+      if (cur === STATES.PROFILE) {
+        s.profileDenied = true;
+      }
       break;
     case 'PHONE_START':
       if (cur === STATES.LOGGED || cur === STATES.PHONE_VERIFYING) {
