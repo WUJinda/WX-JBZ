@@ -1177,4 +1177,65 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
   });
 });
 
+describe('手机号手动填写保底路径（user.setPhone + profile 保底入口）', () => {
+  it('user/index.js 的 handlers 表挂载 setPhone（不再 not implemented）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/\bsetPhone\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/userPhone['"]\)/);
+  });
+
+  it('user.setPhone 走 requireUser（需登录态，防游客裸调）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/setPhone:\s*true/);
+  });
+
+  it('userPhone.js 纯函数模块存在且不调真实云 API', () => {
+    expect(fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userPhone.js'))).toBe(true);
+    const src = readSource('cloudfunctions/user/userPhone.js');
+    expect(src).toMatch(/function setPhone/);
+    expect(src).toMatch(/PHONE_MANUAL_FALLBACK_ENABLED/);
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(src).not.toMatch(/cloud\.database\(\)/);
+  });
+
+  it('安全：userPhone.js 不授予 is_admin（无 grantAdmin / 不读 superAdminPhone，防明文伪造超管提权）', () => {
+    const src = readSource('cloudfunctions/user/userPhone.js');
+    // 无 grantAdmin 逻辑（authPhone.verifyPhone 有，本降级路径不能有）
+    expect(src).not.toMatch(/grantAdmin/);
+    // 不读 superAdminPhone 参数（超管冷启动只走 auth.phone 微信解密）
+    expect(src).not.toMatch(/superAdminPhone/);
+  });
+
+  it('errors.js 新增 BIZ_PHONE_TAKEN:2007（手机号已被他人占用）', () => {
+    const src = readSource('cloudfunctions/common/errors.js');
+    expect(src).toMatch(/BIZ_PHONE_TAKEN:\s*2007/);
+  });
+
+  it('profile.wxml 含保底入口 onManualPhone（与微信验证 button 并列）', () => {
+    const wxml = readSource('miniprogram/pages/profile/profile.wxml');
+    expect(wxml).toMatch(/onManualPhone/);
+    expect(wxml).toMatch(/phone-fallback/);
+  });
+
+  it('profile.js 实现 onManualPhone 调 user.setPhone；前端 11 位校验 + ERR_PHONE_TAKEN 镜像', () => {
+    const js = readSource('miniprogram/pages/profile/profile.js');
+    expect(js).toMatch(/onManualPhone/);
+    expect(js).toMatch(/action:\s*['"]setPhone['"]/);
+    // 前端归一化 + 11 位校验（与后端 isValidPhone 同口径）
+    expect(js).toMatch(/\\d\{11\}/);
+    // 错误码镜像（前端无法 require 云函数 errors.js）
+    expect(js).toMatch(/ERR_PHONE_TAKEN\s*=\s*2007/);
+  });
+
+  it('红线：profile.wxml 保底入口不绑定完整 phone（phoneMasked 不被 \\bphone\\b 误判）', () => {
+    const src = readSource('miniprogram/pages/profile/profile.wxml');
+    const lines = src.split('\n');
+    for (const line of lines) {
+      if (/\{\{[^}]*\bphone\b\s*[\}.]/.test(line)) {
+        throw new Error(`profile.wxml 疑似绑定完整 phone: ${line.trim()}`);
+      }
+    }
+  });
+});
+
 

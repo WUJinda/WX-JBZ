@@ -40,6 +40,41 @@
   color: #333;
   font-size: 28rpx;
 }
+/* 手机号验证入口：用 button 承载 open-type=getPhoneNumber，去掉 button 默认样式 */
+.phone-btn {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  line-height: normal;
+  min-width: 0;
+  /* 覆盖 button 默认撑满宽度 + 居中，缩到内容宽度并靠右（.row 的 space-between） */
+  width: auto;
+  display: flex;
+  align-items: center;
+  font-size: 28rpx;
+  color: #333;
+}
+.phone-btn::after {
+  border: none;
+}
+/* 未验证：主题色提示可点击授权 */
+.value.unverified {
+  color: #1890ff;
+}
+.phone-arrow {
+  font-size: 32rpx;
+  color: #ccc;
+  margin-left: 8rpx;
+}
+/* 保底入口：手动填写手机号（getPhoneNumber 组件未开通/唤不出时） */
+.phone-fallback {
+  padding: 8rpx 0 4rpx;
+  text-align: right;
+}
+.phone-fallback-text {
+  font-size: 24rpx;
+  color: #1890ff;
+}
 .hint {
   color: #999;
   font-size: 26rpx;

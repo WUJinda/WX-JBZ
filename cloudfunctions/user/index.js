@@ -15,6 +15,7 @@ const { getProfile } = require('./userProfile');
 const { joinDepartment } = require('./userJoin');
 const { buildStats } = require('./userStats');
 const { updateProfile, cancelAccount } = require('./userAccount');
+const { setPhone } = require('./userPhone');
 const { getActiveActivityId, getActiveActivity } = require('../activity/activityResolver');
 const { loadByWhere } = require('../common/db');
 
@@ -86,6 +87,19 @@ const handlers = {
     const openid = context && context.openid;
     const db = cloud.database();
     return cancelAccount({ openid, db: wrapRemoveAll(db) });
+  },
+  // 手动设置手机号（保底路径：getPhoneNumber 组件未开通 / 唤不出时用）。requireUser。
+  // ⚠️ 降级路径，接收前端明文 phone；安全代价与缓解措施见 userPhone.js 顶部注释。
+  // 不授予 is_admin（超管冷启动只走 auth.phone 微信解密，避免明文伪造超管号提权）。
+  setPhone: async (event, context) => {
+    const openid = context && context.openid;
+    const db = cloud.database();
+    return setPhone({
+      openid,
+      db,
+      phone: event && event.phone,
+      now: new Date()
+    });
   }
 };
 
@@ -182,7 +196,7 @@ async function loadMyRank(cloudSdk, activityId, userId) {
 
 // 需登录态（requireUser）的 action：必须有 OPENID 且 User 存在。
 // 与 activity.current 游客通道不同——join/stats/update/cancel 必须登录态。
-const REQUIRE_USER_ACTIONS = { join: true, stats: true, update: true, cancel: true };
+const REQUIRE_USER_ACTIONS = { join: true, stats: true, update: true, cancel: true, setPhone: true };
 
 exports.main = async (event) => {
   const action = event && event.action;
