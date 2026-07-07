@@ -91,48 +91,48 @@ describe('validateActivityForm 活动表单校验（R8.1）', () => {
     expect(r.errors.startEnd).toBeTruthy();
   });
 
-  // cover_url 校验（防误填纯文本致 <image src> 渲染层 500）
-  it('cover_url 合法 https → valid', () => {
+  // signup_deadline 校验（可选；填了须 ≤ end_time）
+  it('signup_deadline 留空 → valid（可选，=结束前可报）', () => {
     const r = validateActivityForm({
       name: '大赛',
-      cover_url: 'https://x.com/a.png',
       start_time: '2026-07-01',
       end_time: '2026-07-31'
     });
     expect(r.valid).toBe(true);
-    expect(r.errors.cover_url).toBeUndefined();
+    expect(r.errors.signup_deadline).toBeUndefined();
   });
 
-  it('cover_url 合法 cloud:// → valid', () => {
+  it('signup_deadline ≤ end_time → valid', () => {
     const r = validateActivityForm({
       name: '大赛',
-      cover_url: 'cloud://env/a.png',
       start_time: '2026-07-01',
-      end_time: '2026-07-31'
+      end_time: '2026-07-31',
+      signup_deadline: '2026-07-15'
     });
     expect(r.valid).toBe(true);
+    expect(r.errors.signup_deadline).toBeUndefined();
   });
 
-  it('cover_url 留空 → valid（可选字段，无头图走 placeholder）', () => {
+  it('signup_deadline > end_time → signup_deadline 报错', () => {
     const r = validateActivityForm({
       name: '大赛',
-      cover_url: '',
       start_time: '2026-07-01',
-      end_time: '2026-07-31'
-    });
-    expect(r.valid).toBe(true);
-    expect(r.errors.cover_url).toBeUndefined();
-  });
-
-  it('cover_url 误填纯文本 "ssss" → cover_url 报错（正是 500 回归的输入）', () => {
-    const r = validateActivityForm({
-      name: '大赛',
-      cover_url: 'ssss',
-      start_time: '2026-07-01',
-      end_time: '2026-07-31'
+      end_time: '2026-07-31',
+      signup_deadline: '2026-08-10'
     });
     expect(r.valid).toBe(false);
-    expect(r.errors.cover_url).toBeTruthy();
+    expect(r.errors.signup_deadline).toBeTruthy();
+  });
+
+  it('signup_deadline 格式非法 → signup_deadline 报错', () => {
+    const r = validateActivityForm({
+      name: '大赛',
+      start_time: '2026-07-01',
+      end_time: '2026-07-31',
+      signup_deadline: 'not-a-date'
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.signup_deadline).toBeTruthy();
   });
 });
 

@@ -1,9 +1,9 @@
 <!-- 活动主页（启动页，游客可见）—— 对齐 PRD F7 -->
 <view class="activity-page">
-  <!-- 活动头图 -->
+  <!-- 活动大字报（无图片，活动名为主视觉） -->
   <view class="cover">
-    <image wx:if="{{activity.cover_url}}" class="cover-img" src="{{activity.cover_url}}" mode="aspectFill" />
-    <view wx:else class="cover-placeholder">
+    <view class="cover-placeholder">
+      <text class="cover-tag">健步走挑战</text>
       <text class="cover-title">{{activity.name}}</text>
     </view>
     <!-- 当前阶段标识 -->

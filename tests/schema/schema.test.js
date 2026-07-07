@@ -40,7 +40,7 @@ describe('集合 schema 定义（B1）', () => {
     expect(a).toBeDefined();
     expect(Array.isArray(a.indexes)).toBe(true);
     // 字段齐全（PRD F7 字段定义）
-    for (const f of ['_id', 'activity_id', 'name', 'cover_url', 'start_time', 'end_time', 'status', 'rules', 'total_steps', 'participant_count']) {
+    for (const f of ['_id', 'activity_id', 'name', 'start_time', 'end_time', 'signup_deadline', 'status', 'terminated', 'terminated_at', 'rules', 'total_steps', 'participant_count']) {
       expect(a.fields[f], `Activity 缺少字段: ${f}`).toBeDefined();
     }
     // 索引：status / start_time（技术架构 §5.4）

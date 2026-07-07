@@ -44,6 +44,8 @@ function toTs(t) {
  */
 function deriveStatus(activity, now) {
   const a = activity || {};
+  // 手动终止优先（管理员提前结束，不可恢复）：terminated=true 一律 ended，忽略时间窗。
+  if (a.terminated === true) return STATUS.ENDED;
   const start = toTs(a.start_time);
   const end = toTs(a.end_time);
   const cur = toTs(now === undefined ? new Date() : now);
@@ -71,9 +73,9 @@ function projectActivity(activity, status, overview) {
   return {
     activity_id: a.activity_id || a._id || '',
     name: a.name || '',
-    cover_url: a.cover_url || '',
     start_time: a.start_time,
     end_time: a.end_time,
+    signup_deadline: a.signup_deadline || null,
     status: status || deriveStatus(a),
     rules: a.rules || '',
     overview: {
@@ -124,10 +126,10 @@ function mockCurrentActivity() {
   return {
     activity_id: 'a_demo_001',
     name: '2026 员工健步走',
-    cover_url: '',
     rules: '活动规则示例：活动期间每日同步微信运动步数，累计计入个人与部门排行。',
     start_time: '2026-07-01T00:00:00+08:00',
     end_time: '2026-07-21T23:59:59+08:00',
+    signup_deadline: null,
     total_steps: 0,
     participant_count: 0
   };

@@ -55,19 +55,32 @@ describe('activity.current 纯函数（C1）', () => {
       deriveStatus(a, '2026-07-10T00:00:00Z');
       expect(JSON.stringify(a)).toBe(snapshot);
     });
+
+    it('terminated=true 一律 ended（手动终止优先于时间窗）', () => {
+      // 即便时间窗仍在进行中，terminated 也直接判 ended
+      expect(deriveStatus({ start_time: START, end_time: END, terminated: true }, Date.parse('2026-07-10T00:00:00Z'))).toBe(STATUS.ENDED);
+      // 未开始时段终止也判 ended
+      expect(deriveStatus({ start_time: START, end_time: END, terminated: true }, Date.parse('2026-06-10T00:00:00Z'))).toBe(STATUS.ENDED);
+    });
+
+    it('terminated 非 true（false/缺省）走正常时间推算', () => {
+      expect(deriveStatus({ start_time: START, end_time: END, terminated: false }, Date.parse('2026-07-10T00:00:00Z'))).toBe(STATUS.ACTIVE);
+      expect(deriveStatus({ start_time: START, end_time: END }, Date.parse('2026-07-10T00:00:00Z'))).toBe(STATUS.ACTIVE);
+    });
   });
 
   describe('projectActivity（脱敏下发）', () => {
     it('摘出活动信息 + 状态 + 概览，字段齐全', () => {
       const out = projectActivity(
-        { _id: 'a_001', activity_id: 'a_001', name: '走起', cover_url: 'c.jpg',
-          start_time: START, end_time: END, rules: '规则' },
+        { _id: 'a_001', activity_id: 'a_001', name: '走起',
+          start_time: START, end_time: END, signup_deadline: '2026-06-30T23:59:59+08:00', rules: '规则' },
         STATUS.ACTIVE,
         { total_steps: 12345, participant_count: 30 }
       );
       expect(out.activity_id).toBe('a_001');
       expect(out.name).toBe('走起');
-      expect(out.cover_url).toBe('c.jpg');
+      expect(out.signup_deadline).toBe('2026-06-30T23:59:59+08:00');
+      expect(out).not.toHaveProperty('cover_url');
       expect(out.status).toBe(STATUS.ACTIVE);
       expect(out.rules).toBe('规则');
       expect(out.overview.total_steps).toBe(12345);
@@ -112,7 +125,7 @@ describe('activity.current 纯函数（C1）', () => {
 
     it('返回结构含 activity_id / name / start_time / end_time / status / rules / overview / join_status', async () => {
       const out = await getCurrent({ now: '2026-07-10T00:00:00Z' });
-      for (const k of ['activity_id', 'name', 'cover_url', 'start_time', 'end_time', 'status', 'rules', 'overview', 'join_status']) {
+      for (const k of ['activity_id', 'name', 'start_time', 'end_time', 'signup_deadline', 'status', 'rules', 'overview', 'join_status']) {
         expect(out, `缺少字段: ${k}`).toHaveProperty(k);
       }
     });

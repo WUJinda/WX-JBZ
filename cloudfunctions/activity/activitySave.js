@@ -29,9 +29,9 @@ function projectSavedActivity(a) {
   return {
     activity_id: a.activity_id || '',
     name: a.name || '',
-    cover_url: a.cover_url || '',
     start_time: a.start_time,
     end_time: a.end_time,
+    signup_deadline: a.signup_deadline || null,
     status: a.status,
     rules: a.rules || ''
   };
@@ -52,7 +52,7 @@ function genActivityId(ts) {
  * save 主逻辑（纯函数 + 注入式 store）。
  * @param {object} store mock db（{ Activity: object[] }）
  * @param {object} params
- * @param {object} params.activity {activity_id?, name, cover_url, start_time, end_time, rules}
+ * @param {object} params.activity {activity_id?, name, start_time, end_time, signup_deadline?, rules}
  * @param {Date|number} [params.now] 当前时间（默认 new Date()）
  * @returns {object} projectSavedActivity 结果（含推算 status）
  * @throws {BizError}
@@ -85,6 +85,18 @@ function saveActivity(store, params) {
     throw BizError(CODE.BIZ_PARAM_MISSING, 'saveActivity: start_time must be earlier than end_time');
   }
 
+  // 报名截止（可选）：提供时须合法且 ≤ end_time（不填=活动结束前都可报名，user.join 据此拦截）
+  const hasSignup = input.signup_deadline !== undefined && input.signup_deadline !== null && input.signup_deadline !== '';
+  if (hasSignup) {
+    const signupTs = _toTs(input.signup_deadline);
+    if (!Number.isFinite(signupTs)) {
+      throw BizError(CODE.BIZ_PARAM_MISSING, 'saveActivity: signup_deadline invalid');
+    }
+    if (!(signupTs <= endTs)) {
+      throw BizError(CODE.BIZ_PARAM_MISSING, 'saveActivity: signup_deadline must be <= end_time');
+    }
+  }
+
   // 复用 deriveStatus 推算 status（now 缺省则 deriveStatus 内部取 new Date()）。
   const status = deriveStatus(
     { start_time: input.start_time, end_time: input.end_time },
@@ -105,12 +117,13 @@ function saveActivity(store, params) {
 
   if (existing) {
     existing.name = name;
-    existing.cover_url = input.cover_url || '';
     existing.start_time = input.start_time;
     existing.end_time = input.end_time;
+    existing.signup_deadline = hasSignup ? input.signup_deadline : null;
     existing.rules = typeof input.rules === 'string' ? input.rules : '';
     existing.status = status;
     existing.updated_at = nowIso;
+    // terminated/terminated_at 由 terminate action 维护，save 不触碰（保留现有终止态）。
     return projectSavedActivity(existing);
   }
 
@@ -118,10 +131,11 @@ function saveActivity(store, params) {
   const doc = {
     activity_id: newId,
     name,
-    cover_url: input.cover_url || '',
     start_time: input.start_time,
     end_time: input.end_time,
+    signup_deadline: hasSignup ? input.signup_deadline : null,
     status,
+    terminated: false,
     rules: typeof input.rules === 'string' ? input.rules : '',
     created_at: nowIso,
     updated_at: nowIso

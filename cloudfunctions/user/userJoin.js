@@ -57,11 +57,12 @@ function projectJoinResult(user, dept) {
  * @param {string} params.openid 当前用户 openid（handler 从 wxContext 取）
  * @param {string} params.deptId 报名目标部门 dept_id
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
+ * @param {Date|number|string} [params.signupDeadline] 报名截止（handler 算好的 effective = activity.signup_deadline ?? end_time；缺省不校验）
  * @returns {Promise<object>} projectJoinResult 结果
- * @throws {BizError} openid/deptId 缺失、部门不存在、用户不存在、已报名拒绝
+ * @throws {BizError} openid/deptId 缺失、部门不存在、用户不存在、已报名拒绝、报名已截止
  */
 async function joinDepartment(params) {
-  const { store, openid, deptId, now } = params || {};
+  const { store, openid, deptId, now, signupDeadline } = params || {};
   if (!openid || typeof openid !== 'string') {
     throw BizError(CODE.AUTH_NO_OPENID, 'join: openid required');
   }
@@ -93,6 +94,17 @@ async function joinDepartment(params) {
       CODE.AUTH_JOIN_STATUS_DENIED,
       '已报名，部门不可自行修改，如需调整联系管理员'
     );
+  }
+
+  // 报名截止校验（仅对新报名；已报名在上一步已拒）：
+  // signupDeadline 由 handler 算好传入 = activity.signup_deadline ?? activity.end_time
+  // （不填 signup_deadline = 活动结束前都可报名）。缺省/活动缺失 → 不校验（不阻断报名）。
+  if (signupDeadline !== undefined && signupDeadline !== null && signupDeadline !== '') {
+    const dlTs = signupDeadline instanceof Date ? signupDeadline.getTime() : Date.parse(signupDeadline);
+    const curTs = (now instanceof Date ? now : new Date()).getTime();
+    if (Number.isFinite(dlTs) && curTs > dlTs) {
+      throw BizError(CODE.BIZ_SIGNUP_ENDED, '报名已截止');
+    }
   }
 
   // 正常报名：pending → joined（直接更新注入 store 中的引用对象，便于单测观察）

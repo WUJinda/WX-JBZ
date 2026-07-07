@@ -1,6 +1,6 @@
 <!-- pages/admin/activity/activity.wxml
-  后台活动配置：表单 + 发布（F8 R8.1）。
-  红线：只提交活动配置字段，无 _openid/phone/sync_count 绑定。
+  后台活动配置：表单 + 发布 + 终止（F8 R8.1）。
+  红线：只提交活动配置字段，无 _openid/phone/sync_count 绑定。无图片（大字报模式）。
 -->
 <view class="admin-page">
   <view class="page-title">{{pageLabel}}</view>
@@ -11,13 +11,6 @@
     <input class="form-input" value="{{name}}" bindinput="onNameInput" placeholder="请输入活动名称" />
   </view>
   <view class="form-error" wx:if="{{formErrors.name}}">{{formErrors.name}}</view>
-
-  <!-- 头图 URL -->
-  <view class="form-row">
-    <text class="form-label">头图 URL</text>
-    <input class="form-input" value="{{cover_url}}" bindinput="onCoverInput" placeholder="请输入头图链接" />
-  </view>
-  <view class="form-error" wx:if="{{formErrors.cover_url}}">{{formErrors.cover_url}}</view>
 
   <!-- 开始时间 -->
   <view class="form-row">
@@ -34,6 +27,15 @@
       <view class="form-picker {{end_time ? '' : 'placeholder'}}">{{end_time || '请选择结束日期'}}</view>
     </picker>
   </view>
+
+  <!-- 报名截止（可选） -->
+  <view class="form-row">
+    <text class="form-label">报名截止</text>
+    <picker mode="date" value="{{signup_deadline}}" bindchange="onSignupChange">
+      <view class="form-picker {{signup_deadline ? '' : 'placeholder'}}">{{signup_deadline || '不填=结束前可报'}}</view>
+    </picker>
+  </view>
+  <view class="form-error" wx:if="{{formErrors.signup_deadline}}">{{formErrors.signup_deadline}}</view>
   <view class="form-error" wx:if="{{formErrors.startEnd}}">{{formErrors.startEnd}}</view>
   <view class="form-error" wx:if="{{formErrors.startTime}}">{{formErrors.startTime}}</view>
   <view class="form-error" wx:if="{{formErrors.endTime}}">{{formErrors.endTime}}</view>
@@ -53,6 +55,9 @@
     </view>
   </view>
 
+  <!-- 已终止提示 -->
+  <view class="terminated-tip" wx:if="{{terminated}}">该活动已终止（不可恢复），可编辑信息但步数同步已停止</view>
+
   <!-- 错误提示 -->
   <view class="form-error" wx:if="{{errorMsg}}">{{errorMsg}}</view>
 
@@ -60,5 +65,16 @@
   <button class="save-btn" bindtap="onSave" disabled="{{submitting}}">
     <block wx:if="{{submitting}}">保存中...</block>
     <block wx:else>保存</block>
+  </button>
+
+  <!-- 终止活动按钮（仅已存在且未终止时显示） -->
+  <button
+    wx:if="{{activityId && !terminated}}"
+    class="terminate-btn"
+    bindtap="onTerminate"
+    disabled="{{terminating}}"
+  >
+    <block wx:if="{{terminating}}">终止中...</block>
+    <block wx:else>终止活动</block>
   </button>
 </view>

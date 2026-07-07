@@ -121,6 +121,13 @@ const handlers = {
     // 未报名用户不浪费 code2Session 外部调用与解密开销。
     assertJoined(context.user);
 
+    // 提前查活动文档：① 判 terminated（管理员终止后立即拒绝同步，省 code2Session 外部调用与解密开销）；
+    // ② 供 syncSteps 活动期过滤（start_date ~ today）——修「累计步数过大」bug 的关键。
+    const activity = await getActivityById(cloud, activityId);
+    if (activity && activity.terminated === true) {
+      throw BizError(CODE.STEP_ACTIVITY_CLOSED, '活动已终止，停止同步');
+    }
+
     // 当次取新鲜 session_key（用后即弃）。
     const { sessionKey } = await code2Session(jsCode);
     // 立即解密 → stepInfoList。
@@ -134,11 +141,8 @@ const handlers = {
         STEP_RECORD_FIELDS
       )
     };
-    // P0 修复「累计步数过大」：按 activity_id 查活动文档（含 start_time/end_time）传给 syncSteps，
-    // 活动期过滤（start_date ~ today）才生效。此前 activity 仅读 event.activity（前端不传）→ undefined
-    // → 过滤失效 → 微信运动近 30 天步数全量回灌 → sync 返回 total ≈ 近 30 天总和（远超活动期累计）。
-    // 未命中（activityId 空 / 库无此活动）→ null，syncSteps 退化为「仅过滤未来日」（保持原兜底语义）。
-    const activity = await getActivityById(cloud, activityId);
+    // activity 已在上方查得（含 terminated 判定）；未命中（activityId 空 / 库无此活动）→ null，
+    // syncSteps 退化为「仅过滤未来日」（保持原兜底语义）。
     const result = await syncSteps({
       store,
       openid,

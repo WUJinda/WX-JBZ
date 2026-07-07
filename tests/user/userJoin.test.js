@@ -129,4 +129,44 @@ describe('user.join 纯函数（D1）', () => {
       ).rejects.toMatchObject({ code: CODE.SYS_DB_ERROR });
     });
   });
+
+  describe('报名截止 signupDeadline', () => {
+    it('未传 signupDeadline → 不校验（不限，兼容活动缺失）', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      const out = await joinDepartment({ store, openid: 'oU', deptId: 'd_01', now: NOW });
+      expect(out.join_status).toBe('joined');
+    });
+
+    it('now < signupDeadline → 正常报名', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      const out = await joinDepartment({
+        store, openid: 'oU', deptId: 'd_01', now: NOW,
+        signupDeadline: '2026-07-31T23:59:59+08:00' // 晚于 NOW(2026-06-26)
+      });
+      expect(out.join_status).toBe('joined');
+    });
+
+    it('now > signupDeadline → 拒绝 BIZ_SIGNUP_ENDED，不落库', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      await expect(
+        joinDepartment({
+          store, openid: 'oU', deptId: 'd_01', now: NOW,
+          signupDeadline: '2026-06-01T00:00:00Z' // 早于 NOW(2026-06-26)
+        })
+      ).rejects.toMatchObject({ code: CODE.BIZ_SIGNUP_ENDED });
+      // 未落库（仍 pending）
+      expect(store.User[0].join_status).toBe('pending');
+    });
+
+    it('已报名用户不受截止影响（已报名检查优先于截止）', async () => {
+      const { store } = makeStore({ join_status: 'joined', dept_id: 'd_01' });
+      // 已 joined + 截止已过 → 仍走 AUTH_JOIN_STATUS_DENIED（非 BIZ_SIGNUP_ENDED）
+      await expect(
+        joinDepartment({
+          store, openid: 'oU', deptId: 'd_02', now: NOW,
+          signupDeadline: '2026-06-01T00:00:00Z'
+        })
+      ).rejects.toMatchObject({ code: CODE.AUTH_JOIN_STATUS_DENIED });
+    });
+  });
 });

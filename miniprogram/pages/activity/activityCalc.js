@@ -41,6 +41,11 @@ function toTs(t) {
  */
 function calcCountdown(activity, now) {
   const a = activity || {};
+  // 手动终止优先（与后端 deriveStatus 同口径）：terminated=true 一律已结束，忽略时间窗。
+  if (a.terminated === true) {
+    const end = toTs(a.end_time);
+    return { status: STATUS.ENDED, label: '已结束', days: 0, hours: 0, minutes: 0, targetTs: Number.isFinite(end) ? end : NaN };
+  }
   const start = toTs(a.start_time);
   const end = toTs(a.end_time);
   const cur = toTs(now === undefined ? new Date() : now);
@@ -157,10 +162,11 @@ function utcDayIndex(ts) {
  *
  * @param {string} status deriveStatus 结果
  * @param {string} joinStatus 'pending' | 'joined'
+ * @param {boolean} [signupEnded] 报名是否已截止（进行中+未报名+已截止→置灰）；默认 false
  * @returns {{text:string, action:string, disabled:boolean}}
  *   action: 'none' | 'login' | 'home' | 'rank'
  */
-function deriveCta(status, joinStatus) {
+function deriveCta(status, joinStatus, signupEnded) {
   if (status === STATUS.PENDING) {
     return { text: '活动未开始', action: 'none', disabled: true };
   }
@@ -170,6 +176,10 @@ function deriveCta(status, joinStatus) {
   // 进行中
   if (joinStatus === 'joined') {
     return { text: '我的步数', action: 'home', disabled: false };
+  }
+  // 未报名 + 报名已截止 → 置灰（仅当活动设了 signup_deadline 且已过；不填=结束前可报，由 ENDED 兜底）
+  if (signupEnded) {
+    return { text: '报名已截止', action: 'none', disabled: true };
   }
   return { text: '报名参加', action: 'login', disabled: false };
 }

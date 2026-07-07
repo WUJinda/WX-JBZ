@@ -21,8 +21,9 @@ const { CODE, BizError, notImplemented } = require('../common/errors');
 const { authMiddleware } = require('../common/authMiddleware');
 const { loadByWhere } = require('../common/db');
 const { assertAdmin } = require('../common/adminGuard');
-const { getCurrent } = require('./activityStatus');
+const { getCurrent, deriveStatus } = require('./activityStatus');
 const { saveActivity } = require('./activitySave');
+const { terminateActivity } = require('./activityTerminate');
 
 /**
  * 游客友好地取 openid：无 OPENID 不抛错，返回空串。
@@ -54,7 +55,7 @@ const handlers = {
     //    返回空态让前端显示"活动未发布/未开始"。
     const activities = await loadByWhere(cloud, 'Activity');
     const activity = (activities && activities[0]) || {
-      activity_id: '', name: '', cover_url: '', start_time: null, end_time: null, rules: ''
+      activity_id: '', name: '', start_time: null, end_time: null, signup_deadline: null, rules: ''
     };
 
     // 2. 真实报名状态：按 openid 查 User（游客 openid 空 → pending）。
@@ -107,15 +108,59 @@ const handlers = {
       activity: {
         activity_id: event && event.activity_id,
         name: event && event.name,
-        cover_url: event && event.cover_url,
         start_time: event && event.start_time,
         end_time: event && event.end_time,
+        signup_deadline: event && event.signup_deadline,
         rules: event && event.rules
       },
       now
     });
 
     // 云轨：写回 Activity（upsert：存在 update，不存在 add）。单条失败不阻断、幂等可重跑。
+    await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
+    return result;
+  },
+
+  // 编辑页回填：返回完整活动字段（含 signup_deadline/terminated/terminated_at）。管理员（assertAdmin）。
+  get: async (event) => {
+    const context = authMiddleware({ getWXContext: cloud.getWXContext });
+    const store = {
+      User: await loadByWhere(cloud, 'User'),
+      Activity: await loadByWhere(cloud, 'Activity')
+    };
+    assertAdmin(store, context.openid);
+    // activity_id 缺省取首条（P0 单期活动仅一个）；编辑页一般显式传当前 activity_id。
+    const activityId = (event && event.activity_id) || '';
+    const activity = activityId
+      ? store.Activity.find((a) => a && a.activity_id === activityId)
+      : (store.Activity[0] || null);
+    if (!activity) {
+      throw BizError(CODE.BIZ_PARAM_MISSING, 'activity.get: activity not found');
+    }
+    return {
+      activity_id: activity.activity_id || activity._id || '',
+      name: activity.name || '',
+      start_time: activity.start_time,
+      end_time: activity.end_time,
+      signup_deadline: activity.signup_deadline || null,
+      status: deriveStatus(activity),
+      terminated: activity.terminated === true,
+      terminated_at: activity.terminated_at || null,
+      rules: activity.rules || ''
+    };
+  },
+
+  // 手动终止活动（不可恢复）：置 terminated/terminated_at + status=ended。管理员（assertAdmin）。
+  terminate: async (event) => {
+    const context = authMiddleware({ getWXContext: cloud.getWXContext });
+    const store = {
+      User: await loadByWhere(cloud, 'User'),
+      Activity: await loadByWhere(cloud, 'Activity')
+    };
+    assertAdmin(store, context.openid);
+    const activityId = (event && event.activity_id) || '';
+    const now = (event && event.now) || new Date().toISOString();
+    const result = terminateActivity(store, { activity_id: activityId, now });
     await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
     return result;
   }
@@ -141,10 +186,12 @@ async function upsertActivityToCloud(cloudSdk, activity, activityId, now) {
     if (data.length > 0 && data[0]._id) {
       const payload = {
         name: doc.name,
-        cover_url: doc.cover_url,
         start_time: doc.start_time,
         end_time: doc.end_time,
+        signup_deadline: doc.signup_deadline,
         status: doc.status,
+        terminated: doc.terminated === true,
+        terminated_at: doc.terminated_at || null,
         rules: doc.rules,
         updated_at: now
       };

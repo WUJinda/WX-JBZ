@@ -27,16 +27,16 @@ describe('saveActivity（正常路径）', () => {
     const out = saveActivity(store, {
       activity: {
         name: '2026 健步走',
-        cover_url: 'https://x/cover.png',
         start_time: START,
         end_time: END,
+        signup_deadline: '2026-06-30T23:59:59+08:00',
         rules: '规则'
       },
       now: new Date('2026-06-20T00:00:00Z')
     });
     expect(out.activity_id).toMatch(/^a_/);
     expect(out.name).toBe('2026 健步走');
-    expect(out.cover_url).toBe('https://x/cover.png');
+    expect(out.signup_deadline).toBe('2026-06-30T23:59:59+08:00');
     expect(out.start_time).toBe(START);
     expect(out.end_time).toBe(END);
     expect(out.rules).toBe('规则');
@@ -52,11 +52,11 @@ describe('saveActivity（正常路径）', () => {
     const existing = {
       activity_id: 'a_demo_001',
       name: '旧名',
-      cover_url: '',
       start_time: '2026-07-05T00:00:00+08:00',
       end_time: '2026-07-15T00:00:00+08:00',
       status: STATUS.PENDING,
       rules: '旧规则',
+      terminated: false,
       created_at: '2026-06-01T00:00:00Z',
       updated_at: '2026-06-01T00:00:00Z'
     };
@@ -65,9 +65,9 @@ describe('saveActivity（正常路径）', () => {
       activity: {
         activity_id: 'a_demo_001',
         name: '新名',
-        cover_url: 'https://x/2.png',
         start_time: START,
         end_time: END,
+        signup_deadline: '2026-06-30T23:59:59+08:00',
         rules: '新规则'
       },
       now: '2026-06-20T00:00:00Z'
@@ -76,8 +76,10 @@ describe('saveActivity（正常路径）', () => {
     expect(store.Activity.length).toBe(1);
     expect(out.activity_id).toBe('a_demo_001');
     expect(out.name).toBe('新名');
-    expect(out.cover_url).toBe('https://x/2.png');
+    expect(out.signup_deadline).toBe('2026-06-30T23:59:59+08:00');
     expect(out.rules).toBe('新规则');
+    // save 不触碰 terminated（由 terminate action 维护）
+    expect(existing.terminated).toBe(false);
     // 原文档被更新
     expect(existing.name).toBe('新名');
     expect(existing.start_time).toBe(START);
@@ -169,6 +171,66 @@ describe('saveActivity（校验）', () => {
       err = e;
     }
     expect(err.code).toBe(CODE.SYS_DB_ERROR);
+  });
+});
+
+describe('saveActivity（报名截止 signup_deadline）', () => {
+  it('不填 signup_deadline → 落库 null（=活动结束前都可报名）', () => {
+    const store = makeStore([]);
+    const out = saveActivity(store, {
+      activity: { name: 'x', start_time: START, end_time: END },
+      now: '2026-06-20T00:00:00Z'
+    });
+    expect(out.signup_deadline).toBeNull();
+    expect(store.Activity[0].signup_deadline).toBeNull();
+  });
+
+  it('signup_deadline ≤ end_time → 合法', () => {
+    const out = saveActivity(makeStore([]), {
+      activity: { name: 'x', start_time: START, end_time: END, signup_deadline: '2026-07-15T00:00:00+08:00' },
+      now: '2026-06-20T00:00:00Z'
+    });
+    expect(out.signup_deadline).toBe('2026-07-15T00:00:00+08:00');
+  });
+
+  it('signup_deadline > end_time → BIZ_PARAM_MISSING', () => {
+    let err;
+    try {
+      saveActivity(makeStore([]), {
+        activity: { name: 'x', start_time: START, end_time: END, signup_deadline: '2026-08-01T00:00:00+08:00' },
+        now: '2026-06-20T00:00:00Z'
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
+  });
+
+  it('signup_deadline 非法（无法解析）→ BIZ_PARAM_MISSING', () => {
+    let err;
+    try {
+      saveActivity(makeStore([]), {
+        activity: { name: 'x', start_time: START, end_time: END, signup_deadline: 'not-a-date' },
+        now: '2026-06-20T00:00:00Z'
+      });
+    } catch (e) {
+      err = e;
+    }
+    expect(err.code).toBe(CODE.BIZ_PARAM_MISSING);
+  });
+
+  it('编辑时清空 signup_deadline（原值 → 不填）→ 落库 null', () => {
+    const existing = {
+      activity_id: 'a_1', name: 'x', start_time: START, end_time: END,
+      signup_deadline: '2026-06-30T23:59:59+08:00', status: STATUS.PENDING
+    };
+    const store = makeStore([existing]);
+    const out = saveActivity(store, {
+      activity: { activity_id: 'a_1', name: 'x', start_time: START, end_time: END, signup_deadline: null },
+      now: '2026-06-20T00:00:00Z'
+    });
+    expect(out.signup_deadline).toBeNull();
+    expect(existing.signup_deadline).toBeNull();
   });
 });
 
@@ -288,13 +350,13 @@ describe('saveActivity（纯函数 / 红线 grep）', () => {
 describe('projectSavedActivity（投影白名单，不下发敏感字段）', () => {
   // 投影白名单语义：save 返回给前端的活动对象只含安全字段，
   // 绝不下发 _openid / phone / sync_count / created_at / updated_at 等服务端/敏感字段。
-  it('返回对象仅含白名单字段（activity_id/name/cover_url/start_time/end_time/status/rules）', () => {
+  it('返回对象仅含白名单字段（activity_id/name/start_time/end_time/signup_deadline/status/rules）', () => {
     const out = projectSavedActivity({
       activity_id: 'a_1',
       name: '活动',
-      cover_url: 'https://x/c.png',
       start_time: START,
       end_time: END,
+      signup_deadline: '2026-06-30T23:59:59+08:00',
       status: STATUS.PENDING,
       rules: 'r',
       // 服务端/敏感字段：投影不应下发
@@ -302,6 +364,7 @@ describe('projectSavedActivity（投影白名单，不下发敏感字段）', ()
       _openid: 'op_admin',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
+      terminated: false,
       total_steps: 999,
       participant_count: 10,
       phone: '13800000000',
@@ -310,9 +373,9 @@ describe('projectSavedActivity（投影白名单，不下发敏感字段）', ()
     expect(out).toEqual({
       activity_id: 'a_1',
       name: '活动',
-      cover_url: 'https://x/c.png',
       start_time: START,
       end_time: END,
+      signup_deadline: '2026-06-30T23:59:59+08:00',
       status: STATUS.PENDING,
       rules: 'r'
     });
@@ -328,7 +391,7 @@ describe('projectSavedActivity（投影白名单，不下发敏感字段）', ()
     expect(out).not.toHaveProperty('sync_count');
   });
 
-  it('缺失字段兜底为空串（name/cover_url/rules 缺失不报错）', () => {
+  it('缺失字段兜底为空串/null（name/signup_deadline/rules 缺失不报错）', () => {
     const out = projectSavedActivity({
       activity_id: 'a_1',
       start_time: START,
@@ -336,7 +399,7 @@ describe('projectSavedActivity（投影白名单，不下发敏感字段）', ()
       status: STATUS.ACTIVE
     });
     expect(out.name).toBe('');
-    expect(out.cover_url).toBe('');
+    expect(out.signup_deadline).toBeNull();
     expect(out.rules).toBe('');
   });
 });

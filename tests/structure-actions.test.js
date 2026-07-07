@@ -84,8 +84,8 @@ describe('activity action 挂载与页面结构校验（C1+C2）', () => {
 
   it('activity 页面四态 CTA / 头图 / 起止 / 当前阶段 / 倒计时 / 进度条 / 规则 / 概览 元素齐全', () => {
     const wxml = readSource('miniprogram/pages/activity/activity.wxml');
-    // 头图
-    expect(wxml).toMatch(/cover/);
+    // 大字报（活动名主视觉，无图片）
+    expect(wxml).toMatch(/cover-title|cover-placeholder/);
     // 起止时间
     expect(wxml).toMatch(/start_time|开始时间/);
     expect(wxml).toMatch(/end_time|结束时间/);
@@ -498,18 +498,20 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(callCount).toBe(actions.length);
   });
 
-  it('activity.save handler 调用 assertAdmin（管理员守卫，与 admin 8 action 同口径）', () => {
+  it('activity 管理员 action（save/get/terminate）均调用 assertAdmin（与 admin 9 action 同口径）', () => {
     const src = readSource('cloudfunctions/activity/index.js');
-    // save 是唯一需要管理员守卫的 activity action，语句调用必须精确出现 1 次。
+    // save/get/terminate 三个管理员 action 各调一次 assertAdmin，语句调用精确 3 次。
     const callCount = (src.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(callCount).toBe(1);
-    // save handler 块内含 assertAdmin
-    const saveIdx = src.indexOf('save:');
-    expect(saveIdx).toBeGreaterThan(-1);
-    expect(src.slice(saveIdx, saveIdx + 800).includes('assertAdmin(')).toBe(true);
+    expect(callCount).toBe(3);
+    // 各 handler 块内均含 assertAdmin
+    for (const key of ['save:', 'get:', 'terminate:']) {
+      const idx = src.indexOf(key);
+      expect(idx, `缺少 handler: ${key}`).toBeGreaterThan(-1);
+      expect(src.slice(idx, idx + 900).includes('assertAdmin('), `${key} 块内缺 assertAdmin`).toBe(true);
+    }
   });
 
-  it('assertAdmin 全仓调用总数 = 10（admin 9 + activity.save 1），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 12（admin 9 + activity 3），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
@@ -517,8 +519,8 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     expect(adminCount).toBe(9);
-    expect(activityCount).toBe(1);
-    expect(adminCount + activityCount).toBe(10);
+    expect(activityCount).toBe(3);
+    expect(adminCount + activityCount).toBe(12);
   });
 
   it('admin 纯函数模块文件存在（9 个）', () => {
@@ -631,10 +633,10 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     expect(src).toMatch(/function isEmptyDashboard/);
   });
 
-  it('activity 页含表单字段（name/cover/起止 picker/rules/发布 switch）', () => {
+  it('activity 页含表单字段（name/起止 picker/报名截止 picker/rules/发布 switch/终止按钮）', () => {
     const wxml = readSource('miniprogram/pages/admin/activity/activity.wxml');
     expect(wxml).toMatch(/onNameInput/);
-    expect(wxml).toMatch(/onCoverInput/);
+    expect(wxml).toMatch(/onSignupChange/);
     expect(wxml).toMatch(/onStartChange/);
     expect(wxml).toMatch(/onEndChange/);
     expect(wxml).toMatch(/picker mode="date"/);
@@ -642,6 +644,7 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     expect(wxml).toMatch(/switch/);
     expect(wxml).toMatch(/onPublishChange/);
     expect(wxml).toMatch(/onSave/);
+    expect(wxml).toMatch(/onTerminate/);
   });
 
   it('activity.js 调 activity / action:save，且 api.call 接 .catch；前端先校验', () => {

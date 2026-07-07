@@ -72,3 +72,28 @@
   background: #9ad8b6;
   color: #fff;
 }
+
+/* 已终止提示条 */
+.terminated-tip {
+  font-size: 26rpx;
+  color: #e64340;
+  background: #fdecec;
+  padding: 16rpx;
+  border-radius: 12rpx;
+  margin-top: 24rpx;
+}
+
+/* 终止活动按钮（危险操作，描边样式区别于保存主按钮） */
+.terminate-btn {
+  width: 100%;
+  background: #fff;
+  color: #e64340;
+  border: 1rpx solid #e64340;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  margin-top: 24rpx;
+}
+.terminate-btn[disabled] {
+  color: #f0a0a0;
+  border-color: #f0a0a0;
+}

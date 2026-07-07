@@ -1,18 +1,17 @@
 // pages/activity/activity.js
 // 活动主页（启动页，游客可见）—— 对齐 PRD F7 R7.1~R7.4，开发计划阶段 C2。
 const { calcCountdown, calcProgress, deriveCta, STATUS } = require('./activityCalc');
-const { isValidImageUrl } = require('../../utils/imageUrl');
 
 // F2：空态活动（云函数失败/活动未发布时用，替代旧 mockActivity 的假时间窗 2026-07-01~07-21）。
 const EMPTY_ACTIVITY = {
-  activity_id: '', name: '', cover_url: '', start_time: null, end_time: null,
-  status: 'pending', rules: '', overview: { total_steps: 0, participant_count: 0 }
+  activity_id: '', name: '', start_time: null, end_time: null, signup_deadline: null,
+  terminated: false, status: 'pending', rules: '', overview: { total_steps: 0, participant_count: 0 }
 };
 
 Page({
   data: {
     // 活动信息（来自 activity.current）
-    activity: null, // { activity_id, name, cover_url, start_time, end_time, status, rules, overview }
+    activity: null, // { activity_id, name, start_time, end_time, signup_deadline, status, terminated, rules, overview }
     joinStatus: 'pending', // 当前用户报名状态（本地轨 mock；真实留 D1）
     // 派生展示
     status: STATUS.PENDING, // pending / active / ended
@@ -81,12 +80,8 @@ Page({
    * @param {string} [joinStatus]
    */
   applyActivity(data, joinStatus, options) {
-    // 渲染兜底：cover_url 非法（如误填纯文本 "ssss"）→ 置空走 placeholder，
-    // 避免 <image src="ssss"> 被解析为页面相对路径 /pages/activity/ssss → 渲染层 500 刷屏。
-    const raw = data || EMPTY_ACTIVITY;
-    const activity = isValidImageUrl(raw.cover_url)
-      ? raw
-      : Object.assign({}, raw, { cover_url: '' });
+    // 大字报模式：无头图，活动名直接为主视觉（cover_url 已下线）。
+    const activity = data || EMPTY_ACTIVITY;
     const opts = options || {};
     // F1：写入全局活动上下文，供各页读 activity_id（替代硬编码 a_demo_001）。
     // persist=false（current 失败的 fallback 空态）跳过写回——避免覆盖 home 等其它页已成功
@@ -116,7 +111,9 @@ Page({
     if (!a) return;
     const countdown = calcCountdown(a);
     const progress = calcProgress(a);
-    const cta = deriveCta(countdown.status, this.data.joinStatus);
+    // 报名截止：仅当活动设了 signup_deadline 且当前已过（不填=活动结束前可报，由 status=ENDED 兜底）
+    const signupEnded = !!(a.signup_deadline && Date.now() > Date.parse(a.signup_deadline));
+    const cta = deriveCta(countdown.status, this.data.joinStatus, signupEnded);
     const statusText = {
       [STATUS.PENDING]: '未开始',
       [STATUS.ACTIVE]: '进行中',

@@ -89,14 +89,24 @@ const COLLECTIONS = {
       _id: { type: 'string', desc: '主键' },
       activity_id: { type: 'string', desc: '活动 ID（P0 单期，预留多期）' },
       name: { type: 'string', desc: '活动名称' },
-      cover_url: { type: 'string', desc: '头图 URL' },
       start_time: { type: 'date', desc: '开始时间' },
       end_time: { type: 'date', desc: '结束时间' },
+      signup_deadline: {
+        type: 'date',
+        optional: true,
+        desc: '报名截止时间（可选；不填=活动结束前都可报名；填了须 ≤ end_time）。user.join 据此拦截逾期报名'
+      },
       status: {
         type: 'string',
         enum: ['pending', 'active', 'ended'],
-        desc: '活动状态：由时间推算冗余写入（pending 未开始 / active 进行中 / ended 已结束）；真实判定以 deriveStatus 为准'
+        desc: '活动状态：由时间推算冗余写入（pending 未开始 / active 进行中 / ended 已结束）；terminated=true 时优先为 ended；真实判定以 deriveStatus 为准'
       },
+      terminated: {
+        type: 'boolean',
+        default: false,
+        desc: '是否已手动终止（管理员提前结束，不可恢复；deriveStatus 优先判此字段，命中即 ended）'
+      },
+      terminated_at: { type: 'date', optional: true, desc: '手动终止时间（terminated=true 时写入）' },
       rules: { type: 'string', desc: '规则说明（richtext）' },
       total_steps: {
         type: 'int',

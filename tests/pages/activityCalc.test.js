@@ -97,6 +97,12 @@ describe('活动主页计算纯函数（C2）', () => {
       const cd = calcCountdown({}, Date.now());
       expect(cd.status).toBe(STATUS.PENDING);
     });
+
+    it('terminated=true 一律 ended（与后端 deriveStatus 同口径）', () => {
+      const cd = calcCountdown({ start_time: START, end_time: END, terminated: true }, Date.parse('2026-07-10T00:00:00Z'));
+      expect(cd.status).toBe(STATUS.ENDED);
+      expect(cd.label).toBe('已结束');
+    });
   });
 
   describe('calcProgress（进度 R7.1）', () => {
@@ -183,6 +189,19 @@ describe('活动主页计算纯函数（C2）', () => {
       const cta = deriveCta(STATUS.PENDING, 'joined');
       expect(cta.disabled).toBe(true);
       expect(cta.text).toBe('活动未开始');
+    });
+
+    it('进行中 + 未报名 + 报名已截止 → 置灰「报名已截止」', () => {
+      const cta = deriveCta(STATUS.ACTIVE, 'pending', true);
+      expect(cta.text).toBe('报名已截止');
+      expect(cta.disabled).toBe(true);
+      expect(cta.action).toBe('none');
+    });
+
+    it('进行中 + 未报名 + 未截止（默认）→ 「报名参加」', () => {
+      const cta = deriveCta(STATUS.ACTIVE, 'pending');
+      expect(cta.text).toBe('报名参加');
+      expect(cta.disabled).toBe(false);
     });
   });
 });

@@ -7,14 +7,10 @@
  *   - name 必填（非空字符串）。
  *   - start_time / end_time 必填，且 start_time < end_time（起止不可倒序）。
  *   - 时间格式合法（YYYY-MM-DD 或 YYYY-MM-DD HH:mm，可被 Date.parse 解析）。
+ *   - signup_deadline 可选；留空 = 活动结束前都可报名；填了须合法且 ≤ end_time。
  *
  * 发布态文案：publish=true → '已发布'，否则 → '未发布'（草稿）。
- *
- * cover_url 校验：可选字段，留空表示无头图；填了必须是合法图片 URL
- *   （http(s):// 或 cloud://），防误填纯文本（如 "ssss"）流入 <image src> 致渲染层 500。
  */
-
-const { isValidImageUrl } = require('../../../utils/imageUrl');
 
 /** 时间格式校验：能被 Date.parse 解析为有效时间戳即合法。 */
 function isValidTime(t) {
@@ -26,8 +22,8 @@ function isValidTime(t) {
 
 /**
  * 活动表单校验（R8.1）。
- * @param {object} form { name, start_time, end_time, cover_url, rules, publish }
- * @returns {{valid:boolean, errors:{name?:string, startEnd?:string, startTime?:string, endTime?:string}}}
+ * @param {object} form { name, start_time, end_time, signup_deadline?, rules, publish }
+ * @returns {{valid:boolean, errors:{name?:string, startEnd?:string, startTime?:string, endTime?:string, signup_deadline?:string}}}
  */
 function validateActivityForm(form) {
   const f = form || {};
@@ -37,12 +33,6 @@ function validateActivityForm(form) {
   const name = typeof f.name === 'string' ? f.name.trim() : '';
   if (!name) {
     errors.name = '活动名称不能为空';
-  }
-
-  // cover_url 可选；填了必须是合法图片 URL（防误填纯文本致 <image src> 渲染层 500）
-  const coverUrl = typeof f.cover_url === 'string' ? f.cover_url.trim() : '';
-  if (coverUrl && !isValidImageUrl(coverUrl)) {
-    errors.cover_url = '头图链接需以 http(s):// 或 cloud:// 开头';
   }
 
   // 起止时间必填 + 格式合法 + 不可倒序
@@ -56,6 +46,16 @@ function validateActivityForm(form) {
     errors.endTime = '结束时间格式不合法';
   } else if (Date.parse(f.end_time) <= Date.parse(f.start_time)) {
     errors.startEnd = '结束时间必须晚于开始时间';
+  }
+
+  // 报名截止（可选）：留空 = 活动结束前都可报名；填了须合法且 ≤ end_time
+  const hasSignup = f.signup_deadline !== undefined && f.signup_deadline !== null && f.signup_deadline !== '';
+  if (hasSignup) {
+    if (!isValidTime(f.signup_deadline)) {
+      errors.signup_deadline = '报名截止格式不合法';
+    } else if (endOk && Date.parse(f.signup_deadline) > Date.parse(f.end_time)) {
+      errors.signup_deadline = '报名截止不得晚于结束时间';
+    }
   }
 
   return { valid: Object.keys(errors).length === 0, errors };
