@@ -169,4 +169,44 @@ describe('user.join 纯函数（D1）', () => {
       ).rejects.toMatchObject({ code: CODE.AUTH_JOIN_STATUS_DENIED });
     });
   });
+
+  describe('活动终止 activityTerminated', () => {
+    it('activityTerminated=true → 拒绝 STEP_ACTIVITY_CLOSED，不落库', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      await expect(
+        joinDepartment({ store, openid: 'oU', deptId: 'd_01', now: NOW, activityTerminated: true })
+      ).rejects.toMatchObject({ code: CODE.STEP_ACTIVITY_CLOSED });
+      expect(store.User[0].join_status).toBe('pending');
+    });
+
+    it('activityTerminated=false → 正常报名', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      const out = await joinDepartment({ store, openid: 'oU', deptId: 'd_01', now: NOW, activityTerminated: false });
+      expect(out.join_status).toBe('joined');
+    });
+
+    it('未传 activityTerminated → 不校验（兼容活动缺失/旧数据无 terminated 字段）', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      const out = await joinDepartment({ store, openid: 'oU', deptId: 'd_01', now: NOW });
+      expect(out.join_status).toBe('joined');
+    });
+
+    it('terminated 优先于报名截止（活动终止时即使截止未到也拒）', async () => {
+      const { store } = makeStore({ join_status: 'pending' });
+      await expect(
+        joinDepartment({
+          store, openid: 'oU', deptId: 'd_01', now: NOW,
+          activityTerminated: true,
+          signupDeadline: '2026-12-31T00:00:00Z' // 截止未到，但活动已终止
+        })
+      ).rejects.toMatchObject({ code: CODE.STEP_ACTIVITY_CLOSED });
+    });
+
+    it('已报名用户优先报 AUTH_JOIN_STATUS_DENIED（即便活动已终止）', async () => {
+      const { store } = makeStore({ join_status: 'joined', dept_id: 'd_01' });
+      await expect(
+        joinDepartment({ store, openid: 'oU', deptId: 'd_02', now: NOW, activityTerminated: true })
+      ).rejects.toMatchObject({ code: CODE.AUTH_JOIN_STATUS_DENIED });
+    });
+  });
 });

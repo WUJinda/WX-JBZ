@@ -43,18 +43,21 @@ const handlers = {
     } catch (err) {
       store.Department = [];
     }
-    // 报名截止校验：取当前活动文档，effective 截止 = signup_deadline ?? end_time
-    // （不填 signup_deadline = 活动结束前都可报名）。活动查询失败/缺失 → 不传（不阻断报名）。
-    let signupDeadline;
+    // 活动终止 + 报名截止校验：取当前活动文档。
+    //   - terminated=true → 拒绝报名（joinDepartment 抛 STEP_ACTIVITY_CLOSED，与 steps.sync 同码）；
+    //   - effective 截止 = signup_deadline ?? end_time（不填 signup_deadline = 活动结束前都可报名）。
+    //   活动查询失败/缺失 → 两项都不传（降级兼容，不阻断报名）。
+    let signupDeadline, activityTerminated;
     try {
       const activity = await getActiveActivity(cloud);
       if (activity) {
+        activityTerminated = activity.terminated === true;
         signupDeadline = activity.signup_deadline || activity.end_time;
       }
     } catch (err) {
-      // 活动查询失败不阻断报名（降级为不校验截止）。
+      // 活动查询失败不阻断报名（降级为不校验终止/截止）。
     }
-    const result = await joinDepartment({ store, openid, deptId, signupDeadline });
+    const result = await joinDepartment({ store, openid, deptId, signupDeadline, activityTerminated });
     // 落库：将更新写回云数据库（joinDepartment 已就地改 store 中的引用对象）
     await db.collection('User').where({ _openid: openid }).update({
       data: {

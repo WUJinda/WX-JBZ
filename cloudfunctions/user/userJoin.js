@@ -58,11 +58,12 @@ function projectJoinResult(user, dept) {
  * @param {string} params.deptId 报名目标部门 dept_id
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
  * @param {Date|number|string} [params.signupDeadline] 报名截止（handler 算好的 effective = activity.signup_deadline ?? end_time；缺省不校验）
+ * @param {boolean} [params.activityTerminated] 活动是否已手动终止（handler 从活动文档取 terminated；true→拒绝报名，与 steps.sync 终止拦截同码）
  * @returns {Promise<object>} projectJoinResult 结果
- * @throws {BizError} openid/deptId 缺失、部门不存在、用户不存在、已报名拒绝、报名已截止
+ * @throws {BizError} openid/deptId 缺失、部门不存在、用户不存在、已报名拒绝、活动已终止、报名已截止
  */
 async function joinDepartment(params) {
-  const { store, openid, deptId, now, signupDeadline } = params || {};
+  const { store, openid, deptId, now, signupDeadline, activityTerminated } = params || {};
   if (!openid || typeof openid !== 'string') {
     throw BizError(CODE.AUTH_NO_OPENID, 'join: openid required');
   }
@@ -94,6 +95,12 @@ async function joinDepartment(params) {
       CODE.AUTH_JOIN_STATUS_DENIED,
       '已报名，部门不可自行修改，如需调整联系管理员'
     );
+  }
+
+  // 活动已手动终止（terminated 不可恢复）→ 拒绝新报名（与 steps.sync 终止拦截同码同语义）。
+  // handler 从活动文档取 terminated 传入；缺省/活动查询失败 → 不校验（降级兼容，不阻断报名）。
+  if (activityTerminated === true) {
+    throw BizError(CODE.STEP_ACTIVITY_CLOSED, '活动已终止，无法报名');
   }
 
   // 报名截止校验（仅对新报名；已报名在上一步已拒）：
