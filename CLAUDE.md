@@ -64,6 +64,8 @@ npm run verify:dist         # 校验 dist 产物完整性(共享层注入 + requ
 
 `StepRecord` 的 `(user_id, activity_id, date)` 唯一性靠「唯一索引 + 应用层 upsert」(先 `where().update`,未命中再 `add`,撞唯一索引冲突再重试 update),**不用事务**(云开发事务内禁批量 API)。
 
+⚠️ **sync handler 必须按 `activity_id` 查活动文档传给 `syncSteps`**(`activityResolver.getActivityById`),纯函数据活动的 `start_time/end_time` 过滤「活动期内」步数。此前 handler 只读 `event.activity`(前端不传)→ `undefined` → 过滤失效 → 微信运动近 30 天步数全量回灌 → `total` 远超活动期累计(「累计步数过大」P0 bug)。`steps/index.js` 因此跨目录 require `activity/activityResolver`,已登记进 `sync-shared` 的 `SHARED_MANIFEST`(新增 steps 跨目录依赖时须同步该 manifest,否则 dist 缺包)。
+
 ### 排行榜与定时任务
 
 读榜单只读 `RankCache` 中间表(不实时算)。`tasks` 云函数:

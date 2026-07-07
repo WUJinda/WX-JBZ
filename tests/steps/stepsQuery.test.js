@@ -117,3 +117,53 @@ describe('getToday 缺参（E3，参数缺失错误码）', () => {
     expect(err.code).not.toBe(CODE.STEP_ACTIVITY_CLOSED);
   });
 });
+
+describe('getToday/getHistory 累计仅算活动期内（过滤活动期外脏记录）', () => {
+  const ACTIVITY = {
+    activity_id: ACTIVITY_ID,
+    start_time: '2026-07-01T00:00:00+08:00',
+    end_time: '2026-07-21T23:59:59+08:00'
+  };
+
+  it('getToday.total 过滤 date<start_date 脏 locked 记录', async () => {
+    const store = {
+      StepRecord: [
+        rec({ date: '2026-06-29', steps: 99999, locked: true }), // 脏（活动期外）
+        rec({ date: '2026-07-01', steps: 8000, locked: true }),  // 活动期内
+        rec({ date: '2026-07-03', steps: 7000, locked: false })  // 今日
+      ]
+    };
+    const out = await getToday({
+      store, userId: USER_ID, activityId: ACTIVITY_ID, activity: ACTIVITY, now: NOW
+    });
+    expect(out.total).toBe(8000 + 7000); // 脏 99999 被过滤
+    expect(out.steps).toBe(7000);        // 今日步数不受影响
+  });
+
+  it('getHistory 过滤 date<start_date 脏 locked 记录', async () => {
+    const store = {
+      StepRecord: [
+        rec({ date: '2026-06-29', steps: 99999, locked: true }),
+        rec({ date: '2026-07-01', steps: 8000, locked: true }),
+        rec({ date: '2026-07-03', steps: 7000, locked: false })
+      ]
+    };
+    const out = await getHistory({
+      store, userId: USER_ID, activityId: ACTIVITY_ID, activity: ACTIVITY,
+      from: '2026-06-29', to: '2026-07-03', now: NOW
+    });
+    expect(out.list.map((r) => r.date)).toEqual(['2026-07-01', '2026-07-03']);
+    expect(out.total).toBe(8000 + 7000);
+  });
+
+  it('不传 activity（兜底）→ 脏记录照常计入', async () => {
+    const store = {
+      StepRecord: [
+        rec({ date: '2026-06-29', steps: 99999, locked: true }),
+        rec({ date: '2026-07-01', steps: 8000, locked: true })
+      ]
+    };
+    const out = await getToday({ store, userId: USER_ID, activityId: ACTIVITY_ID, now: NOW });
+    expect(out.total).toBe(99999 + 8000);
+  });
+});

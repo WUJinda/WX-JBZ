@@ -12,7 +12,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { projectStep, dateFromTimestamp, DEFAULT_CONFIG } = require('./stepsSync');
+const { projectStep, dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('./stepsSync');
 
 /**
  * 取某用户某活动的全部 StepRecord（按 date 升序）。
@@ -42,7 +42,7 @@ function getUserRecords(store, userId, activityId) {
  */
 async function getToday(params) {
   const p = params || {};
-  const { store, userId, activityId } = p;
+  const { store, userId, activityId, activity } = p;
   if (!userId) throw BizError(CODE.AUTH_USER_NOT_FOUND, 'today: userId required');
   if (!activityId) throw BizError(CODE.BIZ_PARAM_MISSING, 'today: activityId required');
   if (!store || !Array.isArray(store.StepRecord)) {
@@ -54,9 +54,10 @@ async function getToday(params) {
 
   const recs = getUserRecords(store, userId, activityId);
   const todayRec = recs.find((r) => r.date === today) || null;
-  // 累计：仅有效步数（locked 或今日已入库）。
+  // 累计：仅有效步数（locked 或今日已入库），且在活动期内（过滤活动期外脏记录）。
+  const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
   const total = recs
-    .filter((r) => r.locked || r.date === today)
+    .filter((r) => (r.locked || r.date === today) && (!startDate || r.date >= startDate))
     .reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
 
   return {
@@ -84,7 +85,7 @@ async function getToday(params) {
  */
 async function getHistory(params) {
   const p = params || {};
-  const { store, userId, activityId } = p;
+  const { store, userId, activityId, activity } = p;
   if (!userId) throw BizError(CODE.AUTH_USER_NOT_FOUND, 'history: userId required');
   if (!activityId) throw BizError(CODE.BIZ_PARAM_MISSING, 'history: activityId required');
   if (!store || !Array.isArray(store.StepRecord)) {
@@ -97,8 +98,11 @@ async function getHistory(params) {
   const to = p.to || '';
 
   const recs = getUserRecords(store, userId, activityId);
-  // 有效步数过滤：locked 或今日已入库。
-  const valid = recs.filter((r) => r.locked || r.date === today);
+  // 有效步数过滤：locked 或今日已入库，且在活动期内（过滤活动期外脏记录）。
+  const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
+  const valid = recs.filter(
+    (r) => (r.locked || r.date === today) && (!startDate || r.date >= startDate)
+  );
   // 区间过滤。
   const ranged = valid.filter((r) => {
     if (from && r.date < from) return false;

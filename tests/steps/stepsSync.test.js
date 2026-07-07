@@ -5,6 +5,7 @@ const {
   syncSteps,
   aggregateByDate,
   dateFromTimestamp,
+  activityStartDate,
   isAbnormal,
   projectStep,
   DEFAULT_CONFIG
@@ -440,5 +441,63 @@ describe('syncSteps 写回标记（P0：_dirty 驱动 handler 落库）', () => 
       activity: mockActivity(), now: NOW
     });
     expect(store.StepRecord[0]._dirty).toBeUndefined();
+  });
+});
+
+describe('activityStartDate 活动期起点', () => {
+  it('正常 start_time → 北京时间 YYYY-MM-DD', () => {
+    expect(activityStartDate({ start_time: '2026-07-01T00:00:00+08:00' }, 480)).toBe('2026-07-01');
+  });
+  it('缺 activity → ""（调用方据此跳过过滤）', () => {
+    expect(activityStartDate(null, 480)).toBe('');
+  });
+  it('缺 start_time → ""', () => {
+    expect(activityStartDate({}, 480)).toBe('');
+  });
+  it('start_time 无效 → ""', () => {
+    expect(activityStartDate({ start_time: 'not-a-date' }, 480)).toBe('');
+  });
+});
+
+describe('syncSteps 累计仅算活动期内（过滤活动期外脏记录）', () => {
+  const NOW = new Date('2026-07-02T04:00:00Z'); // 北京 07-02 12:00（活动 07-01 开始）
+
+  it('store 含 date<start_date 的脏 locked 记录 → total/history 不含', async () => {
+    // 早期 bug 回灌的 06-29/06-30（活动期外，locked=true）残留入库。
+    const store = makeStore([
+      {
+        user_id: USER_ID, _openid: OPENID, activity_id: ACTIVITY_ID,
+        date: '2026-06-29', steps: 99999, abnormal: false,
+        locked: true, synced_at: '2026-06-29T00:00:00Z', sync_count: 0
+      },
+      {
+        user_id: USER_ID, _openid: OPENID, activity_id: ACTIVITY_ID,
+        date: '2026-06-30', steps: 88888, abnormal: false,
+        locked: true, synced_at: '2026-06-30T00:00:00Z', sync_count: 0
+      }
+    ]);
+    const out = await syncSteps({
+      store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
+      stepInfoList: stepList([['2026-07-02', 9000]]),
+      activity: mockActivity(), now: NOW
+    });
+    expect(out.total).toBe(9000); // 脏记录被过滤，仅活动期内 07-02
+    expect(out.history.map((r) => r.date)).toEqual(['2026-07-02']);
+  });
+
+  it('不传 activity（兜底）→ total 含全部记录（不强加过滤）', async () => {
+    const store = makeStore([
+      {
+        user_id: USER_ID, _openid: OPENID, activity_id: ACTIVITY_ID,
+        date: '2026-06-29', steps: 1000, abnormal: false,
+        locked: true, synced_at: '2026-06-29T00:00:00Z', sync_count: 0
+      }
+    ]);
+    const out = await syncSteps({
+      store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
+      stepInfoList: stepList([['2026-07-02', 9000]]),
+      activity: undefined, now: NOW
+    });
+    expect(out.total).toBe(1000 + 9000); // 兜底：活动期外记录照算
   });
 });

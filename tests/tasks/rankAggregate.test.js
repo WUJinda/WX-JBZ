@@ -398,3 +398,39 @@ describe('aggregateRanking 缺参校验', () => {
     await expect(aggregateRanking({ activityId: ACTIVITY_ID, store: {} })).rejects.toThrow();
   });
 });
+
+describe('aggregateRanking 活动期过滤（date<start_date 的脏记录不计入排名）', () => {
+  const ACTIVITY = {
+    activity_id: ACTIVITY_ID,
+    start_time: '2026-07-01T00:00:00+08:00',
+    end_time: '2026-07-21T23:59:59+08:00'
+  };
+
+  it('脏 locked 记录（活动期外）不计入 total_steps', async () => {
+    const store = makeStore({
+      StepRecord: [
+        rec('u1', '2026-06-29', 99999, { locked: true }), // 脏（活动期外）
+        rec('u1', '2026-07-01', 100, { locked: true }),  // 活动期内
+        rec('u1', '2026-07-03', 50, { locked: false })   // 今日
+      ],
+      User: [user('u1', '甲', 'd1')]
+    });
+    const result = await aggregateRanking({
+      store, activityId: ACTIVITY_ID, activity: ACTIVITY, now: NOW
+    });
+    expect(result.personal).toHaveLength(1);
+    expect(result.personal[0].total_steps).toBe(150); // 脏 99999 被过滤，仅 100+50
+  });
+
+  it('不传 activity（兜底）→ 脏记录照常计入排名', async () => {
+    const store = makeStore({
+      StepRecord: [
+        rec('u1', '2026-06-29', 99999, { locked: true }),
+        rec('u1', '2026-07-01', 100, { locked: true })
+      ],
+      User: [user('u1', '甲', 'd1')]
+    });
+    const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW }); // 无 activity
+    expect(result.personal[0].total_steps).toBe(99999 + 100);
+  });
+});

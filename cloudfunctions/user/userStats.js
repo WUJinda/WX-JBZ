@@ -19,7 +19,7 @@
  * 本地轨：records/activity/now/config 注入式，纯函数可单测；不调真实微信云 API。
  */
 
-const { dateFromTimestamp, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('../steps/stepsSync');
 
 /**
  * 取该用户该活动的全部 StepRecord（按 date 升序）。
@@ -80,8 +80,14 @@ function buildStats(params) {
 
   const recs = sortRecords(p.records);
 
-  // 有效步数口径：locked || date===today（与 stepsQuery 完全一致）。
-  const valid = recs.filter((r) => r.locked || r.date === today);
+  // 活动期起点：累计/参与天数仅算活动期内（start_date ~ today），过滤早期 sync bug 回灌的
+  // 活动期外脏记录（locked=true 但 date<start_date）。activity 缺失 → '' → 不强加过滤（兜底）。
+  const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
+
+  // 有效步数口径：locked || date===today（与 stepsQuery 完全一致），且在活动期内。
+  const valid = recs.filter(
+    (r) => (r.locked || r.date === today) && (!startDate || r.date >= startDate)
+  );
 
   // today_steps：当日有效步数。
   const todayRec = valid.find((r) => r.date === today);

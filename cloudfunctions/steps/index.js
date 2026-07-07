@@ -162,6 +162,8 @@ const handlers = {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅 OPENID，禁止 event.user_id（防越权读他人步数）
     const activityId = event && event.activity_id;
+    // 查活动文档：供 getToday 算活动期起点过滤累计（与 sync/stats 同口径）。
+    const activity = await getActivityById(cloud, activityId);
     const store = {
       StepRecord: await loadByWhere(
         cloud, 'StepRecord',
@@ -169,7 +171,7 @@ const handlers = {
         STEP_RECORD_FIELDS
       )
     };
-    return getToday({ store, userId, activityId });
+    return getToday({ store, userId, activityId, activity });
   },
 
   // E3: 历史区间查询。
@@ -179,6 +181,8 @@ const handlers = {
     const activityId = event && event.activity_id;
     const from = event && event.from;
     const to = event && event.to;
+    // 查活动文档：供 getHistory 算活动期起点过滤累计（与 sync/stats 同口径）。
+    const activity = await getActivityById(cloud, activityId);
     const store = {
       StepRecord: await loadByWhere(
         cloud, 'StepRecord',
@@ -186,7 +190,7 @@ const handlers = {
         STEP_RECORD_FIELDS
       )
     };
-    return getHistory({ store, userId, activityId, from, to });
+    return getHistory({ store, userId, activityId, activity, from, to });
   },
 
   // F4: 趋势图（近 7/30 天，纯 CSS 柱状图源数据）。

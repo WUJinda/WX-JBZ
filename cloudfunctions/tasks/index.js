@@ -10,7 +10,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { loadByWhere } = require('../common/db');
-const { getActiveActivityId } = require('../activity/activityResolver');
+const { getActiveActivityId, getActivityById } = require('../activity/activityResolver');
 const { aggregateRanking } = require('./rankAggregate');
 const { lockYesterday, computeYesterdayDate, LOCK_DEFAULT_CONFIG } = require('./dailyLock');
 
@@ -27,6 +27,8 @@ const handlers = {
     const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const config = event && event.config;
     const now = event && event.now ? new Date(event.now) : undefined;
+    // 查活动文档（含 start_time）：供 aggregateRanking 算活动期起点，过滤活动期外脏记录。
+    const activity = await getActivityById(cloud, activityId);
 
     // P0-5：按 activity_id 精确拉取（避免全表扫描 + 敏感字段入内存）。
     //   StepRecord 投影掉 _openid/sync_count；User 投影掉 phone/phone_masked/avatar；
@@ -39,7 +41,7 @@ const handlers = {
       RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId })
     };
     // 覆盖写回 RankCache（纯函数已就地改 store.RankCache）。
-    const result = await aggregateRanking({ store, activityId, now, config });
+    const result = await aggregateRanking({ store, activityId, activity, now, config });
     await overwriteRankCacheToCloud(cloud, 'personal', activityId, store.RankCache);
     await overwriteRankCacheToCloud(cloud, 'dept', activityId, store.RankCache);
     return result;

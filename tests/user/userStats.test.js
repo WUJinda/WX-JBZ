@@ -131,4 +131,25 @@ describe('buildStats 统计（F4）', () => {
       ['active_days', 'my_rank', 'today_steps', 'total_days', 'total_steps'].sort()
     );
   });
+
+  it('total_steps/active_days 仅算活动期内（过滤 date<start_date 脏 locked 记录）', () => {
+    const records = [
+      rec({ date: '2026-06-29', steps: 99999, locked: true }), // 脏（活动期外）
+      rec({ date: '2026-07-01', steps: 8000, locked: true }),  // 活动期内
+      rec({ date: '2026-07-03', steps: 7000, locked: false })  // 今日
+    ];
+    const out = buildStats({ records, activity: ACTIVITY, now: NOW });
+    expect(out.total_steps).toBe(8000 + 7000); // 脏 99999 不计入
+    expect(out.active_days).toBe(2);           // 07-01 + 07-03
+  });
+
+  it('不传 activity（兜底）→ total_steps 含全部 locked+today（不过滤）', () => {
+    const records = [
+      rec({ date: '2026-06-29', steps: 99999, locked: true }),
+      rec({ date: '2026-07-01', steps: 8000, locked: true }),
+      rec({ date: '2026-07-03', steps: 7000, locked: false })
+    ];
+    const out = buildStats({ records, now: NOW }); // 无 activity → 兜底
+    expect(out.total_steps).toBe(99999 + 8000 + 7000);
+  });
 });

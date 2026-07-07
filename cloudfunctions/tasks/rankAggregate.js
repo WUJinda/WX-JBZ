@@ -28,7 +28,7 @@
  * 解耦：本模块不 require wx-server-sdk。
  */
 
-const { dateFromTimestamp, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('../steps/stepsSync');
 const { maskNickname } = require('../common/mask');
 
 /**
@@ -56,8 +56,11 @@ function getActivityRecords(store, activityId) {
  * @param {string} today
  * @returns {boolean}
  */
-function isValidRecord(r, today) {
-  return !!r.locked || r.date === today;
+function isValidRecord(r, today, startDate) {
+  // 有效步数：locked || date===today（口径复用 stepsQuery）；且在活动期内（date>=start_date），
+  // 过滤早期 sync bug 回灌的活动期外脏记录。startDate 缺失 → 不强加过滤（兜底）。
+  if (!r.locked && r.date !== today) return false;
+  return !startDate || r.date >= startDate;
 }
 
 /**
@@ -102,7 +105,7 @@ function computeFirstReachAt(validRecs, totalSteps) {
  * @param {string} params.today
  * @returns {object[]} RankRow[]（已排序、赋 rank）
  */
-function buildPersonalRanking({ store, activityId, today }) {
+function buildPersonalRanking({ store, activityId, today, startDate }) {
   const records = getActivityRecords(store, activityId);
 
   // 用户表：_openid → user（便于关联 dept_id/nickname）。
@@ -117,7 +120,7 @@ function buildPersonalRanking({ store, activityId, today }) {
   // 按用户分组有效记录。
   const byUser = new Map(); // user_id -> { recs: [], total }
   for (const r of records) {
-    if (!isValidRecord(r, today)) continue;
+    if (!isValidRecord(r, today, startDate)) continue;
     const uid = r.user_id;
     if (!byUser.has(uid)) byUser.set(uid, { recs: [], total: 0 });
     const entry = byUser.get(uid);
@@ -284,7 +287,7 @@ function overwriteRankCache(store, type, activityId, rows, updatedAtIso) {
  */
 async function aggregateRanking(params) {
   const p = params || {};
-  const { store, activityId } = p;
+  const { store, activityId, activity } = p;
   if (!activityId) {
     const { CODE, BizError } = require('../common/errors');
     throw BizError(CODE.BIZ_PARAM_MISSING, 'rankAggregate: activityId required');
@@ -297,10 +300,12 @@ async function aggregateRanking(params) {
   const cfg = Object.assign({}, RANK_DEFAULT_CONFIG, p.config || {});
   const nowDate = p.now instanceof Date ? p.now : new Date();
   const today = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), cfg.timezoneOffsetMinutes);
+  // 活动期起点：过滤活动期外脏记录（date<start_date）；activity 缺失 → '' → 兜底不过滤。
+  const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
   const updatedAt = nowDate.toISOString();
 
   // 个人榜。
-  const personalRows = buildPersonalRanking({ store, activityId, today });
+  const personalRows = buildPersonalRanking({ store, activityId, today, startDate });
   // 部门榜（基于个人榜聚合）。
   const deptRows = buildDeptRanking({
     store,

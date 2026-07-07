@@ -48,6 +48,25 @@ function dateFromTimestamp(tsSec, offsetMinutes) {
 }
 
 /**
+ * 算活动开始日（北京时间 YYYY-MM-DD），供累计步数/排名的活动期过滤统一复用。
+ *
+ * 业务口径（PRD / 架构 §6.3）：累计步数 = 活动期内（start_date ~ today）有效步数之和。
+ * 早期 sync bug 曾把微信运动近 30 天步数全量回灌（活动期外也入库），这些脏记录虽 locked=true，
+ * 但 date<start_date 不应计入累计/排名。本函数统一算 start_date，各累计计算点据此过滤。
+ *
+ * @param {object} activity 活动文档（含 start_time ISO 字符串）；缺失/无效则返回 ''
+ * @param {number} offsetMinutes 时区偏移（分钟）
+ * @returns {string} YYYY-MM-DD 或 ''（返回 '' 时调用方跳过过滤，保持兜底）
+ */
+function activityStartDate(activity, offsetMinutes) {
+  const a = activity || {};
+  if (!a.start_time) return '';
+  const ms = Date.parse(a.start_time);
+  if (!Number.isFinite(ms)) return '';
+  return dateFromTimestamp(Math.floor(ms / 1000), offsetMinutes);
+}
+
+/**
  * 异常阈值判定（R3.6）。
  * @param {number} steps
  * @param {number} threshold
@@ -158,14 +177,10 @@ async function syncSteps(params) {
   // 按日聚合 stepInfoList。
   const byDate = aggregateByDate(stepInfoList, cfg.timezoneOffsetMinutes);
 
-  // 活动期过滤：若有 activity，只接受 [start_date, today] 区间内的 date（未来日不入库）。
-  let startDate = '';
-  if (activity) {
-    const startMs = Date.parse(activity.start_time);
-    if (Number.isFinite(startMs)) {
-      startDate = dateFromTimestamp(Math.floor(startMs / 1000), cfg.timezoneOffsetMinutes);
-    }
-  }
+  // 活动期起点（北京时间 YYYY-MM-DD）：写入 upsert 与 total 累计均按此过滤活动期外记录。
+  // 复用 activityStartDate（与 userStats/rankAggregate/stepsQuery 同口径）。
+  // activity 缺失 → '' → 退化为「仅过滤未来日」（保持原兜底语义）。
+  const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
 
   // 逐日 upsert（R3.2 去重）。
   const syncedAtIso = nowDate.toISOString();
@@ -221,19 +236,22 @@ async function syncSteps(params) {
     }
   }
 
-  // 返回当日 + 历史（全部该用户该活动）。
+  // 返回当日 + 历史（该用户该活动，仅活动期内）。
   const userRecs = store.StepRecord
     .filter((r) => r && r.user_id === userId && r.activity_id === activityId)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const todayRecord = userRecs.find((r) => r.date === today) || null;
-  const total = userRecs.reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
+  // total/history 仅算活动期内（与 upsert 写入过滤同口径）：过滤早期 bug 回灌的 date<start_date
+  // 脏记录（locked=true 但活动期外），避免累计虚高、history 混入活动期外噪音。
+  const inRangeRecs = startDate ? userRecs.filter((r) => r.date >= startDate) : userRecs;
+  const total = inRangeRecs.reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
 
   return {
     today: todayRecord
       ? { date: today, steps: todayRecord.steps, abnormal: todayRecord.abnormal }
       : { date: today, steps: 0, abnormal: false },
-    history: userRecs.map(projectStep),
+    history: inRangeRecs.map(projectStep),
     total
   };
 }
@@ -242,6 +260,7 @@ module.exports = {
   syncSteps,
   aggregateByDate,
   dateFromTimestamp,
+  activityStartDate,
   isAbnormal,
   projectStep,
   DEFAULT_CONFIG
