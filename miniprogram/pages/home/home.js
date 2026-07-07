@@ -431,12 +431,6 @@ Page({
     wx.switchTab({ url: '/pages/rank/rank' });
   },
 
-  /** 管理员：进入后台首页（dashboard）。admin 页非 tabBar，用 navigateTo。 */
-  onAdminEntry() {
-    if (typeof wx === 'undefined' || !wx.navigateTo) return;
-    wx.navigateTo({ url: '/pages/admin/dashboard/dashboard' });
-  },
-
   /** 管理员：空态直达创建/编辑活动（活动配置页）。 */
   onCreateActivity() {
     if (typeof wx === 'undefined' || !wx.navigateTo) return;

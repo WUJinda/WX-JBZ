@@ -4,12 +4,6 @@
 <view class="home-page">
   <view class="page-title">{{pageLabel}}</view>
 
-  <!-- 管理员常驻入口（仅 is_admin=true 显示）：直达后台 -->
-  <view class="admin-shortcut" wx:if="{{isAdmin}}" bindtap="onAdminEntry">
-    <text class="admin-shortcut-title">管理后台</text>
-    <text class="admin-shortcut-arrow">›</text>
-  </view>
-
   <!-- 活动常驻入口（全员可见）：直达活动详情/报名。activity 现为 tabBar 页。 -->
   <view class="activity-entry" bindtap="onActivityEntry">
     <view class="activity-entry-info">
