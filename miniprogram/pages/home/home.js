@@ -281,6 +281,8 @@ Page({
             nowTs: Date.now()
           }
         });
+        // 同步成功后即时刷新 my_rank（后端聚合已在 sync 内 await 完成，此时 RankCache 已最新）。
+        this.loadStats();
         wx.showToast({ title: '同步成功', icon: 'success' });
       })
       .catch((err) => {
