@@ -77,6 +77,9 @@ function projectActivity(activity, status, overview) {
     end_time: a.end_time,
     signup_deadline: a.signup_deadline || null,
     status: status || deriveStatus(a),
+    // 必须下发 terminated：员工端 activity 页 statusText/CTA 由 calcCountdown 重算（不读 status 字段），
+    // calcCountdown 靠 a.terminated===true 判「已终止」→ ended。若不下发，手动终止后前端仍按时间窗算成「进行中」。
+    terminated: a.terminated === true,
     rules: a.rules || '',
     overview: {
       total_steps: typeof ov.total_steps === 'number' && ov.total_steps >= 0

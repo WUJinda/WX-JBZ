@@ -105,6 +105,18 @@ describe('activity.current 纯函数（C1）', () => {
       expect(out).not.toHaveProperty('phone');
     });
 
+    it('下发 terminated（前端 calcCountdown 据此识别「已终止」）', () => {
+      // terminated=true：即使仍在时间窗内（status 传 ACTIVE），terminated 也照实下发
+      const out = projectActivity(
+        { activity_id: 'a_001', start_time: START, end_time: END, terminated: true },
+        STATUS.ACTIVE
+      );
+      expect(out.terminated).toBe(true);
+      // 未 terminated：下发 false（而非 undefined，便于前端直接判等）
+      const out2 = projectActivity({ start_time: START, end_time: END }, STATUS.ACTIVE);
+      expect(out2.terminated).toBe(false);
+    });
+
     it('activity_id 缺失时回退 _id，再缺失为空串', () => {
       expect(projectActivity({ _id: 'x1' }, STATUS.ACTIVE).activity_id).toBe('x1');
       expect(projectActivity({}, STATUS.ACTIVE).activity_id).toBe('');
@@ -125,7 +137,7 @@ describe('activity.current 纯函数（C1）', () => {
 
     it('返回结构含 activity_id / name / start_time / end_time / status / rules / overview / join_status', async () => {
       const out = await getCurrent({ now: '2026-07-10T00:00:00Z' });
-      for (const k of ['activity_id', 'name', 'start_time', 'end_time', 'signup_deadline', 'status', 'rules', 'overview', 'join_status']) {
+      for (const k of ['activity_id', 'name', 'start_time', 'end_time', 'signup_deadline', 'status', 'terminated', 'rules', 'overview', 'join_status']) {
         expect(out, `缺少字段: ${k}`).toHaveProperty(k);
       }
     });
