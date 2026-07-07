@@ -418,5 +418,11 @@ Page({
   onCreateActivity() {
     if (typeof wx === 'undefined' || !wx.navigateTo) return;
     wx.navigateTo({ url: '/pages/admin/activity/activity' });
+  },
+
+  /** 全员：直达活动详情/报名。activity 为 tabBar 页，必须用 switchTab（navigateTo 报错）。 */
+  onActivityEntry() {
+    if (typeof wx === 'undefined' || !wx.switchTab) return;
+    wx.switchTab({ url: '/pages/activity/activity' });
   }
 });

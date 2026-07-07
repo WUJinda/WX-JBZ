@@ -34,6 +34,14 @@ Page({
   onShow() {
     // P1-9：每次展示刷新倒计时；距上次加载 >30s 重新拉活动（节流避免频繁打云函数）。
     this.refreshDerived();
+    // admin 刚创建/编辑活动后置 _activityDirty → 强制重拉，绕过 30s 节流，确保看到最新活动。
+    const app0 = getApp();
+    if (app0 && app0.globalData && app0.globalData._activityDirty) {
+      app0.globalData._activityDirty = false;
+      this._lastLoadTs = Date.now();
+      this.loadActivity();
+      return;
+    }
     const now = Date.now();
     if (!this._lastLoadTs || now - this._lastLoadTs > 30000) {
       this._lastLoadTs = now;
@@ -123,7 +131,10 @@ Page({
     const action = this.data.cta && this.data.cta.action;
     if (this.data.cta.disabled || action === 'none') return;
     if (action === 'login') {
-      wx.redirectTo({ url: '/pages/login/login' });
+      // 未报名 CTA：已登录未报名 → 直达 dept 选部门报名（少绕一次 login）；未登录 → 走 login 注册向导。
+      const app = getApp();
+      const loggedIn = !!(app && app.globalData && app.globalData.loggedIn);
+      wx.redirectTo({ url: loggedIn ? '/pages/dept/dept' : '/pages/login/login' });
       return;
     }
     if (action === 'home') {

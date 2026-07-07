@@ -34,6 +34,10 @@
         "selectedIconPath": "assets/tabbar/home-active.png"
       },
       {
+        "pagePath": "pages/activity/activity",
+        "text": "活动"
+      },
+      {
         "pagePath": "pages/rank/rank",
         "text": "排行榜",
         "iconPath": "assets/tabbar/rank.png",

@@ -37,28 +37,36 @@ describe('结构校验', () => {
     }
   });
 
-  it('tabBar 存在且 list 有 3 项', () => {
+  it('tabBar 存在且 list 有 4 项', () => {
     const app = readJson('miniprogram/app.json');
     expect(app.tabBar).toBeDefined();
     expect(Array.isArray(app.tabBar.list)).toBe(true);
-    expect(app.tabBar.list.length).toBe(3);
+    expect(app.tabBar.list.length).toBe(4);
   });
 
-  it('每个 tabBar 项含 pagePath/text/iconPath/selectedIconPath', () => {
+  it('每个 tabBar 项含 pagePath/text（图标可选；活动 tab 暂为纯文字）', () => {
     const app = readJson('miniprogram/app.json');
-    const keys = ['pagePath', 'text', 'iconPath', 'selectedIconPath'];
+    const required = ['pagePath', 'text'];
     app.tabBar.list.forEach((item, i) => {
-      keys.forEach((k) => {
+      required.forEach((k) => {
         expect(item[k], `tabBar[${i}] 缺少 ${k}`).toEqual(expect.any(String));
         expect(item[k].length, `tabBar[${i}].${k} 不能为空`).toBeGreaterThan(0);
+      });
+      // iconPath / selectedIconPath 可选：活动 tab 无图标；其余 tab 提供则必须非空。
+      ['iconPath', 'selectedIconPath'].forEach((k) => {
+        if (k in item) {
+          expect(item[k], `tabBar[${i}].${k} 若提供不能为空`).toEqual(expect.any(String));
+          expect(item[k].length, `tabBar[${i}].${k} 若提供不能为空`).toBeGreaterThan(0);
+        }
       });
     });
   });
 
-  it('tabBar 含 home / rank / profile 三个 tab', () => {
+  it('tabBar 含 home / activity / rank / profile 四个 tab', () => {
     const app = readJson('miniprogram/app.json');
     const paths = app.tabBar.list.map((t) => t.pagePath);
     expect(paths).toContain('pages/home/home');
+    expect(paths).toContain('pages/activity/activity');
     expect(paths).toContain('pages/rank/rank');
     expect(paths).toContain('pages/profile/profile');
   });

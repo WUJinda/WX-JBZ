@@ -10,6 +10,15 @@
     <text class="admin-shortcut-arrow">›</text>
   </view>
 
+  <!-- 活动常驻入口（全员可见）：直达活动详情/报名。activity 现为 tabBar 页。 -->
+  <view class="activity-entry" bindtap="onActivityEntry">
+    <view class="activity-entry-info">
+      <text class="activity-entry-title">{{activityName || '查看活动'}}</text>
+      <text class="activity-entry-status">{{activityStatus === 'active' ? '进行中 · 去同步步数' : (activityStatus === 'ended' ? '已结束 · 查看战绩' : (activityStatus === 'pending' ? '未开始 · 查看详情' : '查看当前活动'))}}</text>
+    </view>
+    <text class="activity-entry-arrow">›</text>
+  </view>
+
   <!-- 状态横幅（非 active 态显示；对齐 activity 页 status-badge 配色） -->
   <view class="status-badge status-{{activityStatus}}" wx:if="{{activityStatus === 'ended' || activityStatus === 'pending' || activityStatus === 'none'}}">{{activityStatus === 'ended' ? '活动已结束' : (activityStatus === 'pending' ? '活动未开始' : '暂无活动')}}</view>
 
@@ -79,7 +88,7 @@
     <!-- F4：我的排名入口（active：myRank 空时引导同步；ended：空时显示无排名） -->
     <view class="rank-entry" bindtap="onMyRankTap">
       <text class="rank-entry-title">我的排名</text>
-      <text class="rank-entry-value" wx:if="{{myRank !== null}}">第 {{myRank}} 名</text>
+      <text class="rank-entry-value" wx:if="{{myRank !== null}}">第 {{myRank.rank}} 名</text>
       <text class="rank-entry-tip" wx:else>{{activityStatus === 'ended' ? '暂无排名数据' : '完成同步后查看排名'}}</text>
       <text class="rank-entry-arrow">›</text>
     </view>

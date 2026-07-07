@@ -93,6 +93,7 @@ Page({
       return;
     }
 
+    const isNew = !this.data.activityId; // 空 activity_id 视为新建（后端 save 为 upsert）
     this.setData({ submitting: true });
     api
       .call(
@@ -109,9 +110,29 @@ Page({
         },
         { loading: '保存中' }
       )
-      .then(() => {
+      .then((data) => {
         this.setData({ submitting: false, errorMsg: '' });
-        wx.showToast({ title: '保存成功', icon: 'success' });
+        // 刷新全局活动上下文：用 save 返回（优先）回写，让 home/activity 页立即感知新活动；
+        // 置 _activityDirty：activity 页 onShow 探测到则强制重拉，绕过 30s 节流，跳过去即见最新。
+        const app = getApp();
+        if (app && app.globalData) {
+          const d = data || {};
+          app.globalData.currentActivity = {
+            activity_id: d.activity_id || this.data.activityId || '',
+            name: d.name || this.data.name || '',
+            start_time: d.start_time != null ? d.start_time : this.data.start_time,
+            end_time: d.end_time != null ? d.end_time : this.data.end_time,
+            status: d.status || ''
+          };
+          app.globalData._activityDirty = true;
+        }
+        wx.showToast({ title: isNew ? '活动已创建' : '已保存', icon: 'success' });
+        // 跳活动详情页看成果（switchTab 自动关闭 admin 非标签页栈）。
+        setTimeout(() => {
+          if (typeof wx !== 'undefined' && wx.switchTab) {
+            wx.switchTab({ url: '/pages/activity/activity' });
+          }
+        }, 600);
       })
       .catch((err) => {
         // 本地轨：activity.save 后端缺口 / 云函数未部署 → 错误提示，不白屏。

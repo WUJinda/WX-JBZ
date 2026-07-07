@@ -15,6 +15,21 @@
 .admin-shortcut-title { flex: 1; font-size: 28rpx; color: #07c160; font-weight: 600; }
 .admin-shortcut-arrow { font-size: 32rpx; color: #ccc; }
 
+/* 活动常驻入口（全员可见，直达活动详情/报名；视觉对齐 admin-shortcut） */
+.activity-entry {
+  display: flex;
+  align-items: center;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.activity-entry-info { flex: 1; display: flex; flex-direction: column; }
+.activity-entry-title { font-size: 30rpx; color: #1a1a1a; font-weight: 600; }
+.activity-entry-status { font-size: 24rpx; color: #888; margin-top: 6rpx; }
+.activity-entry-arrow { font-size: 32rpx; color: #ccc; }
+
 /* 活动状态横幅（对齐 activity 页 status-badge 配色：active 绿 / ended 灰 / pending 浅灰） */
 .status-badge {
   display: inline-block;
