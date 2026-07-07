@@ -1,0 +1,38 @@
+<!-- pages/admin/activity/list.wxml
+  后台活动管理：活动列表 + 新建入口（F8）。
+  红线：只渲染后端下发的活动配置字段（name/start_time/end_time/signup_deadline/status/terminated），无敏感字段。
+-->
+<view class="admin-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 顶部新建按钮 -->
+  <button class="create-btn" bindtap="onCreateTap">+ 新建活动</button>
+
+  <!-- 加载态 -->
+  <view class="state-tip" wx:if="{{loading}}">加载中...</view>
+
+  <!-- 空态占位（本地轨云函数未部署 / 库无活动） -->
+  <view class="state-tip" wx:if="{{!loading && list.length === 0}}">暂无活动，点上方按钮新建</view>
+
+  <!-- 活动列表（整行可点进编辑页） -->
+  <view class="act-list" wx:if="{{!loading}}">
+    <view
+      class="act-row"
+      wx:for="{{list}}"
+      wx:key="activity_id"
+      data-id="{{item.activity_id}}"
+      bindtap="onItemTap"
+      hover-class="act-row-hover"
+    >
+      <view class="act-main">
+        <view class="act-name">
+          <text class="act-name-text">{{item.name}}</text>
+          <text class="badge {{item.badge.cls}}">{{item.badge.text}}</text>
+        </view>
+        <view class="act-meta">{{item.dateRange}}</view>
+        <view class="act-meta" wx:if="{{item.signupDeadline}}">报名截止：{{item.signupDeadline}}</view>
+      </view>
+      <view class="act-arrow">›</view>
+    </view>
+  </view>
+</view>

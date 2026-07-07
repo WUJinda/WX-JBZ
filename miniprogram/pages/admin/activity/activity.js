@@ -37,10 +37,14 @@ Page({
     publishText: '未发布'
   },
 
-  onLoad() {
+  onLoad(options) {
     if (!enterAdminGuard('/pages/admin/activity/activity')) return;
-    // F1：编辑当前活动（从全局上下文取 activity_id）；空则视为新建（save 时后端处理）。
-    this.setData({ activityId: getApp().getActivityId() });
+    // 列表页点「新建活动」进来无 id（新建模式）；点列表项带 ?id=xxx 进来（编辑模式，回填该活动）。
+    const id = (options && options.id) || '';
+    this.setData({
+      activityId: id,
+      pageLabel: id ? '编辑活动' : '新建活动'
+    });
     this.refreshPublishText();
     this.loadDetail();
   },
@@ -162,10 +166,10 @@ Page({
           app.globalData._activityDirty = true;
         }
         wx.showToast({ title: isNew ? '活动已创建' : '已保存', icon: 'success' });
-        // 跳活动详情页看成果（switchTab 自动关闭 admin 非标签页栈）。
+        // 返回列表页（栈里必为列表页：dashboard→list→activity），列表 onShow 自动刷新见新数据。
         setTimeout(() => {
-          if (typeof wx !== 'undefined' && wx.switchTab) {
-            wx.switchTab({ url: '/pages/activity/activity' });
+          if (typeof wx !== 'undefined' && wx.navigateBack) {
+            wx.navigateBack({ delta: 1 });
           }
         }, 600);
       })
@@ -212,6 +216,12 @@ Page({
           app.globalData._activityDirty = true; // activity 页重拉即见「已结束」
         }
         wx.showToast({ title: '活动已终止', icon: 'success' });
+        // 返回列表页，列表 onShow 刷新即见红色「已终止」标签。
+        setTimeout(() => {
+          if (typeof wx !== 'undefined' && wx.navigateBack) {
+            wx.navigateBack({ delta: 1 });
+          }
+        }, 600);
       })
       .catch((err) => {
         this.setData({

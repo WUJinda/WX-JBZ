@@ -1,6 +1,6 @@
 /**
  * activity 云函数入口：活动（对齐技术架构 §4.1 / §5.4，开发计划阶段 C/I，PRD F7/F8）。
- * Action: current（游客可调，F7）/ save（管理员，F8）
+ * Action: current（游客可调，F7）/ save（管理员，F8）/ get / list / terminate（管理员）
  *
  * 红线（游客可见）：
  *   - current 允许游客访问（无 OPENID 也能取活动信息）——不强制 authMiddleware；
@@ -24,6 +24,7 @@ const { assertAdmin } = require('../common/adminGuard');
 const { getCurrent, deriveStatus } = require('./activityStatus');
 const { saveActivity } = require('./activitySave');
 const { terminateActivity } = require('./activityTerminate');
+const { listActivities } = require('./activityList');
 
 /**
  * 游客友好地取 openid：无 OPENID 不抛错，返回空串。
@@ -148,6 +149,18 @@ const handlers = {
       terminated_at: activity.terminated_at || null,
       rules: activity.rules || ''
     };
+  },
+
+  // 活动列表（管理员）：返回全部活动 + 推算状态（active 优先），供后台「活动配置」列表页。
+  list: async (event) => {
+    const context = authMiddleware({ getWXContext: cloud.getWXContext });
+    const store = {
+      User: await loadByWhere(cloud, 'User'),
+      Activity: await loadByWhere(cloud, 'Activity')
+    };
+    assertAdmin(store, context.openid); // 非管理员 AUTH_NOT_ADMIN
+    const now = (event && event.now) || undefined;
+    return listActivities(store, { now });
   },
 
   // 手动终止活动（不可恢复）：置 terminated/terminated_at + status=ended。管理员（assertAdmin）。

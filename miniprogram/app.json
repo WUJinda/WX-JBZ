@@ -9,6 +9,7 @@
     "pages/profile/edit/edit",
     "pages/admin/dashboard/dashboard",
     "pages/admin/activity/activity",
+    "pages/admin/activity/list",
     "pages/admin/whitelist/whitelist",
     "pages/admin/users/users",
     "pages/admin/abnormal/abnormal",

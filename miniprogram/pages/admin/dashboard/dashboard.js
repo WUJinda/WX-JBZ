@@ -109,7 +109,7 @@ Page({
     if (!mod) return;
     if (typeof wx === 'undefined' || !wx.navigateTo) return;
     const urlMap = {
-      activity: '/pages/admin/activity/activity',
+      activity: '/pages/admin/activity/list',
       whitelist: '/pages/admin/whitelist/whitelist',
       users: '/pages/admin/users/users',
       abnormal: '/pages/admin/abnormal/abnormal',
