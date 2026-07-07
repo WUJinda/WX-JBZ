@@ -93,11 +93,9 @@ const SHARED_MANIFEST = {
     'common/errors',
     'common/authMiddleware',
     'common/response',
-    'common/db'
-    // steps/stepsSync 是 steps 包内同目录文件，原样复制即随包带走
-    // activity/activityStatus 由 stepsSync 传递依赖 -> 注入
-    ,
-    'activity/activityStatus'
+    'common/db',
+    'activity/activityStatus',   // steps/stepsSync 传递依赖
+    'activity/activityResolver'  // steps/index.js sync handler 查活动文档（修复「累计步数过大」bug：活动期过滤生效）
   ],
   rank: [
     'common/errors',

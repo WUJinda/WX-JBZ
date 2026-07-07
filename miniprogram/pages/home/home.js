@@ -4,7 +4,7 @@
 // 活动状态感知（homeStatus 纯函数）：按 active/ended/pending/none 切换显示模式——
 //   active 进行中（完整展示）/ ended 战绩归档（最终累计+趋势+排名，禁同步）/
 //   pending 未开始（空态预告）/ none 无活动（空态）。状态来自 globalData.currentActivity。
-const { STATES, transition, shouldThrottle } = require('./homeSync');
+const { STATES, transition, shouldThrottle, isSyncFresh } = require('./homeSync');
 const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
 const { handleNotLoggedIn } = require('../../utils/authGuard');
 const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData } = require('./homeStatus');
@@ -354,6 +354,11 @@ Page({
     this._statsSeq = (this._statsSeq || 0) + 1;
     const seq = this._statsSeq;
     const keepSyncedSteps = !!(opts && opts.keepSyncedSteps);
+    // 写后读一致性窗口：距上次成功同步 < 2min 内，user.stats 二次查库可能命中写入前旧快照，
+    // 此时保留 sync 写入的即时 today/total（切回主页 loadStats 不覆盖）；窗口外按稳态处理，
+    // stats 值即真实当前值正常覆盖。与 sync 后立即那次（keepSyncedSteps=true）互补——
+    // 后者只覆盖「sync 完紧接着的 loadStats」，保护不到用户主动切走再切回主页触发的 loadStats。
+    const recentSync = isSyncFresh(this.data.lastSyncTs, Date.now());
     api
       .call(
         'user',
@@ -368,8 +373,8 @@ Page({
           totalDays: d.total_days || 0,
           myRank: d.my_rank == null ? null : d.my_rank
         };
-        if (!keepSyncedSteps) {
-          // 稳态刷新（onShow / 下拉刷新）：stats 的 today/total 即真实当前值，正常覆盖。
+        if (!keepSyncedSteps && !recentSync) {
+          // 稳态刷新（窗口外的 onShow / 下拉刷新）：stats 的 today/total 即真实当前值，正常覆盖。
           patch.totalSteps = typeof d.total_steps === 'number' ? d.total_steps : this.data.totalSteps;
           patch.todaySteps = typeof d.today_steps === 'number' ? d.today_steps : this.data.todaySteps;
         }

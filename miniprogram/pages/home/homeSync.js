@@ -110,4 +110,24 @@ function transition(state, event) {
   return s;
 }
 
-module.exports = { STATES, transition, shouldThrottle };
+/**
+ * 判定距上次成功同步是否仍在「写后读一致性窗口」内。
+ *
+ * loadStats 据此决定是否保留 sync 写入的即时 today/total——云库「写后立即查」存在最终一致性延迟，
+ * 窗口内 user.stats 二次查库可能命中写入前旧快照，此时覆盖会表现为「同步成功 → 切 tab 回主页步数回退」。
+ * 与 loadStats 的 keepSyncedSteps（sync 后立即那次调用置 true）互补：覆盖用户主动切走再切回主页
+ * 触发的 loadStats（那次 keepSyncedSteps=false，若无窗口保护会用旧快照覆盖刚同步的新值）。
+ *
+ * @param {number} lastSyncTs 上次成功同步时间戳（ms，0=未同步）
+ * @param {number} nowTs 当前时间戳（ms）
+ * @param {number} freshMs 窗口（ms，默认 2 分钟——覆盖云库写后读最终一致性窗口）
+ * @returns {boolean} true=仍在窗口内，loadStats 应保留 sync 即时值不覆盖
+ */
+function isSyncFresh(lastSyncTs, nowTs, freshMs) {
+  const last = Number(lastSyncTs) || 0;
+  const now = Number(nowTs) || 0;
+  const ms = Number.isFinite(freshMs) ? freshMs : 2 * 60 * 1000;
+  return last > 0 && now > 0 && now - last < ms;
+}
+
+module.exports = { STATES, transition, shouldThrottle, isSyncFresh };

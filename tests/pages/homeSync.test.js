@@ -1,7 +1,7 @@
 /**
  * 步数同步授权状态机纯函数单测（E4）。
  */
-const { STATES, transition, shouldThrottle } = require('../../miniprogram/pages/home/homeSync');
+const { STATES, transition, shouldThrottle, isSyncFresh } = require('../../miniprogram/pages/home/homeSync');
 
 describe('homeSync 授权状态机 transition', () => {
   it('SYNC_START → authing', () => {
@@ -89,5 +89,27 @@ describe('homeSync shouldThrottle 频控前端节流（R3.3）', () => {
     expect(shouldThrottle(1000000, 1000000 + 5 * 60 * 1000, 10)).toBe(true);
     // 5 分钟间隔，阈值 3 分钟 → false
     expect(shouldThrottle(1000000, 1000000 + 5 * 60 * 1000, 3)).toBe(false);
+  });
+});
+
+describe('homeSync isSyncFresh 写后读一致性窗口', () => {
+  it('窗口内（< 2min，默认阈值）→ true', () => {
+    expect(isSyncFresh(1000000, 1000000 + 60 * 1000)).toBe(true); // 1min
+  });
+
+  it('窗口外（≥ 2min，默认阈值）→ false', () => {
+    expect(isSyncFresh(1000000, 1000000 + 2 * 60 * 1000)).toBe(false); // 正好 2min（边界外）
+    expect(isSyncFresh(1000000, 1000000 + 5 * 60 * 1000)).toBe(false); // 5min
+  });
+
+  it('未同步（lastSyncTs=0）→ false', () => {
+    expect(isSyncFresh(0, Date.now())).toBe(false);
+  });
+
+  it('阈值可配', () => {
+    // 1min 间隔，阈值 30s → false（已过窗口）
+    expect(isSyncFresh(1000000, 1000000 + 60 * 1000, 30 * 1000)).toBe(false);
+    // 1min 间隔，阈值 5min → true
+    expect(isSyncFresh(1000000, 1000000 + 60 * 1000, 5 * 60 * 1000)).toBe(true);
   });
 });

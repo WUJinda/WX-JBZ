@@ -27,6 +27,7 @@ const { getToday, getHistory, getUserRecords } = require('./stepsQuery');
 const { buildTrend } = require('./stepsTrend');
 const { loadByWhere } = require('../common/db');
 const { triggerRankAggregate } = require('./stepsTriggerRank');
+const { getActivityById } = require('../activity/activityResolver');
 
 // P0-5：steps handler 只拉「该用户该活动」的 StepRecord（约活动天数条，非全表），
 //   投影掉 _openid（不入内存/不下发）；sync 需 sync_count 做频控，其余 handler 多取无害。
@@ -113,7 +114,6 @@ const handlers = {
     const jsCode = event && event.code;
     const iv = event && event.iv;
     const encryptedData = event && event.encrypted_data;
-    const activity = event && event.activity; // 可选：传入活动文档（云轨改为按 activity_id 查库）
     const config = event && event.config;
 
     // P1-1：sync 要求已报名（架构 §4.3：steps.sync 需 join_status=joined）。
@@ -134,6 +134,11 @@ const handlers = {
         STEP_RECORD_FIELDS
       )
     };
+    // P0 修复「累计步数过大」：按 activity_id 查活动文档（含 start_time/end_time）传给 syncSteps，
+    // 活动期过滤（start_date ~ today）才生效。此前 activity 仅读 event.activity（前端不传）→ undefined
+    // → 过滤失效 → 微信运动近 30 天步数全量回灌 → sync 返回 total ≈ 近 30 天总和（远超活动期累计）。
+    // 未命中（activityId 空 / 库无此活动）→ null，syncSteps 退化为「仅过滤未来日」（保持原兜底语义）。
+    const activity = await getActivityById(cloud, activityId);
     const result = await syncSteps({
       store,
       openid,
