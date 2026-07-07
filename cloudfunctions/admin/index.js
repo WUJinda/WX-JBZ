@@ -17,6 +17,7 @@ const { authMiddleware } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { loadByWhere } = require('../common/db');
+const { getActivityById } = require('../activity/activityResolver');
 
 const { assertAdmin } = require('./adminGuard');
 const { parseWhitelist } = require('./whitelistParse');
@@ -159,10 +160,15 @@ const handlers = {
     };
     assertAdmin(store, context.openid);
 
+    const activityId = event && event.activity_id;
+    // 查活动文档：供 buildDashboard 算活动期起点（start_date）过滤活动期外脏记录
+    // （与 steps.sync / user.stats / tasks.rankAggregate 同口径）。未命中（id 空 / 库无此活动）→ null → 兜底不过滤。
+    const activity = await getActivityById(cloud, activityId);
     const now = (event && event.now) ? new Date(event.now) : new Date();
     return buildDashboard({
       store,
-      activityId: event && event.activity_id,
+      activityId,
+      activity,
       now,
       config: event && event.config
     });

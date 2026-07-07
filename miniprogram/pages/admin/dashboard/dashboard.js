@@ -39,8 +39,8 @@ Page({
   },
 
   onPullDownRefresh() {
-    this.loadDashboard();
-    wx.stopPullDownRefresh();
+    // 等异步加载结束再停刷新动画（此前立即 stop → 数据没回来动画已消失）。
+    Promise.resolve(this.loadDashboard()).finally(() => wx.stopPullDownRefresh());
   },
 
   /** 加载数据看板。本地轨失败 → 占位空态，不弹错误。 */
@@ -50,10 +50,10 @@ Page({
     if (!api || typeof api.call !== 'function') {
       // 无云能力 → 空态占位（不崩）。
       this.setData({ loading: false, errorMsg: '', empty: true });
-      return;
+      return Promise.resolve();
     }
     this.setData({ loading: true, errorMsg: '' });
-    api
+    return api
       .call(
         'admin',
         { action: 'dashboard', activity_id: getApp().getActivityId() },

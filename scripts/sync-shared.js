@@ -111,10 +111,11 @@ const SHARED_MANIFEST = {
     'common/response',
     'common/adminGuard',
     'common/db',
-    'steps/stepsSync',         // 经 admin/dashboard 引入
-    'activity/activityStatus', // steps/stepsSync 的传递依赖
-    'schema/initIndexes',      // 经 admin.ensureSchema 运维 action 引入
-    'schema/collections'       // initIndexes 的同目录依赖
+    'steps/stepsSync',           // 经 admin/dashboard 引入
+    'activity/activityStatus',   // steps/stepsSync 的传递依赖
+    'activity/activityResolver', // admin/index.js dashboard handler 查活动文档（活动期过滤生效）
+    'schema/initIndexes',        // 经 admin.ensureSchema 运维 action 引入
+    'schema/collections'         // initIndexes 的同目录依赖
   ],
   tasks: [
     'common/errors',

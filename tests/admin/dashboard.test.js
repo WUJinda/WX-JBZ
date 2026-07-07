@@ -130,6 +130,77 @@ describe('buildDashboard（数据看板指标）', () => {
   });
 });
 
+describe('buildDashboard 口径对齐（活动期过滤 / 异常排除 / join_status）', () => {
+  it('totalSteps：活动期外脏记录（locked 但 date<start_date）不计入（与 userStats/rankAggregate 同口径）', () => {
+    const store = {
+      User: [],
+      Whitelist: [],
+      StepRecord: [
+        rec('u1', '2026-06-25', 9999, { locked: true }), // 期外（活动 06-26 开始）→ 剔除
+        rec('u1', '2026-06-26', 2000), // today 期内 → 计入
+        rec('u2', '2026-06-26', 3000) // today → 计入
+      ],
+      RankCache: []
+    };
+    const activity = { activity_id: ACT, start_time: '2026-06-26T00:00:00+08:00' };
+    const r = buildDashboard({ store, activityId: ACT, activity, now: NOW });
+    expect(r.totalSteps).toBe(5000); // 仅活动期内两条（9999 被期外过滤剔除）
+  });
+
+  it('totalSteps：activity 缺失 → 兜底不过滤（向后兼容）', () => {
+    const store = {
+      User: [],
+      Whitelist: [],
+      StepRecord: [
+        rec('u1', '2026-06-25', 1000, { locked: true }), // 无 activity → 不过滤 → 计入
+        rec('u1', '2026-06-26', 2000) // today → 计入
+      ],
+      RankCache: []
+    };
+    const r = buildDashboard({ store, activityId: ACT, now: NOW }); // 不传 activity
+    expect(r.totalSteps).toBe(3000);
+  });
+
+  it('abnormal（待裁定异常）不计入 totalSteps / dailyActive', () => {
+    const store = {
+      User: [],
+      Whitelist: [],
+      StepRecord: [
+        rec('u1', '2026-06-26', 1000), // 正常 today
+        rec('u2', '2026-06-26', 9999, { abnormal: true }), // 异常 → 不计入
+        rec('u2', '2026-06-25', 8888, { abnormal: true, locked: true }) // 异常 → 不计入
+      ],
+      RankCache: []
+    };
+    const r = buildDashboard({ store, activityId: ACT, now: NOW, config: { trendDays: 3 } });
+    expect(r.totalSteps).toBe(1000);
+    const byDate = {};
+    r.dailyActive.forEach((x) => { byDate[x.date] = x.count; });
+    expect(byDate['2026-06-26']).toBe(1); // 仅 u1（u2 异常不计日活）
+    expect(byDate['2026-06-25']).toBe(0); // u2 异常不计日活
+  });
+
+  it('validParticipants/totalSteps：未 joined 或未注册用户的裸步数不计入（User 非空时校验，对齐 rankAggregate）', () => {
+    const store = {
+      User: [
+        { _openid: 'u1', join_status: 'joined' },
+        { _openid: 'u2', join_status: 'pending' }
+        // u3 无 User（未注册/已注销）
+      ],
+      Whitelist: [],
+      StepRecord: [
+        rec('u1', '2026-06-26', 1000), // joined → 计入
+        rec('u2', '2026-06-26', 2000), // pending → 不计入
+        rec('u3', '2026-06-26', 3000) // 无 User → 不计入
+      ],
+      RankCache: []
+    };
+    const r = buildDashboard({ store, activityId: ACT, now: NOW });
+    expect(r.validParticipants).toBe(1); // 仅 u1
+    expect(r.totalSteps).toBe(1000); // u2/u3 被 join_status 过滤，与 validParticipants 同口径
+  });
+});
+
 describe('buildDashboard dailyActive（日活趋势）', () => {
   it('按 date 分组，每日 count distinct user_id；近 trendDays 天升序', () => {
     const store = {
@@ -226,13 +297,29 @@ describe('buildDashboard deptRank（复用 RankCache，不重算）', () => {
   });
 });
 
-describe('isValidRecord 口径与 rankAggregate/stepsQuery 一致', () => {
+describe('isValidRecord 口径与 rankAggregate/stepsQuery/userStats 一致', () => {
+  const today = '2026-06-26';
+
   it('locked || date===today', () => {
-    const today = '2026-06-26';
     expect(isValidRecord({ locked: true, date: '2026-06-01' }, today)).toBe(true);
     expect(isValidRecord({ locked: false, date: today }, today)).toBe(true);
     expect(isValidRecord({ locked: false, date: '2026-06-25' }, today)).toBe(false);
     expect(isValidRecord({ locked: false, date: '' }, today)).toBe(false);
+  });
+
+  it('abnormal=true 一律不计入（待裁定异常，无论 locked/today）', () => {
+    expect(isValidRecord({ locked: true, date: '2026-06-01', abnormal: true }, today)).toBe(false);
+    expect(isValidRecord({ locked: false, date: today, abnormal: true }, today)).toBe(false);
+  });
+
+  it('活动期过滤：startDate 缺失→不过滤；有 startDate 且 date<start→剔除', () => {
+    const start = '2026-06-26';
+    // 缺失 startDate：locked 的早期记录仍计入（兜底，向后兼容）
+    expect(isValidRecord({ locked: true, date: '2026-06-01' }, today)).toBe(true);
+    // 有 startDate：locked 但 date<start → 剔除（早期 sync bug 回灌的脏记录）
+    expect(isValidRecord({ locked: true, date: '2026-06-25' }, today, start)).toBe(false);
+    // date>=start 且 today → 计入
+    expect(isValidRecord({ locked: false, date: today }, today, start)).toBe(true);
   });
 });
 
