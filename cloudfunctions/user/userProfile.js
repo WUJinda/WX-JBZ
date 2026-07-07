@@ -41,7 +41,7 @@ function projectProfile(user) {
     // （绝不直接下发完整 phone）
     phone_masked: u.phone_masked || (u.phone ? maskPhone(u.phone) : ''),
     dept_id: u.dept_id || null,
-    dept_name: u.dept_name || '', // 可选，需 join 时补（B5 阶段为占位空串）
+    dept_name: u.dept_name || '', // 由 getProfile 关联 Department 注入（User 只存 dept_id）
     join_status: u.join_status || 'pending',
     // is_admin 非敏感（布尔标志），下发供前端 admin 入口门禁（profile.js adminVisible）。
     // 严格 ===true：只认布尔 true，防止字符串 'true'/1 等误判管理员（控制台须填布尔）。
@@ -73,7 +73,22 @@ async function getProfile(params) {
   if (users.length === 0) {
     throw BizError(CODE.AUTH_USER_NOT_FOUND, 'getProfile: user not found');
   }
-  return projectProfile(users[0]);
+  const user = users[0];
+
+  // 关联 Department 补 dept_name：User 只存 dept_id（PRD §6.1），部门名在 Department 集合。
+  // 修复硬伤：原直接读 user.dept_name（User 无此字段）→ 恒空串 → 前端部门永远显示「未加入」。
+  // dept_id 缺省（未报名）/ Department 无匹配 / 查询异常 → dept_name 兜底空串，不阻塞其余字段下发。
+  let deptName = '';
+  if (user.dept_id) {
+    try {
+      const deptRes = await db.collection('Department').where({ dept_id: user.dept_id }).get();
+      const dept = (deptRes && deptRes.data && deptRes.data[0]) || null;
+      deptName = (dept && dept.name) || '';
+    } catch (err) {
+      deptName = ''; // Department 集合不存在/查询失败 → 兜底空串，profile 其余字段照常下发
+    }
+  }
+  return projectProfile(Object.assign({}, user, { dept_name: deptName }));
 }
 
 module.exports = { projectProfile, projectSteps, getProfile };

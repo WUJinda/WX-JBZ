@@ -100,6 +100,43 @@ describe('user.profile 纯函数', () => {
       expect(out).not.toHaveProperty('phone');
     });
 
+    it('dept_id 有值时关联 Department 补 dept_name（修复前端部门显示「未加入」）', async () => {
+      const { db } = createMockDb({
+        User: [
+          {
+            _id: 'u_1',
+            _openid: 'oU',
+            nickname: '张明',
+            dept_id: 'd_01',
+            join_status: 'joined'
+          }
+        ],
+        Department: [{ _id: 'd_1', dept_id: 'd_01', name: '研发部' }]
+      });
+      const out = await getProfile({ openid: 'oU', db });
+      expect(out.dept_id).toBe('d_01');
+      expect(out.dept_name).toBe('研发部');
+    });
+
+    it('dept_id 缺省（未报名）或 Department 无匹配 → dept_name 兜底空串', async () => {
+      // 未报名：dept_id 缺省
+      const { db: db1 } = createMockDb({
+        User: [{ _id: 'u_2', _openid: 'oP', join_status: 'pending' }]
+      });
+      const out1 = await getProfile({ openid: 'oP', db: db1 });
+      expect(out1.dept_name).toBe('');
+      expect(out1.dept_id).toBe(null);
+
+      // 已报名但 Department 无匹配（脏数据 / 部门被管理员删除）
+      const { db: db2 } = createMockDb({
+        User: [{ _id: 'u_3', _openid: 'oX', dept_id: 'd_ghost', join_status: 'joined' }],
+        Department: []
+      });
+      const out2 = await getProfile({ openid: 'oX', db: db2 });
+      expect(out2.dept_name).toBe('');
+      expect(out2.dept_id).toBe('d_ghost'); // dept_id 照常下发，仅 name 兜底
+    });
+
     it('User 不存在抛 AUTH_USER_NOT_FOUND', async () => {
       const { db } = createMockDb({ User: [] });
       await expect(getProfile({ openid: 'oNONE', db })).rejects.toMatchObject({

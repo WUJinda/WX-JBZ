@@ -44,20 +44,13 @@ describe('结构校验', () => {
     expect(app.tabBar.list.length).toBe(4);
   });
 
-  it('每个 tabBar 项含 pagePath/text（图标可选；活动 tab 暂为纯文字）', () => {
+  it('每个 tabBar 项含 pagePath/text/iconPath/selectedIconPath', () => {
     const app = readJson('miniprogram/app.json');
-    const required = ['pagePath', 'text'];
+    const required = ['pagePath', 'text', 'iconPath', 'selectedIconPath'];
     app.tabBar.list.forEach((item, i) => {
       required.forEach((k) => {
         expect(item[k], `tabBar[${i}] 缺少 ${k}`).toEqual(expect.any(String));
         expect(item[k].length, `tabBar[${i}].${k} 不能为空`).toBeGreaterThan(0);
-      });
-      // iconPath / selectedIconPath 可选：活动 tab 无图标；其余 tab 提供则必须非空。
-      ['iconPath', 'selectedIconPath'].forEach((k) => {
-        if (k in item) {
-          expect(item[k], `tabBar[${i}].${k} 若提供不能为空`).toEqual(expect.any(String));
-          expect(item[k].length, `tabBar[${i}].${k} 若提供不能为空`).toBeGreaterThan(0);
-        }
       });
     });
   });

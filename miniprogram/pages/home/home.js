@@ -281,8 +281,11 @@ Page({
             nowTs: Date.now()
           }
         });
-        // 同步成功后即时刷新 my_rank（后端聚合已在 sync 内 await 完成，此时 RankCache 已最新）。
-        this.loadStats();
+        // 同步成功后刷新排名/天数/趋势。
+        // keepSyncedSteps=true：today/total 保留 sync 返回的最即时值，不让 stats 的二次查询覆盖
+        // （云库「写后立即查」的最终一致性会读到旧快照，致刚显示的新步数「闪回」成旧值）。
+        this.loadStats({ keepSyncedSteps: true });
+        this.loadTrend(this.data.trendRange);
         wx.showToast({ title: '同步成功', icon: 'success' });
       })
       .catch((err) => {
@@ -332,11 +335,25 @@ Page({
 
   // ===== F4：步数展示（统计 / 趋势 / 排名入口） =====
 
-  /** 加载个人统计（user.stats）。本地轨失败 → 占位，不阻塞同步。 */
-  loadStats() {
+  /**
+   * 加载个人统计（user.stats）。本地轨失败 → 占位，不阻塞同步。
+   *
+   * @param {object} [opts]
+   * @param {boolean} [opts.keepSyncedSteps] true=保留 sync 刚写入的 today/total 不覆盖（sync 成功后调用）。
+   *   背景：sync 返回的 today/total 来自当次解密写入的内存 store，是最即时值；而 stats 是对 StepRecord
+   *   的二次查询，云数据库「写后立即查」存在最终一致性延迟，可能命中写入前的旧快照。用它覆盖 sync 值，
+   *   刚显示的新步数会「闪回」成旧值（表现为同步成功后一秒内数据回退）。故 sync 后调用置 true，
+   *   stats 只刷 myRank/天数（sync 不返回这些），today/total 留给 sync 的即时值。
+   */
+  loadStats(opts) {
     const app = getApp();
     const api = app && app.api;
     if (!api || typeof api.call !== 'function') return;
+    // 请求序号：丢弃过期响应。多个 loadStats 并发时（如 onShow 触发的旧请求因云函数冷启动延迟，
+    // 晚于 sync 后的新请求返回），仅采纳最后一次响应，避免旧值覆盖新值。
+    this._statsSeq = (this._statsSeq || 0) + 1;
+    const seq = this._statsSeq;
+    const keepSyncedSteps = !!(opts && opts.keepSyncedSteps);
     api
       .call(
         'user',
@@ -344,15 +361,19 @@ Page({
         { loading: false, silent: true }
       )
       .then((data) => {
+        if (seq !== this._statsSeq) return; // 过期响应，丢弃
         const d = data || {};
-        this.setData({
+        const patch = {
           activeDays: d.active_days || 0,
           totalDays: d.total_days || 0,
-          myRank: d.my_rank == null ? null : d.my_rank,
-          // 同步刷新累计/今日（与 stats 口径一致；不覆盖 sync 成功态的更即时值由 onShow 触发顺序保证）
-          totalSteps: typeof d.total_steps === 'number' ? d.total_steps : this.data.totalSteps,
-          todaySteps: typeof d.today_steps === 'number' ? d.today_steps : this.data.todaySteps
-        });
+          myRank: d.my_rank == null ? null : d.my_rank
+        };
+        if (!keepSyncedSteps) {
+          // 稳态刷新（onShow / 下拉刷新）：stats 的 today/total 即真实当前值，正常覆盖。
+          patch.totalSteps = typeof d.total_steps === 'number' ? d.total_steps : this.data.totalSteps;
+          patch.todaySteps = typeof d.today_steps === 'number' ? d.today_steps : this.data.todaySteps;
+        }
+        this.setData(patch);
       })
       .catch((err) => {
         // 1002 未登录 → 守卫引导登录（stats 需登录态）。

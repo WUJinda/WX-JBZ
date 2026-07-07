@@ -35,7 +35,9 @@
       },
       {
         "pagePath": "pages/activity/activity",
-        "text": "活动"
+        "text": "活动",
+        "iconPath": "assets/tabbar/activity.png",
+        "selectedIconPath": "assets/tabbar/activity-active.png"
       },
       {
         "pagePath": "pages/rank/rank",
