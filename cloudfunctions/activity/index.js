@@ -21,7 +21,7 @@ const { CODE, BizError, notImplemented } = require('../common/errors');
 const { authMiddleware } = require('../common/authMiddleware');
 const { loadByWhere } = require('../common/db');
 const { assertAdmin } = require('../common/adminGuard');
-const { getCurrent, deriveStatus } = require('./activityStatus');
+const { getCurrent, deriveStatus, pickCurrentActivity } = require('./activityStatus');
 const { saveActivity } = require('./activitySave');
 const { terminateActivity } = require('./activityTerminate');
 const { listActivities } = require('./activityList');
@@ -51,11 +51,15 @@ const handlers = {
     const now = (event && event.now) || undefined;
     const db = cloud.database();
 
-    // 1. 真实活动：读 Activity 集合（管理员经 save 发布）。
+    // 1. 真实活动：读 Activity 集合（管理员经 save 发布），选「当前活动」。
+    //    pickCurrentActivity：排除 terminated，按 active→pending→ended 优先（与 listActivities
+    //    排序同源）。新增活动据此顶替旧活动；终止活动被排除；全终止/库空→null→走空态。
+    //    旧逻辑取 activities[0]：loadByWhere 返回顺序无保证且不排除 terminated →
+    //    「新增活动不更新 + 终止活动仍展示」根因。
     //    F2：空集合不回退 mock（旧 mock 带假时间窗 2026-07-01~07-21 会误导用户），
     //    返回空态让前端显示"活动未发布/未开始"。
     const activities = await loadByWhere(cloud, 'Activity');
-    const activity = (activities && activities[0]) || {
+    const activity = pickCurrentActivity(activities, now) || {
       activity_id: '', name: '', start_time: null, end_time: null, signup_deadline: null, rules: ''
     };
 

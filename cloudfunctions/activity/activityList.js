@@ -16,13 +16,9 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { deriveStatus, STATUS, _toTs } = require('./activityStatus');
-
-/** 状态档位权重：数字越小越靠前。 */
-var RANK_WEIGHT = {};
-RANK_WEIGHT[STATUS.ACTIVE] = 0;
-RANK_WEIGHT[STATUS.PENDING] = 1;
-RANK_WEIGHT[STATUS.ENDED] = 2;
+// RANK_WEIGHT 从 activityStatus 引入（消除重复，与 pickCurrentActivity 选当前活动同口径）；
+// 本模块继续转出 RANK_WEIGHT 以兼容现有 activityList.test.js 断言。
+const { deriveStatus, STATUS, _toTs, RANK_WEIGHT } = require('./activityStatus');
 
 /**
  * 投影：从 Activity 文档摘出列表页需要的字段（不下发 _id/created_at/updated_at 等服务端字段）。

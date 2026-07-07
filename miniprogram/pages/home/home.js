@@ -88,18 +88,27 @@ Page({
    * 冷启动 home 先于 activity 异步返回时 status 缺失 → 补调 activity.current 兜底。
    */
   ensureActivityStatus() {
+    const app = getApp();
+    // admin 刚创建/编辑/终止活动后置 _activityDirty → 强制重拉 current，绕过 globalData
+    // 缓存推算（否则 home 用缓存的旧活动，不会感知新增活动 / 不会隐藏已终止活动，即
+    // 「个人页顶部活动信息不更新」根因）。与 activity.js onShow 同模式；同步清 _forceEnded：
+    // 新活动可能 active，重新探测真实状态，避免卡在 3004 强制 ended。
+    if (app && app.globalData && app.globalData._activityDirty) {
+      app.globalData._activityDirty = false;
+      this._forceEnded = false;
+      this.fetchActivityStatus();
+      return;
+    }
     // 3004 兜底：服务端判 ended 但本地时间窗口未到时（管理员提前改 end_time / 时钟偏差），
     // _forceEnded 保持 ended 态到下次主动下拉刷新——避免 onShow 用 globalData 旧时间窗口
     // 重算回 active（同步按钮反复横跳 → 再点再 3004）。
     if (this._forceEnded) {
-      const app0 = getApp();
-      const ga0 = (app0 && app0.globalData && app0.globalData.currentActivity) || {};
+      const ga0 = (app && app.globalData && app.globalData.currentActivity) || {};
       this.setData({ activityStatus: ACT_STATUS.ENDED, activityName: ga0.name || this.data.activityName });
       this.loadStats();
       this.loadTrend(this.data.trendRange);
       return;
     }
-    const app = getApp();
     const ga = (app && app.globalData && app.globalData.currentActivity) || {};
     const status = deriveHomeStatus(ga, Date.now());
     this.setData({ activityStatus: status, activityName: ga.name || '' });

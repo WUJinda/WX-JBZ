@@ -1,6 +1,8 @@
 const {
   STATUS,
+  RANK_WEIGHT,
   deriveStatus,
+  pickCurrentActivity,
   projectActivity,
   getCurrent,
   mockCurrentActivity
@@ -165,6 +167,75 @@ describe('activity.current 纯函数（C1）', () => {
       const out = await getCurrent({ now: '2026-07-10T00:00:00Z' });
       expect(out).toHaveProperty('status');
       expect(CODE.AUTH_NO_OPENID).toBeDefined();
+    });
+  });
+
+  describe('pickCurrentActivity（选当前活动：排除 terminated，active→pending→ended）', () => {
+    // 时间窗：active 在期中 / pending 未开始 / ended 已结束；now 锚 07-10（active 期中）
+    const active = { activity_id: 'a_active', name: '进行中', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z' };
+    const pending = { activity_id: 'a_pending', name: '未开始', start_time: '2026-08-01T00:00:00Z', end_time: '2026-08-21T23:59:59Z' };
+    const ended = { activity_id: 'a_ended', name: '已结束', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z' };
+    const now = '2026-07-10T00:00:00Z';
+
+    it('非数组 / 库空 → null（宽容，不抛错）', () => {
+      expect(pickCurrentActivity(undefined, now)).toBeNull();
+      expect(pickCurrentActivity(null, now)).toBeNull();
+      expect(pickCurrentActivity([], now)).toBeNull();
+      expect(pickCurrentActivity('x', now)).toBeNull();
+    });
+
+    it('单个 active 活动 → 返回该原始文档', () => {
+      expect(pickCurrentActivity([active], now)).toBe(active);
+    });
+
+    it('active 优先于 pending / ended（输入顺序打乱也选 active）', () => {
+      expect(pickCurrentActivity([ended, pending, active], now)).toBe(active);
+      expect(pickCurrentActivity([pending, ended, active], now)).toBe(active);
+    });
+
+    it('terminated 一律排除（即便它本在 active 期）—— 业务规则核心', () => {
+      const termActive = { activity_id: 'a_term', name: '已终止', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+      // 唯一活动 terminated → null（终止活动不再展示 / 不再作当前）
+      expect(pickCurrentActivity([termActive], now)).toBeNull();
+      // 与 active 并存 → 跳过 terminated 选 active
+      expect(pickCurrentActivity([termActive, active], now)).toBe(active);
+    });
+
+    it('全部 terminated → null', () => {
+      const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+      const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true };
+      expect(pickCurrentActivity([t1, t2], now)).toBeNull();
+    });
+
+    it('无 active 时选 pending（未开始）优先于 ended', () => {
+      expect(pickCurrentActivity([ended, pending], now)).toBe(pending);
+    });
+
+    it('无 active/pending 时选 ended（自然结束仍可作当前/归档）', () => {
+      expect(pickCurrentActivity([ended], now)).toBe(ended);
+    });
+
+    it('同档按 start_time 降序（更晚开始的靠前，新增活动优先于同档旧活动）', () => {
+      const early = { activity_id: 'a_early', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z' };
+      const late = { activity_id: 'a_late', start_time: '2026-07-05T00:00:00Z', end_time: '2026-07-25T23:59:59Z' };
+      // 两者在 07-10 均 active → start 晚的(late 07-05) 靠前
+      expect(pickCurrentActivity([early, late], now)).toBe(late);
+    });
+
+    it('过滤非对象脏数据（null / 基本类型不入选）', () => {
+      expect(pickCurrentActivity([null, 'junk', undefined, active], now)).toBe(active);
+    });
+
+    it('档位权重：active < pending < ended（与 listActivities 同口径）', () => {
+      expect(RANK_WEIGHT[STATUS.ACTIVE]).toBeLessThan(RANK_WEIGHT[STATUS.PENDING]);
+      expect(RANK_WEIGHT[STATUS.PENDING]).toBeLessThan(RANK_WEIGHT[STATUS.ENDED]);
+    });
+
+    it('纯函数：不修改入参', () => {
+      const arr = [ended, active, pending];
+      const snapshot = JSON.stringify(arr);
+      pickCurrentActivity(arr, now);
+      expect(JSON.stringify(arr)).toBe(snapshot);
     });
   });
 });

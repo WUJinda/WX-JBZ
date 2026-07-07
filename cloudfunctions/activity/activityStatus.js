@@ -19,6 +19,16 @@ const STATUS = {
 };
 
 /**
+ * 状态档位权重（「选当前活动」与列表排序共用，数字越小越靠前）：
+ *   active 进行中(0) → pending 未开始(1) → ended 已结束(2)。
+ * 提取到此处统一导出，供 pickCurrentActivity / activityList.listActivities 复用，避免口径分叉。
+ */
+const RANK_WEIGHT = {};
+RANK_WEIGHT[STATUS.ACTIVE] = 0;
+RANK_WEIGHT[STATUS.PENDING] = 1;
+RANK_WEIGHT[STATUS.ENDED] = 2;
+
+/**
  * 安全转时间戳。入参支持 Date / number(毫秒) / string(可解析) / null。
  * 非法值返回 NaN。
  * @param {Date|number|string|null} t
@@ -56,6 +66,43 @@ function deriveStatus(activity, now) {
   if (cur < start) return STATUS.PENDING;
   if (cur > end) return STATUS.ENDED;
   return STATUS.ACTIVE;
+}
+
+/**
+ * 从活动集合里选「当前活动」（current / getActiveActivityId / getActiveActivity 共用口径）。
+ *
+ * 业务规则（与 listActivities 排序同源，对齐用户诉求）：
+ *   - terminated=true 一律排除——终止活动不再展示在活动页 / 个人页顶部，也不再作为
+ *     rank / stats / tasks 聚合的「当前活动」（终止即冻结，见 terminateActivity）；
+ *   - 剩余按 deriveStatus 推算状态，档位权重升序（active → pending → ended），
+ *     即「进行中 → 未开始 → 已结束」优先；这样新增活动（无论 active/pending）都会
+ *     顶替已结束的旧活动，且不会有多个活动时仍取到 activities[0] 的旧顺序问题；
+ *   - 同档按 start_time 降序（更晚开始的靠前，新增活动优先于同档旧活动）；
+ *   - 库空 / 非数组 / 全终止 → 返回 null（调用方据此返回空态 / 空榜 / 空统计）。
+ *
+ * 纯函数：注入 now 便于单测；不改入参。宽容：不抛错（current/getActiveActivity 在
+ *   handler 层已保证拿到数组，此处与 listActivities 的 SYS_DB_ERROR 不同，返 null 即可）。
+ *
+ * @param {object[]} activities Activity 文档数组
+ * @param {Date|number} [now] 当前时间（注入便于单测；缺省 deriveStatus 内部取 new Date()）
+ * @returns {object|null} 选中的原始活动文档（未投影，含 start_time/end_time 供 stats 等用），或 null
+ */
+function pickCurrentActivity(activities, now) {
+  if (!Array.isArray(activities)) return null;
+  const cur = now === undefined ? undefined : now;
+  const items = activities
+    .filter((a) => a && typeof a === 'object' && a.terminated !== true)
+    .map((a) => ({ item: a, status: deriveStatus(a, cur), startTs: toTs(a.start_time) }));
+  items.sort((x, y) => {
+    const wx = RANK_WEIGHT[x.status] != null ? RANK_WEIGHT[x.status] : 99;
+    const wy = RANK_WEIGHT[y.status] != null ? RANK_WEIGHT[y.status] : 99;
+    if (wx !== wy) return wx - wy;
+    // 同档：start_time 降序（更晚开始的靠前）；非法时间（NaN）排末尾
+    const sx = Number.isFinite(x.startTs) ? x.startTs : -Infinity;
+    const sy = Number.isFinite(y.startTs) ? y.startTs : -Infinity;
+    return sy - sx;
+  });
+  return items.length ? items[0].item : null;
 }
 
 /**
@@ -140,7 +187,9 @@ function mockCurrentActivity() {
 
 module.exports = {
   STATUS,
+  RANK_WEIGHT,
   deriveStatus,
+  pickCurrentActivity,
   projectActivity,
   getCurrent,
   mockCurrentActivity,

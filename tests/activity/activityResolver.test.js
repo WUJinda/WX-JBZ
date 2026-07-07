@@ -9,7 +9,7 @@
  *
  * vitest globals:true —— describe/it/expect/vi 全局可用，无需 import。
  */
-const { getActivityById } = require('../../cloudfunctions/activity/activityResolver');
+const { getActivityById, getActiveActivity, getActiveActivityId } = require('../../cloudfunctions/activity/activityResolver');
 
 /**
  * 构造 mock cloud：模拟 loadByWhere 的链式调用。
@@ -66,5 +66,61 @@ describe('activityResolver.getActivityById：按 activity_id 精确查活动文�
     const cloud = mockCloud([{ activity_id: 'a1' }]);
     const out = await getActivityById(cloud, 'not-exist');
     expect(out).toBeNull();
+  });
+});
+
+describe('activityResolver.getActiveActivity / getActiveActivityId：选当前活动（排除 terminated，active 优先）', () => {
+  // 时间窗：ACTIVE 在期中 / ENDED 已结束；now 锚 07-10（active 期中）
+  const ACTIVE = { activity_id: 'a_active', name: '进行中', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z' };
+  const ENDED = { activity_id: 'a_ended', name: '已结束', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z' };
+  const now = '2026-07-10T00:00:00Z';
+
+  it('active + ended 并存 → getActiveActivity 返回 active 文档', async () => {
+    const cloud = mockCloud([ENDED, ACTIVE]); // 顺序打乱仍选 active
+    expect(await getActiveActivity(cloud, now)).toBe(ACTIVE);
+  });
+
+  it('active + ended 并存 → getActiveActivityId 返回 active 的 activity_id', async () => {
+    const cloud = mockCloud([ENDED, ACTIVE]);
+    expect(await getActiveActivityId(cloud, now)).toBe('a_active');
+  });
+
+  it('唯一活动 terminated → getActiveActivity 返回 null（终止不再作当前）', async () => {
+    const term = { activity_id: 'a_term', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+    const cloud = mockCloud([term]);
+    expect(await getActiveActivity(cloud, now)).toBeNull();
+  });
+
+  it('唯一活动 terminated → getActiveActivityId 返回空串', async () => {
+    const term = { activity_id: 'a_term', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+    const cloud = mockCloud([term]);
+    expect(await getActiveActivityId(cloud, now)).toBe('');
+  });
+
+  it('全部 terminated → null / 空串', async () => {
+    const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+    const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true };
+    const cloud = mockCloud([t1, t2]);
+    expect(await getActiveActivity(cloud, now)).toBeNull();
+    expect(await getActiveActivityId(cloud, now)).toBe('');
+  });
+
+  it('terminated 与 active 并存 → 跳过 terminated 选 active', async () => {
+    const term = { activity_id: 'a_term', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+    const cloud = mockCloud([term, ACTIVE]);
+    expect(await getActiveActivity(cloud, now)).toBe(ACTIVE);
+    expect(await getActiveActivityId(cloud, now)).toBe('a_active');
+  });
+
+  it('库空 → null / 空串', async () => {
+    const cloud = mockCloud([]);
+    expect(await getActiveActivity(cloud, now)).toBeNull();
+    expect(await getActiveActivityId(cloud, now)).toBe('');
+  });
+
+  it('文档无 activity_id 时 getActiveActivityId 兜底 _id', async () => {
+    const only = { _id: 'doc_active', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z' };
+    const cloud = mockCloud([only]);
+    expect(await getActiveActivityId(cloud, now)).toBe('doc_active');
   });
 });
