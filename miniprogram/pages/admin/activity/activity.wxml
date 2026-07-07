@@ -17,6 +17,7 @@
     <text class="form-label">头图 URL</text>
     <input class="form-input" value="{{cover_url}}" bindinput="onCoverInput" placeholder="请输入头图链接" />
   </view>
+  <view class="form-error" wx:if="{{formErrors.cover_url}}">{{formErrors.cover_url}}</view>
 
   <!-- 开始时间 -->
   <view class="form-row">

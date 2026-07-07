@@ -9,7 +9,12 @@
  *   - 时间格式合法（YYYY-MM-DD 或 YYYY-MM-DD HH:mm，可被 Date.parse 解析）。
  *
  * 发布态文案：publish=true → '已发布'，否则 → '未发布'（草稿）。
+ *
+ * cover_url 校验：可选字段，留空表示无头图；填了必须是合法图片 URL
+ *   （http(s):// 或 cloud://），防误填纯文本（如 "ssss"）流入 <image src> 致渲染层 500。
  */
+
+const { isValidImageUrl } = require('../../../utils/imageUrl');
 
 /** 时间格式校验：能被 Date.parse 解析为有效时间戳即合法。 */
 function isValidTime(t) {
@@ -32,6 +37,12 @@ function validateActivityForm(form) {
   const name = typeof f.name === 'string' ? f.name.trim() : '';
   if (!name) {
     errors.name = '活动名称不能为空';
+  }
+
+  // cover_url 可选；填了必须是合法图片 URL（防误填纯文本致 <image src> 渲染层 500）
+  const coverUrl = typeof f.cover_url === 'string' ? f.cover_url.trim() : '';
+  if (coverUrl && !isValidImageUrl(coverUrl)) {
+    errors.cover_url = '头图链接需以 http(s):// 或 cloud:// 开头';
   }
 
   // 起止时间必填 + 格式合法 + 不可倒序

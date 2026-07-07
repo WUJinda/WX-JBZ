@@ -1,6 +1,7 @@
 // pages/activity/activity.js
 // 活动主页（启动页，游客可见）—— 对齐 PRD F7 R7.1~R7.4，开发计划阶段 C2。
 const { calcCountdown, calcProgress, deriveCta, STATUS } = require('./activityCalc');
+const { isValidImageUrl } = require('../../utils/imageUrl');
 
 // F2：空态活动（云函数失败/活动未发布时用，替代旧 mockActivity 的假时间窗 2026-07-01~07-21）。
 const EMPTY_ACTIVITY = {
@@ -80,7 +81,12 @@ Page({
    * @param {string} [joinStatus]
    */
   applyActivity(data, joinStatus, options) {
-    const activity = data || EMPTY_ACTIVITY;
+    // 渲染兜底：cover_url 非法（如误填纯文本 "ssss"）→ 置空走 placeholder，
+    // 避免 <image src="ssss"> 被解析为页面相对路径 /pages/activity/ssss → 渲染层 500 刷屏。
+    const raw = data || EMPTY_ACTIVITY;
+    const activity = isValidImageUrl(raw.cover_url)
+      ? raw
+      : Object.assign({}, raw, { cover_url: '' });
     const opts = options || {};
     // F1：写入全局活动上下文，供各页读 activity_id（替代硬编码 a_demo_001）。
     // persist=false（current 失败的 fallback 空态）跳过写回——避免覆盖 home 等其它页已成功
