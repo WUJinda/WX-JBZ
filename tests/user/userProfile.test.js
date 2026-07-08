@@ -1,4 +1,5 @@
 const { projectProfile, projectSteps, getProfile } = require('../../cloudfunctions/user/userProfile');
+const { buildStats } = require('../../cloudfunctions/user/userStats');
 const { createMockDb } = require('../helpers/mockDb');
 const { CODE } = require('../../cloudfunctions/common/errors');
 
@@ -153,6 +154,47 @@ describe('user.profile 纯函数', () => {
       await expect(getProfile({ openid: 'oU' })).rejects.toMatchObject({
         code: CODE.SYS_DB_ERROR
       });
+    });
+
+    // 累计步数口径:handler 用 buildStats 实时聚合注入,不再读 User.total_steps 幽灵字段。
+    it('totalSteps 形参覆盖 User.total_steps(handler 注入 buildStats 聚合值)', async () => {
+      const { db } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', nickname: '张明', total_steps: 12500 }]
+      });
+      const out = await getProfile({ openid: 'oU', db, totalSteps: 24000 });
+      // 形参胜出,忽略 User.total_steps(生产中该字段从不被写、恒 undefined→0)
+      expect(out.total_steps).toBe(24000);
+    });
+
+    it('不传 totalSteps → 退回读 user.total_steps(向后兼容旧调用)', async () => {
+      const { db } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', total_steps: 12500 }]
+      });
+      const out = await getProfile({ openid: 'oU', db });
+      expect(out.total_steps).toBe(12500);
+    });
+
+    it('累计步数与 user.stats / home 同源:同 records 喂 buildStats,getProfile 透传其 total_steps', async () => {
+      // 模拟 home/user.stats 的聚合输入(活动期内两条有效记录)
+      const records = [
+        { user_id: 'oU', activity_id: 'a1', date: '2026-07-01', steps: 8000, locked: true, synced_at: '2026-07-01T10:00:00Z' },
+        { user_id: 'oU', activity_id: 'a1', date: '2026-07-02', steps: 9000, locked: false, synced_at: '2026-07-02T10:00:00Z' }
+      ];
+      const activity = {
+        activity_id: 'a1',
+        start_time: '2026-07-01T00:00:00+08:00',
+        end_time: '2026-07-21T23:59:59+08:00'
+      };
+      const now = new Date('2026-07-02T04:00:00Z'); // 北京 07-02 12:00
+      const statsTotal = buildStats({ records, activity, now }).total_steps;
+      expect(statsTotal).toBe(8000 + 9000);
+
+      const { db } = createMockDb({
+        User: [{ _id: 'u_1', _openid: 'oU', total_steps: 99999 }] // 幽灵字段须被忽略
+      });
+      // handler 等价路径:buildStats 算 total → 注入 getProfile →「我的」页显示值
+      const out = await getProfile({ openid: 'oU', db, totalSteps: statsTotal });
+      expect(out.total_steps).toBe(statsTotal); // 与首页 / user.stats 完全一致
     });
   });
 });

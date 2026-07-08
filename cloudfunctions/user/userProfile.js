@@ -5,15 +5,19 @@
  *   - 不下发原始 phone / openid / unionid（§8 敏感字段）；
  *   - 只下发：脱敏手机号、部门、累计步数、昵称、头像、报名状态、管理员标志 is_admin。
  *
- * 本地轨：db 以依赖注入方式传入（mock 集合可单测）；步数为占位（真实聚合留后续阶段）。
+ * 累计步数口径：total_steps 由 handler 用 buildStats 从 StepRecord 实时聚合后注入（与
+ *   user.stats / home 同源），User 集合无 total_steps 字段、绝不读它（历史 bug：读 User.total_steps
+ *   幽灵字段恒为 0，致「我的」页与首页累计步数对不上）。
+ *
+ * 本地轨：db 以依赖注入方式传入（mock 集合可单测）。
  */
 
 const { CODE, BizError } = require('../common/errors');
 const { maskPhone } = require('../common/mask');
 
 /**
- * 累计步数投影：当前阶段步数为占位（真实聚合在 E/G 阶段）。
- * 对 null / undefined / 非数字统一兜底为 0。
+ * 累计步数投影：对 null / undefined / 非数字统一兜底为 0（向下取整）。
+ * 入参由 getProfile 从调用方注入的 buildStats 聚合值得来（非 User 字段）。
  * @param {*} raw
  * @returns {number}
  */
@@ -28,6 +32,9 @@ function projectSteps(raw) {
  *
  * 入参 user 形态（来自 User 集合读取结果）：
  *   { nickname, avatar, phone, phone_masked?, dept_id, join_status, is_admin?, ... }
+ *
+ * 注：total_steps 读 u.total_steps，但 User 集合无此字段——由 getProfile 用调用方注入的
+ *   buildStats 聚合值覆盖该字段（见 getProfile）。projectProfile 本身保持纯投影契约。
  *
  * @param {object} user
  * @returns {object} { nickname, avatar, phone_masked, dept_id, dept_name?, join_status, is_admin, total_steps }
@@ -56,11 +63,13 @@ function projectProfile(user) {
  * @param {object} params
  * @param {string} params.openid 当前用户 openid（由 handler 从 wxContext 取）
  * @param {object} params.db 数据库句柄
- * @returns {Promise<object>} projectProfile 结果
+ * @param {number} [params.totalSteps] 累计步数（handler 用 buildStats 实时聚合传入；与 user.stats 同源）。
+ *   缺省时退回读 user.total_steps（兼容旧调用，生产 User 无此字段→0）。
+ * @returns {Promise<object>} projectProfile 结果（total_steps 已用 totalSteps 覆盖）
  * @throws {BizError} User 不存在
  */
 async function getProfile(params) {
-  const { openid, db } = params || {};
+  const { openid, db, totalSteps } = params || {};
   if (!openid || typeof openid !== 'string') {
     throw BizError(CODE.AUTH_NO_OPENID, 'getProfile: openid required');
   }
@@ -88,7 +97,13 @@ async function getProfile(params) {
       deptName = ''; // Department 集合不存在/查询失败 → 兜底空串，profile 其余字段照常下发
     }
   }
-  return projectProfile(Object.assign({}, user, { dept_name: deptName }));
+  const profile = projectProfile(Object.assign({}, user, { dept_name: deptName }));
+
+  // 累计步数：优先用调用方注入的 buildStats 聚合值（与 user.stats / home 同源）；
+  // 缺省退回 user.total_steps（兼容，生产 User 无此字段→0）。覆盖 projectProfile 的占位读。
+  const steps = totalSteps != null ? totalSteps : user.total_steps;
+  profile.total_steps = projectSteps(steps);
+  return profile;
 }
 
 module.exports = { projectProfile, projectSteps, getProfile };

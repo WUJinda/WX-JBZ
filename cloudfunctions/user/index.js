@@ -22,10 +22,16 @@ const { loadByWhere } = require('../common/db');
 
 // handler 表：action -> handler。
 const handlers = {
-  // B5: 个人资料（脱敏手机号 / 部门 / 累计步数占位，不下发敏感字段）
+  // B5: 个人资料（脱敏手机号 / 部门 / 累计步数，不下发敏感字段）。
+  // 累计步数由 buildStats 实时聚合 StepRecord 得来（与 user.stats / home 同源），不再读
+  //   User.total_steps 幽灵字段（该字段从不被写、恒 0，曾致「我的」页与首页累计步数对不上）。
   profile: async (event, context) => {
+    const openid = context && context.openid;
     const db = cloud.database();
-    return getProfile({ openid: context && context.openid, db });
+    // totalSteps 与 stats 同源（loadStatsInput + buildStats），保证「我的」页与首页数字一致。
+    const { records, activity } = await loadStatsInput(cloud, openid);
+    const stats = buildStats({ records, activity });
+    return getProfile({ openid, db, totalSteps: stats.total_steps });
   },
   // D1: 报名归属（选部门）。需登录态（requireUser，必须 OPENID），与 activity.current 游客通道不同。
   // handler 只做「取上下文 → 取当前 user → 调纯函数 → 落库」。
@@ -92,15 +98,16 @@ const handlers = {
     });
     return result;
   },
-  // F4: 个人主页统计（当日/累计/参与天数/活动期天数/排名占位）。
+  // F4: 个人主页统计（当日/累计/参与天数/活动期天数/排名）。
   // 需登录态（requireUser）。复用有效步数口径（与 steps.today/history 一致）。
+  // records/activity 加载与 profile handler 共用 loadStatsInput（同源，避免口径分叉）。
   stats: async (event, context) => {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅 OPENID，禁止 event.user_id（防越权读他人统计）
-    // F1：缺省 activity_id 查库当前活动（替代 a_demo_001）；activity 缺省查实际活动文档（替代 mock）。
-    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
-    const activity = (event && event.activity) || (await getActiveActivity(cloud)) || null;
-    const records = await loadUserRecords(cloud, 'StepRecord', userId, activityId);
+    const { records, activity, activityId } = await loadStatsInput(cloud, userId, {
+      activityId: event && event.activity_id,
+      activity: event && event.activity
+    });
     // P1-11：从 RankCache personal 单文档查本人排名（替代 buildStats 写死 null）。
     const myRank = await loadMyRank(cloud, activityId, userId);
     return buildStats({ records, activity, myRank });
@@ -209,6 +216,27 @@ async function loadUserRecords(cloudSdk, name, userId, activityId) {
     skip += PAGE;
   }
   return all;
+}
+
+/**
+ * 加载 buildStats 的共用输入：当前活动 + 该用户该活动的 StepRecord。
+ * stats / profile 两个 handler 共用此函数，保证「我的累计步数」与「首页累计步数」同源同口径
+ * （避免任一 handler 另立查询路径导致两页数字分叉）。
+ *
+ * @param {object} cloudSdk
+ * @param {string} userId（= openid）
+ * @param {object} [opts]
+ * @param {string} [opts.activityId] 显式 activity_id（stats 接 event.activity_id；缺省查当前活动）
+ * @param {object} [opts.activity] 显式 activity 文档（测试注入用；缺省查 getActiveActivity）
+ * @returns {Promise<{records:object[], activity:object|null, activityId:string}>}
+ */
+async function loadStatsInput(cloudSdk, userId, opts) {
+  const o = opts || {};
+  const activityId = o.activityId || (await getActiveActivityId(cloudSdk));
+  // activity 显式传入优先（测试注入），否则查当前活动文档；查不到/无活动 → null（buildStats 兜底过滤）
+  const activity = o.activity || (await getActiveActivity(cloudSdk)) || null;
+  const records = await loadUserRecords(cloudSdk, 'StepRecord', userId, activityId);
+  return { records, activity, activityId };
 }
 
 /**
