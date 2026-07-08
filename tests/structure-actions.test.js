@@ -114,6 +114,15 @@ describe('activity action 挂载与页面结构校验（C1+C2）', () => {
     expect(js).toMatch(/require\(['"]\.\/activityCalc['"]\)/);
   });
 
+  it('activity.js 报名 CTA 直调 user.join，登录态由后端兜底（不以 globalData.loggedIn 前置拦截）', () => {
+    const js = readSource('miniprogram/pages/activity/activity.js');
+    expect(js).toMatch(/require\(['"]\.\.\/\.\.\/utils\/authGuard['"]\)/);
+    expect(js).toMatch(/action:\s*['"]join['"]/);
+    expect(js).toMatch(/handleNotLoggedIn/);
+    // 红线：不得以 globalData.loggedIn 作前置拦截（register/chooseDept 路径漏写致新用户死循环）。
+    expect(js).not.toMatch(/globalData\.loggedIn/);
+  });
+
   it('activityCalc.js 前端纯函数模块存在（倒计时/进度/CTA 可单测）', () => {
     expect(
       fs.existsSync(path.join(ROOT, 'miniprogram/pages/activity/activityCalc.js')),
@@ -1131,6 +1140,9 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
     expect(js).not.toMatch(/action:\s*['"]update['"]/);
     expect(js).not.toMatch(/action:\s*['"]phone['"]/);
     expect(js).toMatch(/\/pages\/dept\/dept/);
+    // register 成功 = User 已建号 = 已登录：须同步 globalData.loggedIn，否则 activity 报名按钮
+    // 误判未登录致新用户 join 死循环、join_status 恒 pending → sync 拦 + rankAggregate 过滤 → 排行榜空。
+    expect(js).toMatch(/globalData\.loggedIn\s*=\s*true/);
     // 复用 editCalc（昵称校验与后端同口径）
     expect(js).toMatch(/require\(['"]\.\.\/profile\/edit\/editCalc['"]\)/);
   });

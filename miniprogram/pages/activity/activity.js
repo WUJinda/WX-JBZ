@@ -1,6 +1,7 @@
 // pages/activity/activity.js
 // 活动主页（启动页，游客可见）—— 对齐 PRD F7 R7.1~R7.4，开发计划阶段 C2。
 const { calcCountdown, calcProgress, deriveCta, STATUS } = require('./activityCalc');
+const { handleNotLoggedIn } = require('../../utils/authGuard');
 
 // F2：空态活动（云函数失败/活动未发布时用，替代旧 mockActivity 的假时间窗 2026-07-01~07-21）。
 const EMPTY_ACTIVITY = {
@@ -134,14 +135,12 @@ Page({
     const action = this.data.cta && this.data.cta.action;
     if (this.data.cta.disabled || action === 'none') return;
     if (action === 'login') {
-      // 未报名 CTA：已登录 → 直接报名（user.join 纯报名，不带部门；部门由注册时选定）；
-      //              未登录 → 走 login 注册向导（注册向导内含选部门）。
+      // 未报名 CTA：直接调 user.join（纯报名，不带部门；部门由注册时选定）。
+      // 不依赖前端登录标志位作前置拦截——该标志仅 profile/home 调 user.profile 成功后才置位，
+      // register→dept→activity 路径漏写会致新用户点「报名参加」被误判未登录跳回 login 死循环。
+      // 登录态改由后端 assertUserExists 兜底：未注册（openid 无 User）→ join 抛 1002 →
+      // handleNotLoggedIn 引导去注册向导；已注册未报名 → join 成功进 home。
       const app = getApp();
-      const loggedIn = !!(app && app.globalData && app.globalData.loggedIn);
-      if (!loggedIn) {
-        wx.redirectTo({ url: '/pages/login/login' });
-        return;
-      }
       if (this._joining) return; // 防双击
       const api = app && app.api;
       if (!api || typeof api.call !== 'function') {
@@ -161,6 +160,8 @@ Page({
         })
         .catch((err) => {
           this._joining = false;
+          // 未注册（openid 无 User，1002）→ 引导走注册向导（注册向导内含选部门）。
+          if (handleNotLoggedIn(err)) return;
           // 已报名 / 活动终止 / 报名截止 → 显示后端 message。
           wx.showToast({ title: (err && err.message) || '报名失败', icon: 'none' });
         });

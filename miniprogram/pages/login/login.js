@@ -172,6 +172,12 @@ Page({
         { action: 'register', nickname: this.data.nickname, avatar, phone },
         { loading: '注册中' }
       );
+      // register 成功 = User 已建号 = 已登录；同步 globalData.loggedIn。
+      // 否则 activity 报名按钮（onCtaTap 以 globalData.loggedIn 判登录态）误判未登录，
+      // 新用户点「报名参加」被跳回 login，而 login 又因 registered 跳回 dept → 死循环，
+      // 永远调不到 user.join → join_status 恒 pending → sync 被 assertJoined 拦 + rankAggregate
+      // 过滤 pending → 排行榜空（与 profile.js / home.js 调 user.profile 后置位同口径）。
+      if (app && app.globalData) app.globalData.loggedIn = true;
       wx.showToast({ title: '注册成功', icon: 'success' });
       // 建号成功 → 选部门（dept 页 chooseDept 后进 activity 点报名）
       setTimeout(() => {
