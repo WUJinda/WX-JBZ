@@ -91,6 +91,34 @@ async function handlePhone({ cloud, event, context }) {
   return verifyPhone({ openid, phone, db, superAdminPhone: process.env.SUPER_ADMIN_PHONE || '' });
 }
 
+/**
+ * register handler（云轨建号链路）：可注入 cloud 句柄以便单测 mock database。
+ *
+ * 流程：context 取 openid、event 取 nickname/avatar/phone，cloud.database() 取 db，
+ *   一次性传给 registerUser 纯函数建号（phone 必填非空、upsert、不授 is_admin）。
+ *
+ * ⚠️ 胶水层职责：**必须把 db 传进 registerUser**（纯函数校验 db 存在，漏传 → SYS_DB_ERROR
+ *   'db with collection() is required'）。历史上漏传过 db（体验版报该错），纯函数单测因直接
+ *   注入 db 绕过此处而抓不到漏传，故 authRegisterHandler.test 直接注入 mock cloud 验证建号成功。
+ *
+ * @param {object} params
+ * @param {object} params.cloud 注入的 cloud 句柄（database()）
+ * @param {object} params.event 云函数 event（nickname/avatar/phone）
+ * @param {object} params.context 鉴权上下文（含 openid）
+ * @returns {Promise<object>} registerUser 返回的 { registered, is_new, phone_masked, join_status }
+ */
+async function handleRegister({ cloud, event, context }) {
+  const db = cloud.database();
+  return registerUser({
+    db,
+    openid: context && context.openid,
+    nickname: event && event.nickname,
+    avatar: event && event.avatar,
+    phone: event && event.phone,
+    now: new Date()
+  });
+}
+
 // handler 表：action -> handler。handler 只做「取上下文 → 调纯函数 → 组装出入参」。
 const handlers = {
   // B2: 登录（取 openid → 只查 User → 返回登录态含 is_new，不下发 token）。
@@ -103,16 +131,7 @@ const handlers = {
   // 注册建号（一次性提交：昵称 + 头像 + 手机号，phone 必填非空，upsert）。
   // 取 openid（authMiddleware），不 requireUser（User 尚不存在）。
   // 手机号手动填写（明文降级，安全代价见 authRegister.js 顶部注释）；不授 is_admin。
-  register: async (event, context) => {
-    const db = cloud.database();
-    return registerUser({
-      openid: context && context.openid,
-      nickname: event && event.nickname,
-      avatar: event && event.avatar,
-      phone: event && event.phone,
-      now: new Date()
-    });
-  },
+  register: async (event, context) => handleRegister({ cloud, event, context }),
 
   // B3: 手机号验证（微信解密路径：cloud.openapi.phonenumber.getPhoneNumber({code}) 解密 + 白名单 + 更新 User）。
   // 红线：手机号由微信侧解密，禁止信任前端明文 event.phone。
@@ -144,4 +163,5 @@ exports.main = async (event) => {
 // 导出 handlePhone / decryptPhone 供单测注入 mock cloud（不进 handler 表的运行路径）。
 module.exports = exports;
 module.exports.handlePhone = handlePhone;
+module.exports.handleRegister = handleRegister;
 module.exports.decryptPhone = decryptPhone;
