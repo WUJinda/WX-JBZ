@@ -1,6 +1,6 @@
 /**
  * user 云函数入口：用户与报名（对齐技术架构 §4.1，开发计划 B5）。
- * Action: profile / join / stats
+ * Action: profile / join / chooseDept / stats
  *
  * 本轮实现 profile（B5）。join 留 D1（不实现），stats 留后续阶段。
  * 身份完全以 cloud.getWXContext().OPENID 为可信来源，不下发原始 phone / openid。
@@ -13,6 +13,7 @@ const { ok, fail } = require('../common/response');
 const { CODE, notImplemented } = require('../common/errors');
 const { getProfile } = require('./userProfile');
 const { joinDepartment } = require('./userJoin');
+const { chooseDepartment } = require('./userChooseDept');
 const { buildStats } = require('./userStats');
 const { updateProfile, cancelAccount } = require('./userAccount');
 const { setPhone } = require('./userPhone');
@@ -30,19 +31,17 @@ const handlers = {
   // handler 只做「取上下文 → 取当前 user → 调纯函数 → 落库」。
   // 本地轨：单测直接调 joinDepartment 纯函数（注入 store），不经此 handler；
   //         云轨联调用真实 cloud.database() 按 _openid 查/更新 User。
+  // D1：报名活动（纯报名，与选部门解耦）。需登录态（requireUser，必须 OPENID）。
+  // join 只写 join_status: pending→joined，不取 dept_id、不拉 Department（部门由 chooseDept 管）。
+  // handler 只做「取上下文 → 取活动终止/截止 → 调纯函数 → 落库」。
+  // 本地轨：单测直接调 joinDepartment 纯函数（注入 store），不经此 handler。
   join: async (event, context) => {
     const openid = context && context.openid;
-    const deptId = event && event.dept_id;
     const db = cloud.database();
 
     // context.user 已由 main 的 requireUser 统一校验查得（P1-1，避免重复查 User）。
     const store = { User: [context.user] };
-    try {
-      const deptRes = await db.collection('Department').get();
-      store.Department = (deptRes && deptRes.data) || [];
-    } catch (err) {
-      store.Department = [];
-    }
+
     // 活动终止 + 报名截止校验：取当前活动文档。
     //   - terminated=true → 拒绝报名（joinDepartment 抛 STEP_ACTIVITY_CLOSED，与 steps.sync 同码）；
     //   - effective 截止 = signup_deadline ?? end_time（不填 signup_deadline = 活动结束前都可报名）。
@@ -57,14 +56,38 @@ const handlers = {
     } catch (err) {
       // 活动查询失败不阻断报名（降级为不校验终止/截止）。
     }
-    const result = await joinDepartment({ store, openid, deptId, signupDeadline, activityTerminated });
-    // 落库：将更新写回云数据库（joinDepartment 已就地改 store 中的引用对象）
+    const result = await joinDepartment({ store, openid, signupDeadline, activityTerminated });
+    // 落库：只写报名状态（不写 dept_id，部门由 chooseDept 管）。
     await db.collection('User').where({ _openid: openid }).update({
       data: {
-        dept_id: result.dept_id,
         join_status: result.join_status,
         joined_at: result.joined_at,
         updated_at: result.joined_at
+      }
+    });
+    return result;
+  },
+  // 选部门（注册向导用）：写 dept_id，不碰 join_status；选完固定不可换。需登录态。
+  // handler 只做「取上下文 → 拉 Department → 调纯函数 → 落库（仅 dept_id）」。
+  // 本地轨：单测直接调 chooseDepartment 纯函数（注入 store），不经此 handler。
+  chooseDept: async (event, context) => {
+    const openid = context && context.openid;
+    const deptId = event && event.dept_id;
+    const db = cloud.database();
+
+    const store = { User: [context.user] };
+    try {
+      const deptRes = await db.collection('Department').get();
+      store.Department = (deptRes && deptRes.data) || [];
+    } catch (err) {
+      store.Department = [];
+    }
+    const result = chooseDepartment({ store, openid, deptId, now: new Date() });
+    // 落库：只写 dept_id（不写 join_status，报名状态由 join 管）。
+    await db.collection('User').where({ _openid: openid }).update({
+      data: {
+        dept_id: result.dept_id,
+        updated_at: result.updated_at
       }
     });
     return result;
@@ -210,7 +233,7 @@ async function loadMyRank(cloudSdk, activityId, userId) {
 
 // 需登录态（requireUser）的 action：必须有 OPENID 且 User 存在。
 // 与 activity.current 游客通道不同——join/stats/update/cancel 必须登录态。
-const REQUIRE_USER_ACTIONS = { join: true, stats: true, update: true, cancel: true, setPhone: true };
+const REQUIRE_USER_ACTIONS = { join: true, chooseDept: true, stats: true, update: true, cancel: true, setPhone: true };
 
 exports.main = async (event) => {
   const action = event && event.action;

@@ -134,10 +134,36 @@ Page({
     const action = this.data.cta && this.data.cta.action;
     if (this.data.cta.disabled || action === 'none') return;
     if (action === 'login') {
-      // 未报名 CTA：已登录未报名 → 直达 dept 选部门报名（少绕一次 login）；未登录 → 走 login 注册向导。
+      // 未报名 CTA：已登录 → 直接报名（user.join 纯报名，不带部门；部门由注册时选定）；
+      //              未登录 → 走 login 注册向导（注册向导内含选部门）。
       const app = getApp();
       const loggedIn = !!(app && app.globalData && app.globalData.loggedIn);
-      wx.redirectTo({ url: loggedIn ? '/pages/dept/dept' : '/pages/login/login' });
+      if (!loggedIn) {
+        wx.redirectTo({ url: '/pages/login/login' });
+        return;
+      }
+      if (this._joining) return; // 防双击
+      const api = app && app.api;
+      if (!api || typeof api.call !== 'function') {
+        wx.showToast({ title: '云能力未就绪', icon: 'none' });
+        return;
+      }
+      this._joining = true;
+      api
+        .call('user', { action: 'join' }, { loading: '报名中', silent: true })
+        .then(() => {
+          this._joining = false;
+          // join_status → joined：刷新派生，CTA 自动变「我的步数」。
+          this.setData({ joinStatus: 'joined' }, () => this.refreshDerived());
+          wx.showToast({ title: '报名成功', icon: 'success' });
+          // 报名成功 → 进首页看步数（home 是 tabBar 页，必须用 switchTab）。
+          setTimeout(() => wx.switchTab({ url: '/pages/home/home' }), 700);
+        })
+        .catch((err) => {
+          this._joining = false;
+          // 已报名 / 活动终止 / 报名截止 → 显示后端 message。
+          wx.showToast({ title: (err && err.message) || '报名失败', icon: 'none' });
+        });
       return;
     }
     if (action === 'home') {

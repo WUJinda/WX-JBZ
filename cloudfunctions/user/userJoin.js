@@ -1,27 +1,27 @@
 /**
- * user.join 业务纯函数（对齐技术架构 §4.1/§5.1/§6.1，开发计划阶段 D1，PRD F2）。
+ * user.join 业务纯函数（纯报名，与选部门解耦）。
  *
- * 业务规则（PRD F2）：
- *   - R2.1 部门即团队，选部门即自动归属该部门队伍，无独立"创建/加入团队"操作；
- *   - R2.2 一个员工仅归属一个部门；报名后部门不可自行更改（已 joined 拒绝任何 join）；
- *   - R1.4 防重复报名：同 openid 已 joined 再次 join → 拒绝。
+ * 业务规则（2026-07-08 解耦后，对齐技术架构 §4.1/§5.1/§6.1，PRD F2）：
+ *   - join 只负责报名状态变更 join_status: pending → joined（写 join_status/joined_at），
+ *     不要求、不写入 dept_id；部门由 user.chooseDept 在注册向导独立选定（固定不可换）。
+ *   - R1.4 防重复报名：同 openid 已 joined 再次 join → 拒绝（无论 dept_id）。
  *
  * 前置条件（join 假设，由 handler/前置流程保证）：
  *   - 用户已通过 auth.phone 白名单验证（登录态）；join 不再校验白名单；
- *   - handler 已 requireUser（必须 OPENID，登录态），与 activity.current 游客通道不同。
+ *   - handler 已 requireUser（必须 OPENID，登录态）。
  *
- * 本地轨：store/user/deptId 注入式，纯函数可单测；不调真实微信云 API。
+ * 本地轨：store 注入式，纯函数可单测；不调真实微信云 API。
  * joinDepartment 负责业务判定 + 直接更新注入 store 中的 User 文档（单测观察 store 验证落库结果）。
  *
  * 红线：
  *   - 身份仅 OPENID；不下发原始 phone / openid / unionid；
- *   - 报名后不可自改（已 joined 拒绝任何 join，含同/不同 dept_id）。
+ *   - 防重复报名（已 joined 再次 join 一律拒绝）。
  */
 
 const { CODE, BizError } = require('../common/errors');
 
 /**
- * 校验部门存在（入参 dept_id 必须在部门源中）。
+ * 校验部门存在（供 user.chooseDept 复用）。
  * @param {string} deptId
  * @param {object[]} depts 部门源（{dept_id, name, ...}）
  * @returns {object|null} 命中的部门，否则 null
@@ -32,54 +32,42 @@ function findDept(deptId, depts) {
 }
 
 /**
- * join 结果下发投影（脱敏，不下发敏感字段）。
+ * join 结果投影（脱敏，不下发敏感字段）。
+ * 注：join 不碰部门，dept_id/dept_name 透传 user 已有值（部门由 chooseDept 设）。
  * @param {object} user 更新后的 User 文档
- * @param {object} dept 命中的部门（用于补 dept_name）
  * @returns {object} { join_status, dept_id, dept_name, joined_at }
  */
-function projectJoinResult(user, dept) {
+function projectJoinResult(user) {
   const u = user || {};
   return {
     join_status: u.join_status || 'pending',
     dept_id: u.dept_id || null,
-    dept_name: (dept && dept.name) || '',
+    dept_name: u.dept_name || '',
     joined_at: u.joined_at || null
   };
 }
 
 /**
- * join 主逻辑（纯函数 + 注入式 store）。
+ * join 主逻辑（纯函数 + 注入式 store）—— 纯报名，不依赖部门。
  *
  * 校验 + 更新注入 store 中的 User 文档（单测通过观察 store 验证落库）。
  *
  * @param {object} params
- * @param {object} params.store mock db 的 store 引用（{ User: object[], Department?: object[] }）
+ * @param {object} params.store mock db 的 store 引用（{ User: object[] }）
  * @param {string} params.openid 当前用户 openid（handler 从 wxContext 取）
- * @param {string} params.deptId 报名目标部门 dept_id
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
  * @param {Date|number|string} [params.signupDeadline] 报名截止（handler 算好的 effective = activity.signup_deadline ?? end_time；缺省不校验）
  * @param {boolean} [params.activityTerminated] 活动是否已手动终止（handler 从活动文档取 terminated；true→拒绝报名，与 steps.sync 终止拦截同码）
  * @returns {Promise<object>} projectJoinResult 结果
- * @throws {BizError} openid/deptId 缺失、部门不存在、用户不存在、已报名拒绝、活动已终止、报名已截止
+ * @throws {BizError} openid 缺失、用户不存在、已报名拒绝、活动已终止、报名已截止
  */
 async function joinDepartment(params) {
-  const { store, openid, deptId, now, signupDeadline, activityTerminated } = params || {};
+  const { store, openid, now, signupDeadline, activityTerminated } = params || {};
   if (!openid || typeof openid !== 'string') {
     throw BizError(CODE.AUTH_NO_OPENID, 'join: openid required');
   }
-  if (!deptId || typeof deptId !== 'string') {
-    throw BizError(CODE.BIZ_DEPT_NOT_FOUND, 'join: dept_id required');
-  }
   if (!store || !Array.isArray(store.User)) {
     throw BizError(CODE.SYS_DB_ERROR, 'join: store.User is required');
-  }
-
-  // F5：部门源用注入的 Department（handler 查真实集合）；不再回退 MOCK_DEPARTMENTS——
-  //   避免管理员未录部门时用户 join 到假部门。空数组时 findDept 返回 null → 抛 BIZ_DEPT_NOT_FOUND。
-  const depts = Array.isArray(store.Department) ? store.Department : [];
-  const dept = findDept(deptId, depts);
-  if (!dept) {
-    throw BizError(CODE.BIZ_DEPT_NOT_FOUND, 'join: dept not found');
   }
 
   // 取当前用户（同 openid）
@@ -89,11 +77,11 @@ async function joinDepartment(params) {
     throw BizError(CODE.AUTH_USER_NOT_FOUND, 'join: user not found');
   }
 
-  // R1.4 / R2.2：已报名不可自改 + 防重复（无论同/不同 dept_id 一律拒绝）
+  // R1.4：已报名不可重复（防重复报名；部门由 chooseDept 单独管，此处不涉及）。
   if (user.join_status === 'joined') {
     throw BizError(
       CODE.AUTH_JOIN_STATUS_DENIED,
-      '已报名，部门不可自行修改，如需调整联系管理员'
+      '已报名，无需重复报名'
     );
   }
 
@@ -114,14 +102,13 @@ async function joinDepartment(params) {
     }
   }
 
-  // 正常报名：pending → joined（直接更新注入 store 中的引用对象，便于单测观察）
+  // 正常报名：pending → joined（只写报名状态，不写 dept_id；部门由 chooseDept 管）。
   const ts = (now instanceof Date ? now : new Date()).toISOString();
-  user.dept_id = deptId;
   user.join_status = 'joined';
   user.joined_at = ts;
   if (typeof user.updated_at !== 'undefined') user.updated_at = ts;
 
-  return projectJoinResult(user, dept);
+  return projectJoinResult(user);
 }
 
 module.exports = { joinDepartment, findDept, projectJoinResult };

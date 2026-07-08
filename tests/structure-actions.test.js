@@ -138,6 +138,19 @@ describe('dept.list / user.join action 挂载与 dept 页面结构（D1+D2）', 
     expect(src).toMatch(/require\(['"]\.\/userJoin['"]\)/);
   });
 
+  it('user/index.js 的 handlers 表挂载 chooseDept（选部门，与报名解耦）', () => {
+    const src = readSource('cloudfunctions/user/index.js');
+    expect(src).toMatch(/\bchooseDept\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/userChooseDept['"]\)/);
+  });
+
+  it('userChooseDept.js 纯函数模块存在', () => {
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userChooseDept.js')),
+      '缺少 userChooseDept.js'
+    ).toBe(true);
+  });
+
   it('userJoin.js 纯函数模块存在', () => {
     expect(
       fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userJoin.js')),
@@ -165,11 +178,11 @@ describe('dept.list / user.join action 挂载与 dept 页面结构（D1+D2）', 
     expect(wxml).toMatch(/member_count|已报名/);
   });
 
-  it('dept 页面引用 createApi 并调用 dept.list / user.join', () => {
+  it('dept 页面引用 createApi 并调用 dept.list / user.chooseDept（选部门，与报名解耦）', () => {
     const js = readSource('miniprogram/pages/dept/dept.js');
     expect(js).toMatch(/require\(['"]\.\/\.\.\/\.\.\/utils\/request['"]\)|createApi/);
     expect(js).toMatch(/action:\s*['"]list['"]/);
-    expect(js).toMatch(/action:\s*['"]join['"]/);
+    expect(js).toMatch(/action:\s*['"]chooseDept['"]/);
     expect(js).toMatch(/dept_id/);
   });
 });

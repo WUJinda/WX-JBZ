@@ -48,8 +48,8 @@ Page({
     const { selectedDeptId, submitting } = this.data;
     if (!selectedDeptId || submitting) return;
     this.setData({ submitting: true, errorMsg: '' });
-    // 调 user.join 报名归属（入参 dept_id）。
-    // 后端会校验：防重复、报名后不可自改（R1.4/R2.2）。
+    // 调 user.chooseDept 选定部门（写 dept_id，不碰 join_status；选完固定不可换）。
+    // 报名活动（join_status→joined）由用户在活动页点「报名参加」独立触发。
     const app = getApp();
     const api = app && app.api;
     if (!api || typeof api.call !== 'function') {
@@ -57,17 +57,17 @@ Page({
       return;
     }
     api
-      .call('user', { action: 'join', dept_id: selectedDeptId })
+      .call('user', { action: 'chooseDept', dept_id: selectedDeptId })
       .then(() => {
         this.setData({ submitting: false });
-        wx.showToast({ title: '加入成功', icon: 'success' });
-        // 报名成功 → 进入首页。home 是 tabBar 页，必须用 switchTab（redirectTo 会运行时报错）。
-        wx.switchTab({ url: '/pages/home/home' });
+        wx.showToast({ title: '部门已选择', icon: 'success' });
+        // 选定部门 → 进入活动页点「报名参加」（activity 是 tabBar 页，必须用 switchTab）。
+        wx.switchTab({ url: '/pages/activity/activity' });
       })
       .catch((err) => {
         this.setData({
           submitting: false,
-          errorMsg: (err && err.message) || '报名失败'
+          errorMsg: (err && err.message) || '选择失败'
         });
       });
   }

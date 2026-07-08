@@ -5,7 +5,7 @@
 //   1. 一键登录（auth.login 用 OPENID 静默建号）
 //   2. 填昵称头像（chooseAvatar + nickname input → user.update）
 //   3. 验证手机号（getPhoneNumber → auth.phone 微信解密；白名单已放开，任意手机号可注册）
-//   4. 选部门（跳转 dept 页 → user.join → 进 home 参加活动）
+//   4. 选部门（跳转 dept 页 → user.chooseDept 写 dept_id，不报名 → 进 activity 点「报名参加」）
 //
 // 老用户回归：auth.login 返回 join_status==='joined' → 直接 switchTab home；
 //             registered=true（已验手机号）未 joined → 直接进 dept 选部门。
@@ -178,7 +178,7 @@ Page({
           phoneDenied: false
         });
         wx.showToast({ title: '手机号已验证', icon: 'success' });
-        // 验证成功 → 选部门（dept 页 join 后进 home 参加活动）
+        // 验证成功 → 选部门（dept 页 chooseDept 后进 activity 点报名）
         setTimeout(() => {
           wx.redirectTo({ url: '/pages/dept/dept' });
         }, 700);

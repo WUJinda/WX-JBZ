@@ -1,6 +1,6 @@
 <view class="container">
   <view class="title">选择你的部门</view>
-  <view class="subtitle">部门即团队，选择部门即报名归属（报名后不可自行更改）</view>
+  <view class="subtitle">部门即团队，选定后不可更换（报名活动请在活动页操作）</view>
 
   <view class="dept-list">
     <view
