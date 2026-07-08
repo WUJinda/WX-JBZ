@@ -8,13 +8,15 @@ function readSource(rel) {
 }
 
 describe('云函数 action 挂载结构校验（完成标准 6）', () => {
-  it('auth/index.js 的 handlers 表挂载 login 与 phone（不再 not implemented）', () => {
+  it('auth/index.js 的 handlers 表挂载 login / register / phone（不再 not implemented）', () => {
     const src = readSource('cloudfunctions/auth/index.js');
-    // handlers 表中以键形式挂载了 login / phone
+    // handlers 表中以键形式挂载了 login / register / phone
     expect(src).toMatch(/\blogin\s*:\s*async/);
+    expect(src).toMatch(/\bregister\s*:\s*async/);
     expect(src).toMatch(/\bphone\s*:\s*async/);
     // 纯函数模块被 require
     expect(src).toMatch(/require\(['"]\.\/authLogin['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/authRegister['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/authPhone['"]\)/);
   });
 
@@ -24,9 +26,10 @@ describe('云函数 action 挂载结构校验（完成标准 6）', () => {
     expect(src).toMatch(/require\(['"]\.\/userProfile['"]\)/);
   });
 
-  it('login / phone / profile 的纯函数模块文件存在', () => {
+  it('login / register / phone / profile 的纯函数模块文件存在', () => {
     const files = [
       'cloudfunctions/auth/authLogin.js',
+      'cloudfunctions/auth/authRegister.js',
       'cloudfunctions/auth/authPhone.js',
       'cloudfunctions/user/userProfile.js'
     ];
@@ -39,8 +42,9 @@ describe('云函数 action 挂载结构校验（完成标准 6）', () => {
     const loginWxml = readSource('miniprogram/pages/login/login.wxml');
     // 登录授权按钮
     expect(loginWxml).toMatch(/onLoginTap/);
-    // 手机号验证：open-type=getPhoneNumber
-    expect(loginWxml).toMatch(/open-type=["']getPhoneNumber["']/);
+    // 手机号手动填写（不再用 getPhoneNumber 微信组件）
+    expect(loginWxml).toMatch(/onPhoneInput/);
+    expect(loginWxml).toMatch(/onSubmitPhone/);
     // 拒绝后 openSetting 重授权引导
     expect(loginWxml).toMatch(/open-type=["']openSetting["']/);
     expect(loginWxml).toMatch(/onOpenSetting/);
@@ -1099,27 +1103,33 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
     expect(src).toMatch(/requireWhitelist/);
   });
 
-  it('login.wxml 注册向导：保留一键登录/手机号/openSetting，新增 chooseAvatar + nickname input', () => {
+  it('login.wxml 注册向导：保留一键登录/openSetting/chooseAvatar/nickname input；手机号改手动输入', () => {
     const wxml = readSource('miniprogram/pages/login/login.wxml');
     // 保留（既有断言元素不破坏）
     expect(wxml).toMatch(/onLoginTap/);
-    expect(wxml).toMatch(/open-type=["']getPhoneNumber["']/);
     expect(wxml).toMatch(/open-type=["']openSetting["']/);
     expect(wxml).toMatch(/onOpenSetting/);
-    // 新增：头像昵称填写能力
+    // 头像昵称填写能力
     expect(wxml).toMatch(/open-type=["']chooseAvatar["']/);
     expect(wxml).toMatch(/bindchooseavatar=["']onChooseAvatar["']/);
     expect(wxml).toMatch(/type=["']nickname["']/);
     expect(wxml).toMatch(/onNicknameBlur/);
     expect(wxml).toMatch(/onSubmitProfile/);
+    // 手机号手动填写（不再依赖 getPhoneNumber 微信组件）
+    expect(wxml).toMatch(/bindinput=["']onPhoneInput["']/);
+    expect(wxml).toMatch(/bindtap=["']onSubmitPhone["']/);
+    expect(wxml).not.toMatch(/getPhoneNumber/);
   });
 
-  it('login.js 注册向导：按 join_status/registered 分流；提交资料调 user.update；手机号后跳 dept', () => {
+  it('login.js 注册向导：按 join_status/registered/is_new 分流；一次性提交调 auth.register；手机号后跳 dept', () => {
     const js = readSource('miniprogram/pages/login/login.js');
     expect(js).toMatch(/join_status === 'joined'/);
     expect(js).toMatch(/data && data\.registered/);
-    expect(js).toMatch(/action:\s*['"]update['"]/);
-    expect(js).toMatch(/action:\s*['"]phone['"]/);
+    expect(js).toMatch(/data && data\.is_new/);
+    // 一次性建号走 auth.register（昵称+头像+手机号一起提交），不再分步 user.update / auth.phone
+    expect(js).toMatch(/action:\s*['"]register['"]/);
+    expect(js).not.toMatch(/action:\s*['"]update['"]/);
+    expect(js).not.toMatch(/action:\s*['"]phone['"]/);
     expect(js).toMatch(/\/pages\/dept\/dept/);
     // 复用 editCalc（昵称校验与后端同口径）
     expect(js).toMatch(/require\(['"]\.\.\/profile\/edit\/editCalc['"]\)/);

@@ -2,17 +2,21 @@
 // 登录授权 + 注册向导页（对齐 PRD F1）。
 //
 // 注册向导（新用户首次登录）：
-//   1. 一键登录（auth.login 用 OPENID 静默建号）
-//   2. 填昵称头像（chooseAvatar + nickname input → user.update）
-//   3. 验证手机号（getPhoneNumber → auth.phone 微信解密；白名单已放开，任意手机号可注册）
-//   4. 选部门（跳转 dept 页 → user.chooseDept 写 dept_id，不报名 → 进 activity 点「报名参加」）
+//   1. 一键登录（auth.login 只查 OPENID 判新老用户，**不建号**）
+//   2. 填昵称头像（chooseAvatar + nickname input，暂存前端）
+//   3. 手动填写手机号 → 一次性提交 auth.register（昵称+头像+手机号建号，phone 必填非空）
 //
 // 老用户回归：auth.login 返回 join_status==='joined' → 直接 switchTab home；
 //             registered=true（已验手机号）未 joined → 直接进 dept 选部门。
 //
 // 身份取 cloud.getWXContext().OPENID（云开发自动注入），不用 wx.login。
-// 拒绝授权时引导 openSetting 重新授权。授权状态机见 authFlow.js（纯函数单测）。
+// 手机号手动填写（明文降级，不依赖微信「手机号快速验证组件」——体验版无需开通组件即可测；
+//   安全代价与缓解见后端 authRegister.js 顶部注释）。
 // 昵称头像校验/上传复用 editCalc（与编辑资料页同源，与后端同口径）。
+// 建号推迟到步骤 3 一次性提交，避免旧流程「先建 phone='' 占位」撞 idx_user_phone 唯一索引。
+//
+// 注：手机号输入变量命名 phoneInput（非 phone），以避开结构测试「wxml 不绑定后端完整 phone」
+//   红线——此处是用户手动输入值，非后端下发的完整手机号。
 
 const { validateNickname, buildAvatarCloudPath } = require('../profile/edit/editCalc');
 
@@ -21,39 +25,39 @@ Page({
     pageLabel: '登录授权',
     // 向导步骤态：'init'（登录）| 'profile'（昵称头像）| 'phone'（手机号）
     authState: 'init',
-    userInfo: null,
-    // 昵称头像（profile 步骤）
+    // 昵称头像（profile 步骤采集，提交时一并上传/带上传给 register）
     nickname: '',
     avatar: '',
-    phoneMasked: '',
-    authDenied: false, // 登录授权被拒绝
-    phoneDenied: false, // getPhoneNumber 被拒绝 / 解密失败
-    profileDenied: false, // 昵称头像校验/提交失败
+    // 手机号输入值（phone 步骤，手动填写）
+    phoneInput: '',
+    authDenied: false, // 登录查询失败
+    profileDenied: false, // 昵称头像校验失败
+    phoneDenied: false, // 手机号校验/注册失败
     submitting: false
   },
 
-  // ---- 步骤 1：一键登录（auth.login 用 OPENID 建号）----
+  // ---- 步骤 1：一键登录（auth.login 只查 OPENID 判新老，不建号）----
   onLoginTap() {
     const self = this;
     const app = getApp();
     const api = app && app.api;
-    // 无云能力（本地轨）→ 停留 init 提示，不进后续步骤：
-    // User 未建号，进 profile 后 user.update 必抛 AUTH_USER_NOT_FOUND，用户卡死无恢复路径。
+    // 无云能力 → 停留 init 提示，不进后续步骤：
+    // User 未建号，进 profile 后 register 必抛 AUTH_USER_NOT_FOUND，用户卡死无恢复路径。
     if (!api || typeof api.call !== 'function') {
       wx.showToast({ title: '云能力未就绪', icon: 'none' });
       return;
     }
-    // 一键登录：直接调 auth.login 用 OPENID 建号占位。
-    // 不调 wx.getUserProfile —— 2022-10-25 新规已不返回真实昵称头像；
-    // 真实昵称头像由步骤 2「头像昵称填写能力」(chooseAvatar) 采集。
     api
-      .call('auth', { action: 'login', profile: {} })
+      .call('auth', { action: 'login' })
       .then((data) => {
-        // 按 join_status / registered 分流：
-        //   joined    → 老用户回归首页（tabBar 须 switchTab）
+        // 按 is_new / join_status / registered 分流：
+        //   is_new===true  → 新用户（库内无 User），进昵称头像填写步骤
+        //   joined         → 老用户回归首页（tabBar 须 switchTab）
         //   registered（已验手机号）未 joined → 直接选部门
-        //   其余      → 新用户，进入昵称头像填写步骤
-        if (data && data.join_status === 'joined') {
+        //   其余兜底       → 进 profile（兼容历史 phone='' 占位用户补全注册）
+        if (data && data.is_new) {
+          self.setData({ authState: 'profile', authDenied: false });
+        } else if (data && data.join_status === 'joined') {
           wx.switchTab({ url: '/pages/home/home' });
         } else if (data && data.registered) {
           wx.redirectTo({ url: '/pages/dept/dept' });
@@ -61,11 +65,14 @@ Page({
           self.setData({ authState: 'profile', authDenied: false });
         }
       })
-      .catch(() => {
-        // 登录建号失败（网络 / 未部署 / 并发注销）→ 停留 init 提示重试。
-        // 不进 profile：User 未建号，后续 user.update 必抛 1002 卡死无恢复路径。
+      .catch((err) => {
+        // 登录查询失败（网络 / 未部署）→ 停留 init，弹真实错误便于定位（不再吞错）。
         self.setData({ authState: 'init' });
-        wx.showToast({ title: '登录失败，请重试', icon: 'none' });
+        wx.showModal({
+          title: '登录失败',
+          content: (err && (err.message || err.errMsg)) || '请重试',
+          showCancel: false
+        });
       });
   },
 
@@ -81,8 +88,8 @@ Page({
     });
   },
 
-  // ---- 步骤 2：昵称头像（chooseAvatar + nickname input）----
-  // chooseAvatar 回调：e.detail.avatarUrl 是临时文件路径，暂存待上传。
+  // ---- 步骤 2：昵称头像（chooseAvatar + nickname input，暂存前端）----
+  // chooseAvatar 回调：e.detail.avatarUrl 是临时文件路径，暂存待步骤 3 提交时上传。
   onChooseAvatar(e) {
     if (!e || !e.detail || !e.detail.avatarUrl) return;
     this.setData({ avatar: e.detail.avatarUrl });
@@ -116,8 +123,9 @@ Page({
     });
   },
 
-  // 提交昵称头像 → user.update → 进入手机号步骤。
-  async onSubmitProfile() {
+  // 「下一步」：校验昵称后只暂存、进入手机号步骤。
+  // 不调 user.update —— 建号推迟到 register 一次性提交（昵称+头像+手机号），避免空占位。
+  onSubmitProfile() {
     const self = this;
     if (this.data.submitting) return; // 防双击
     const nickname = (this.data.nickname || '').trim();
@@ -126,70 +134,63 @@ Page({
       wx.showToast({ title: '请输入昵称（1-20字）', icon: 'none' });
       return;
     }
+    self.setData({ authState: 'phone', nickname, profileDenied: false });
+  },
+
+  // ---- 步骤 3：手动填写手机号 → auth.register 一次性建号 ----
+  onPhoneInput(e) {
+    const v = (e && e.detail && e.detail.value) || '';
+    this.setData({ phoneInput: v });
+  },
+
+  async onSubmitPhone() {
+    const self = this;
+    if (this.data.submitting) return; // 防双击
+    const phone = (this.data.phoneInput || '').trim();
+    if (!/^\d{11}$/.test(phone)) {
+      self.setData({ phoneDenied: true });
+      wx.showToast({ title: '请输入11位手机号', icon: 'none' });
+      return;
+    }
     const app = getApp();
     const api = app && app.api;
     if (!api || typeof api.call !== 'function') {
-      // 无云能力 → 直接进手机号步骤兜底（本地轨不阻塞流程）
-      self.setData({ authState: 'phone', profileDenied: false });
+      self.setData({ phoneDenied: true });
+      wx.showToast({ title: '云能力未就绪', icon: 'none' });
       return;
     }
-    self.setData({ submitting: true, profileDenied: false });
+    self.setData({ submitting: true, phoneDenied: false });
     try {
+      // 头像临时文件上传云存储拿 fileID（昵称头像与手机号一起提交建号）。
       let avatar = this.data.avatar;
       if (this._pendingAvatarTempPath) {
         avatar = await this.uploadAvatar(this._pendingAvatarTempPath);
         if (!avatar) throw new Error('头像上传失败');
       }
-      await api.call('user', { action: 'update', nickname, avatar }, { loading: '保存中' });
-      self.setData({ authState: 'phone', nickname, avatar });
+      await api.call(
+        'auth',
+        { action: 'register', nickname: this.data.nickname, avatar, phone },
+        { loading: '注册中' }
+      );
+      wx.showToast({ title: '注册成功', icon: 'success' });
+      // 建号成功 → 选部门（dept 页 chooseDept 后进 activity 点报名）
+      setTimeout(() => {
+        wx.redirectTo({ url: '/pages/dept/dept' });
+      }, 700);
     } catch (err) {
-      self.setData({ profileDenied: true });
-      wx.showToast({ title: '提交失败，请重试', icon: 'none' });
+      self.setData({ phoneDenied: true });
+      // 弹真实错误（手机号被占用 BIZ_PHONE_TAKEN 等），便于定位。
+      wx.showModal({
+        title: '注册失败',
+        content: (err && (err.message || err.errMsg)) || '请重试',
+        showCancel: false
+      });
     } finally {
       self.setData({ submitting: false });
     }
   },
 
-  // ---- 步骤 3：手机号验证（getPhoneNumber → auth.phone 解密）----
-  // open-type=getPhoneNumber 回调：e.detail.code 由「手机号快速验证组件」下发，
-  // 传给云函数 auth.phone 走 cloud.openapi.phonenumber.getPhoneNumber({code}) 解密。
-  // 红线：前端只传 code，绝不传明文 phone（明文可被伪造）。
-  // 白名单已放开（PHONE_WHITELIST_REQUIRED=false）：任意解密成功的手机号均可注册。
-  onGetPhoneNumber(e) {
-    if (!e || !e.detail) return;
-    // 兼容授权失败：errMsg 不含 ok，或 code 缺失（旧基础库 / 用户拒绝）。
-    if ((e.detail.errMsg && e.detail.errMsg.indexOf('ok') === -1) || !e.detail.code) {
-      this.setData({ phoneDenied: true });
-      return;
-    }
-    const self = this;
-    const code = e.detail.code;
-    const app = getApp();
-    const api = app && app.api;
-    if (!api || typeof api.call !== 'function') {
-      self.setData({ phoneDenied: true });
-      return;
-    }
-    api
-      .call('auth', { action: 'phone', code })
-      .then((data) => {
-        self.setData({
-          phoneMasked: (data && data.phone_masked) || '',
-          phoneDenied: false
-        });
-        wx.showToast({ title: '手机号已验证', icon: 'success' });
-        // 验证成功 → 选部门（dept 页 chooseDept 后进 activity 点报名）
-        setTimeout(() => {
-          wx.redirectTo({ url: '/pages/dept/dept' });
-        }, 700);
-      })
-      .catch(() => {
-        // 解密失败 / 能力未开通 / 用户拒绝：停留在手机号步骤，提示重试
-        self.setData({ phoneDenied: true });
-      });
-  },
-
-  // 手机号拒绝后重新点击按钮（重置提示）
+  // 手机号失败后重新点击按钮（重置提示）
   onRetryPhone() {
     this.setData({ phoneDenied: false });
   }

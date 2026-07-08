@@ -44,14 +44,14 @@ describe('auth.login 纯函数', () => {
     });
   });
 
-  describe('buildNewUser', () => {
-    it('构造首次登录 User 文档（含 openid / 无 phone / join_status=pending）', () => {
+  describe('buildNewUser（构造 User 文档工具，现由 auth.register 复用后覆盖 phone）', () => {
+    it('构造 User 文档（含 openid / 占位空 phone / join_status=pending）', () => {
       const now = () => '2026-06-26T10:00:00Z';
       const doc = buildNewUser({ openid: 'oABC' }, { nickname: '张明', avatar: 'a.jpg' }, now);
       expect(doc._openid).toBe('oABC');
       expect(doc.nickname).toBe('张明');
       expect(doc.avatar).toBe('a.jpg');
-      expect(doc.phone).toBe('');
+      expect(doc.phone).toBe(''); // 占位空串；register 复用后覆盖为真实号
       expect(doc.phone_masked).toBe('');
       expect(doc.join_status).toBe('pending');
       expect(doc.is_admin).toBe(false);
@@ -90,36 +90,41 @@ describe('auth.login 纯函数', () => {
       expect(out.phone_masked).toBe('138****1234');
     });
 
-    it('user 为 null 返回未注册态', () => {
+    it('user 为 null 返回未注册态（is_new:true）', () => {
       const out = projectLoginState(null);
       expect(out.registered).toBe(false);
       expect(out.join_status).toBe('pending');
+      expect(out.is_new).toBe(true);
     });
 
     it('registered 表示已完成手机号验证（phone 非空）', () => {
-      // 仅建号、未验证手机号 → registered=false
       expect(projectLoginState({ _openid: 'oX', phone: '', phone_masked: '' }).registered).toBe(false);
-      // 已验证手机号 → registered=true
       expect(
         projectLoginState({ _openid: 'oX', phone: '13812341234', phone_masked: '138****1234' }).registered
       ).toBe(true);
     });
+
+    it('is_new：user 为 null → true；存在 → false（无论是否验机）', () => {
+      expect(projectLoginState(null).is_new).toBe(true);
+      expect(projectLoginState({ _openid: 'oX', phone: '', phone_masked: '' }).is_new).toBe(false);
+      expect(
+        projectLoginState({ _openid: 'oX', phone: '13812341234', phone_masked: '138****1234' }).is_new
+      ).toBe(false);
+    });
   });
 
-  describe('login 主逻辑（upsert 去重）', () => {
-    it('首次登录建号，返回 registered=false', async () => {
+  describe('login 主逻辑（只查不建）', () => {
+    it('首次 login（User 不存在）：不建号，返回 is_new:true + 未注册态', async () => {
       const { db, store } = createMockDb({});
-      const out = await login({
-        getWXContext: () => ({ OPENID: 'oNEW' }),
-        db,
-        profile: { nickname: '新人' }
-      });
+      const out = await login({ getWXContext: () => ({ OPENID: 'oNEW' }), db });
+      expect(out.is_new).toBe(true);
       expect(out.registered).toBe(false);
-      expect(store.User.length).toBe(1);
-      expect(store.User[0]._openid).toBe('oNEW');
+      expect(out.join_status).toBe('pending');
+      // 关键：login 不再 add User（建号移至 register，避免 phone='' 占位撞 idx_user_phone 唯一索引）
+      expect(store.User.length).toBe(0);
     });
 
-    it('同一 openid 不建重复账号（再次登录不新增）', async () => {
+    it('老用户 login：返回登录态，is_new:false，不新增记录', async () => {
       const existing = {
         _id: 'u_001',
         _openid: 'oDUP',
@@ -132,20 +137,19 @@ describe('auth.login 纯函数', () => {
       };
       const { db, store } = createMockDb({ User: [existing] });
       const out = await login({ getWXContext: () => ({ OPENID: 'oDUP' }), db });
+      expect(out.is_new).toBe(false);
       expect(out.registered).toBe(true);
       expect(out.join_status).toBe('joined');
       expect(out.is_admin).toBe(true);
-      // 关键：不重复建号
-      expect(store.User.length).toBe(1);
-      expect(store.User[0]._id).toBe('u_001');
+      expect(store.User.length).toBe(1); // 不新增
     });
 
-    it('不同 openid 各自建号，互不干扰', async () => {
+    it('不同 openid 多次 login 都不建号（建号由 register 负责）', async () => {
       const { db, store } = createMockDb({ User: [] });
       await login({ getWXContext: () => ({ OPENID: 'oA' }), db });
       await login({ getWXContext: () => ({ OPENID: 'oB' }), db });
       await login({ getWXContext: () => ({ OPENID: 'oA' }), db });
-      expect(store.User.length).toBe(2);
+      expect(store.User.length).toBe(0);
     });
 
     it('db 缺失抛 SYS_DB_ERROR', async () => {

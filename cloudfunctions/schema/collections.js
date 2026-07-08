@@ -17,6 +17,8 @@ const COLLECTIONS = {
     description: '用户（对齐技术架构 §5.1）',
     indexes: [
       { name: 'idx_user_openid', fields: { _openid: 1 }, unique: true },
+      // phone 唯一索引：建号时 phone 必填非空（auth.register 一次性提交），无 phone='' 空占位，
+      // 故旧「空串撞键致新用户登录失败」问题已消除。唯一性 = 此 DB 索引 + register 应用层查重双保险。
       { name: 'idx_user_phone', fields: { phone: 1 }, unique: true },
       { name: 'idx_user_dept', fields: { dept_id: 1 }, unique: false },
       { name: 'idx_user_admin', fields: { is_admin: 1 }, unique: false }
@@ -27,7 +29,7 @@ const COLLECTIONS = {
       unionid: { type: 'string', optional: true, onlyServer: true, desc: '微信 unionid（可选，预留）' },
       nickname: { type: 'string', desc: '昵称（取微信昵称或自填）' },
       avatar: { type: 'string', desc: '头像 URL（取微信头像或自传）' },
-      phone: { type: 'string', onlyServer: true, desc: '🔒 完整手机号，仅后端做白名单匹配' },
+      phone: { type: 'string', onlyServer: true, desc: '🔒 完整手机号（注册必填、唯一；由 auth.register 写入，唯一性=DB索引+应用层查重）' },
       phone_masked: { type: 'string', desc: '脱敏手机号（138****1234），前端展示' },
       dept_id: { type: 'string', optional: true, desc: '部门 id（报名后写入）' },
       join_status: {

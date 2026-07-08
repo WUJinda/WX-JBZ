@@ -20,6 +20,7 @@ const { authMiddleware, getOpenid } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { login } = require('./authLogin');
+const { registerUser } = require('./authRegister');
 const { verifyPhone } = require('./authPhone');
 
 /**
@@ -92,19 +93,31 @@ async function handlePhone({ cloud, event, context }) {
 
 // handler 表：action -> handler。handler 只做「取上下文 → 调纯函数 → 组装出入参」。
 const handlers = {
-  // B2: 登录（取 openid → 查/建 User → 返回登录态，不下发 token）
+  // B2: 登录（取 openid → 只查 User → 返回登录态含 is_new，不下发 token）。
+  // login 不建号（建号移至 register），仅判新老用户：is_new=true 前端引导走注册向导。
   login: async (event, context) => {
     const db = cloud.database();
-    return login({
-      getWXContext: cloud.getWXContext,
-      db,
-      profile: event && event.profile
+    return login({ getWXContext: cloud.getWXContext, db });
+  },
+
+  // 注册建号（一次性提交：昵称 + 头像 + 手机号，phone 必填非空，upsert）。
+  // 取 openid（authMiddleware），不 requireUser（User 尚不存在）。
+  // 手机号手动填写（明文降级，安全代价见 authRegister.js 顶部注释）；不授 is_admin。
+  register: async (event, context) => {
+    const db = cloud.database();
+    return registerUser({
+      openid: context && context.openid,
+      nickname: event && event.nickname,
+      avatar: event && event.avatar,
+      phone: event && event.phone,
+      now: new Date()
     });
   },
 
-  // B3: 手机号验证（解密真实手机号 + 白名单校验 + 更新 User，不下发完整手机号）
-  // 红线：手机号由 cloud.openapi.phonenumber.getPhoneNumber({code}) 解密得到，
-  //       禁止信任前端明文 event.phone（否则任意前端可伪造白名单手机号）。
+  // B3: 手机号验证（微信解密路径：cloud.openapi.phonenumber.getPhoneNumber({code}) 解密 + 白名单 + 更新 User）。
+  // 红线：手机号由微信侧解密，禁止信任前端明文 event.phone。
+  // 边界：verifyPhone 要求 User 已存在，故本 action 仅适用「老用户改绑手机号」；
+  //       新用户注册建号走 register。未来开通微信组件可让本路径支持建号 upsert + 授超管。
   phone: async (event, context) => handlePhone({ cloud, event, context })
 };
 

@@ -6,8 +6,9 @@
  *
  * 入口约定（薄封装由 handler 负责）：
  *   - 从 mock/真实 wxContext 取 openid（复用 common/authMiddleware.getOpenid）；
- *   - 查/建 User（upsert 去重，同 openid 不重复建号）；
- *   - 返回登录态（是否已注册 / 是否已报名 / 是否管理员），不下发 token / openid / phone。
+ *   - 只查 User by openid（**不建号**——建号移至 auth.register，phone 必填非空，
+ *     避免 phone='' 占位撞 idx_user_phone 唯一索引致新用户登录失败）；
+ *   - 返回登录态（是否新用户 / 是否已注册 / 是否已报名 / 是否管理员），不下发 token / openid / phone。
  */
 
 const { CODE, BizError } = require('../common/errors');
@@ -67,17 +68,20 @@ function buildNewUser(identity, profile, now) {
  * 登录态投影：从 User 文档摘出可下发前端的字段。
  * 红线：不下发原始 phone / openid / unionid（仅脱敏与状态）。
  *
- * 语义：registered 表示「该账号是否已完成手机号验证（即真实注册）」。
- *   - 首次 login 仅建号占位（phone 为空）→ registered=false；
- *   - 完成 auth.phone 后写入 phone → 再次 login 返回 registered=true。
- * 这与 PRD F1 R1.1「一个 openid 对应一个员工账号、需手机号验证才视作注册」一致。
+ * 语义：
+ *   - is_new 表示「该 openid 是否尚无 User 记录」（前端据此引导走注册向导）；
+ *   - registered 表示「该账号是否已完成手机号验证（即真实注册）」。
  *
- * @param {object} user User 文档（可为 null 表示首次登录尚未持久化）
- * @returns {object} { registered, join_status, is_admin, phone_masked, nickname, avatar, dept_id }
+ * 注意：login 现只查不建，故 is_new=true 时库内无该用户；建号由 auth.register 完成
+ *   （phone 必填非空）。registered 仍由 phone 非空判定，与 PRD F1 R1.1 一致。
+ *
+ * @param {object} user User 文档（可为 null 表示尚未持久化）
+ * @returns {object} { is_new, registered, join_status, is_admin, phone_masked, nickname, avatar, dept_id }
  */
 function projectLoginState(user) {
   if (!user) {
     return {
+      is_new: true,
       registered: false,
       join_status: 'pending',
       is_admin: false,
@@ -90,6 +94,7 @@ function projectLoginState(user) {
   // registered：是否已完成手机号验证（phone 非空），而非仅「User 记录存在」
   const registered = !!(user.phone && user.phone_masked);
   return {
+    is_new: false,
     registered,
     join_status: user.join_status || 'pending',
     is_admin: !!user.is_admin,
@@ -101,24 +106,23 @@ function projectLoginState(user) {
 }
 
 /**
- * login 主逻辑（纯函数 + 注入式 db）。
+ * login 主逻辑（纯函数 + 注入式 db）——**只查不建**。
  *
  * 流程：
  *   1. resolveIdentity 取 openid；
  *   2. 按 _openid 查 User；
- *   3. 不存在则 buildNewUser 并 add（upsert 去重 —— 同 openid 不重复建号）；
- *   4. projectLoginState 摘可下发字段返回。
+ *   3. 命中 → 返回登录态（is_new:false）；未命中 → 返回未注册态（is_new:true），**不建号**。
+ *
+ * 建号已移至 auth.register（一次性提交，phone 必填非空）。login 不再 add User，
+ * 故不再产生 phone='' 占位文档——这正是修复「新用户登录撞 idx_user_phone 空串键」的关键。
  *
  * db 形态约定（mock 与真实 wx-server-sdk 一致的最小子集）：
  *   db.collection(name).where(cond).get() -> Promise<{ data: object[] }>
- *   db.collection(name).add({ data })      -> Promise<{ _id }>
  *
  * @param {object} params
  * @param {() => object} params.getWXContext
  * @param {object} params.db 数据库句柄
- * @param {object} [params.profile] { nickname?, avatar? }
- * @param {function} [params.now] 时间工厂
- * @returns {Promise<object>} projectLoginState 结果
+ * @returns {Promise<object>} projectLoginState 结果（is_new 标识新老用户）
  */
 async function login(params) {
   const { getWXContext, db } = params || {};
@@ -132,14 +136,12 @@ async function login(params) {
   const list = (found && found.data) || [];
 
   if (list.length > 0) {
-    // 已存在：不重复建号，直接返回登录态
+    // 老用户：返回登录态（is_new:false），不建号
     return projectLoginState(list[0]);
   }
 
-  // 不存在：首次登录建号
-  const doc = buildNewUser(identity, params.profile, params.now);
-  await col.add({ data: doc });
-  return projectLoginState(doc);
+  // 新用户：不建号（建号移至 auth.register）。返回 is_new:true，前端引导走注册向导。
+  return projectLoginState(null);
 }
 
 module.exports = {
