@@ -45,7 +45,7 @@ Page({
   onImport() {
     if (this.data.importing) return;
     if (this.data.previewCount === 0) {
-      this.setData({ errorMsg: '请先粘贴有效的手机号' });
+      this.setData({ errorMsg: '请先粘贴有效的邀请码' });
       return;
     }
     this.setData({ errorMsg: '', resultText: '' });

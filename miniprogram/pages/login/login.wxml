@@ -45,19 +45,19 @@
     >下一步</button>
   </block>
 
-  <!-- 步骤 3：填写手机号（手动输入 → auth.register 一次性建号） -->
+  <!-- 步骤 3：填写邀请码（手动输入 → auth.register 一次性建号） -->
   <block wx:if="{{authState === 'phone'}}">
-    <view class="step">第 3 步：填写手机号</view>
-    <view class="hint">将作为你的账号手机号，用于身份核实</view>
+    <view class="step">第 3 步：填写邀请码</view>
+    <view class="hint">将作为你的账号邀请码，用于身份核实</view>
     <view class="profile-form">
       <view class="row">
-        <text class="label">手机号</text>
+        <text class="label">邀请码</text>
         <input
           class="nickname-input"
           type="number"
           maxlength="11"
           value="{{phoneInput}}"
-          placeholder="请输入11位手机号"
+          placeholder="请输入邀请码"
           bindinput="onPhoneInput"
         />
       </view>
@@ -70,9 +70,9 @@
     >提交注册</button>
   </block>
 
-  <!-- 手机号校验/注册失败引导 -->
+  <!-- 邀请码校验/注册失败引导 -->
   <block wx:if="{{phoneDenied}}">
-    <view class="hint">手机号注册未通过，请确认手机号正确或更换</view>
+    <view class="hint">邀请码注册未通过，请确认邀请码正确或更换</view>
     <button class="btn-secondary" bindtap="onRetryPhone">重新填写</button>
   </block>
 </view>

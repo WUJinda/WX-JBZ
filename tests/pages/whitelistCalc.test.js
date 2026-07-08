@@ -95,12 +95,12 @@ describe('formatImportResult 导入结果格式化', () => {
   });
 
   it('全 0 → 未导入提示', () => {
-    expect(formatImportResult({ imported: 0, updated: 0 })).toBe('未导入任何手机号');
+    expect(formatImportResult({ imported: 0, updated: 0 })).toBe('未导入任何邀请码');
   });
 
   it('null / undefined → 未导入提示', () => {
-    expect(formatImportResult(null)).toBe('未导入任何手机号');
-    expect(formatImportResult(undefined)).toBe('未导入任何手机号');
+    expect(formatImportResult(null)).toBe('未导入任何邀请码');
+    expect(formatImportResult(undefined)).toBe('未导入任何邀请码');
   });
 
   it('字符串数字也能识别', () => {

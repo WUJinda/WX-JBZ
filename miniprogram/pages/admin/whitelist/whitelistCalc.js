@@ -77,7 +77,7 @@ function formatImportResult(result) {
   const r = result || {};
   const imported = Number(r.imported) || 0;
   const updated = Number(r.updated) || 0;
-  if (imported === 0 && updated === 0) return '未导入任何手机号';
+  if (imported === 0 && updated === 0) return '未导入任何邀请码';
   const parts = [];
   if (imported > 0) parts.push('新增 ' + imported + ' 条');
   if (updated > 0) parts.push('更新 ' + updated + ' 条');

@@ -14,7 +14,7 @@
         bindinput="onKeywordInput"
         bindconfirm="onKeywordSearch"
         confirm-type="search"
-        placeholder="搜索昵称 / 手机号"
+        placeholder="搜索昵称 / 邀请码"
       />
       <view class="search-btn" bindtap="onKeywordSearch">搜索</view>
     </view>

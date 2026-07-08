@@ -40,7 +40,7 @@ function createMockCloud(opts) {
   return { cloud, db };
 }
 
-describe('auth.phone 云轨解密链路（handlePhone）', () => {
+describe.skip('auth.phone 云轨解密链路（handlePhone）【已暂停：微信 getPhoneNumber 接口注释，手机号→邀请码改造，handlePhone/decryptPhone 已注释】', () => {
   const context = { openid: 'oUSER1' };
 
   it('解密成功：真实手机号进入 verifyPhone，校验通过且仅下发脱敏号', async () => {

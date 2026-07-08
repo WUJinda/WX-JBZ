@@ -7,12 +7,12 @@
 
   <!-- 粘贴区 -->
   <view class="form-row form-row-textarea">
-    <text class="form-label">手机号列表</text>
+    <text class="form-label">邀请码列表</text>
     <textarea
       class="form-textarea"
       value="{{rawText}}"
       bindinput="onTextChange"
-      placeholder="粘贴手机号（支持换行/逗号/分号/制表符分隔）"
+      placeholder="粘贴邀请码（支持换行/逗号/分号/制表符分隔）"
       auto-height
     />
   </view>
@@ -20,7 +20,7 @@
   <!-- 预览 -->
   <view class="preview-block" wx:if="{{rawText}}">
     <view class="preview-summary">
-      识别到 <text class="preview-count">{{previewCount}}</text> 个手机号
+      识别到 <text class="preview-count">{{previewCount}}</text> 个邀请码
       <text class="preview-invalid" wx:if="{{previewInvalid > 0}}">（{{previewInvalid}} 个无效行）</text>
     </view>
     <view class="preview-sample" wx:if="{{previewSample.length > 0}}">

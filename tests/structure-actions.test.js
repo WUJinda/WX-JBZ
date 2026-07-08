@@ -8,13 +8,13 @@ function readSource(rel) {
 }
 
 describe('云函数 action 挂载结构校验（完成标准 6）', () => {
-  it('auth/index.js 的 handlers 表挂载 login / register / phone（不再 not implemented）', () => {
+  it('auth/index.js 的 handlers 表挂载 login / register（phone 微信解密路径已暂停）', () => {
     const src = readSource('cloudfunctions/auth/index.js');
-    // handlers 表中以键形式挂载了 login / register / phone
+    // handlers 表中以键形式挂载了 login / register
     expect(src).toMatch(/\blogin\s*:\s*async/);
     expect(src).toMatch(/\bregister\s*:\s*async/);
-    expect(src).toMatch(/\bphone\s*:\s*async/);
-    // 纯函数模块被 require
+    // phone handler 已注释暂停（手机号→邀请码改造，微信 getPhoneNumber 接口不再使用），不再断言。
+    // 纯函数模块被 require（authPhone 仍 require，verifyPhone 暂留便于恢复微信链路）
     expect(src).toMatch(/require\(['"]\.\/authLogin['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/authRegister['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/authPhone['"]\)/);

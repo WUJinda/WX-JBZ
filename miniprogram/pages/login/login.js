@@ -10,8 +10,8 @@
 //             registered=true（已验手机号）未 joined → 直接进 dept 选部门。
 //
 // 身份取 cloud.getWXContext().OPENID（云开发自动注入），不用 wx.login。
-// 手机号手动填写（明文降级，不依赖微信「手机号快速验证组件」——体验版无需开通组件即可测；
-//   安全代价与缓解见后端 authRegister.js 顶部注释）。
+// 邀请码（底层仍为 phone 字段）手填：明文降级，不依赖微信「手机号快速验证组件」——体验版无需开通组件即可测；
+//   安全代价与缓解见后端 authRegister.js 顶部注释。
 // 昵称头像校验/上传复用 editCalc（与编辑资料页同源，与后端同口径）。
 // 建号推迟到步骤 3 一次性提交，避免旧流程「先建 phone='' 占位」撞 idx_user_phone 唯一索引。
 //
@@ -149,7 +149,7 @@ Page({
     const phone = (this.data.phoneInput || '').trim();
     if (!/^\d{11}$/.test(phone)) {
       self.setData({ phoneDenied: true });
-      wx.showToast({ title: '请输入11位手机号', icon: 'none' });
+      wx.showToast({ title: '邀请码格式不正确', icon: 'none' });
       return;
     }
     const app = getApp();
