@@ -109,6 +109,17 @@ describe('activity action 挂载与页面结构校验（C1+C2）', () => {
     expect(wxml).toMatch(/participant_count|参与人数/);
   });
 
+  it('activity 页面 terminated 红标：wxml 倒计时区终止文案 + wxss .status-terminated 红色', () => {
+    const wxml = readSource('miniprogram/pages/activity/activity.wxml');
+    // 倒计时区终止文案（terminated 时显示「活动已终止」，区别于「活动已结束」）
+    expect(wxml).toMatch(/活动已终止/);
+    // status-badge class 绑定 status（status-terminated 由 status=terminated 联动）
+    expect(wxml).toMatch(/status-\{\{status\}\}/);
+    const wxss = readSource('miniprogram/pages/activity/activity.wxss');
+    // 红色样式（与后台 list.wxss badge-terminated #e64340 同色）
+    expect(wxss).toMatch(/\.status-terminated\s*\{[^}]*#e64340/);
+  });
+
   it('activity 页面引用 activityCalc 纯函数模块', () => {
     const js = readSource('miniprogram/pages/activity/activity.js');
     expect(js).toMatch(/require\(['"]\.\/activityCalc['"]\)/);

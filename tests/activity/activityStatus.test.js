@@ -170,7 +170,7 @@ describe('activity.current 纯函数（C1）', () => {
     });
   });
 
-  describe('pickCurrentActivity（选当前活动：排除 terminated，active→pending→ended）', () => {
+  describe('pickCurrentActivity（选当前活动：非终止优先 active→pending→ended，全终止回退最近终止）', () => {
     // 时间窗：active 在期中 / pending 未开始 / ended 已结束；now 锚 07-10（active 期中）
     const active = { activity_id: 'a_active', name: '进行中', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z' };
     const pending = { activity_id: 'a_pending', name: '未开始', start_time: '2026-08-01T00:00:00Z', end_time: '2026-08-21T23:59:59Z' };
@@ -193,18 +193,28 @@ describe('activity.current 纯函数（C1）', () => {
       expect(pickCurrentActivity([pending, ended, active], now)).toBe(active);
     });
 
-    it('terminated 一律排除（即便它本在 active 期）—— 业务规则核心', () => {
+    it('terminated 不挡非终止活动：与 active 并存 → 跳过 terminated 选 active', () => {
       const termActive = { activity_id: 'a_term', name: '已终止', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
-      // 唯一活动 terminated → null（终止活动不再展示 / 不再作当前）
-      expect(pickCurrentActivity([termActive], now)).toBeNull();
-      // 与 active 并存 → 跳过 terminated 选 active
       expect(pickCurrentActivity([termActive, active], now)).toBe(active);
     });
 
-    it('全部 terminated → null', () => {
-      const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
-      const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true };
-      expect(pickCurrentActivity([t1, t2], now)).toBeNull();
+    it('唯一活动 terminated → 回退该终止活动（员工端展示「已终止」tag，非空态）', () => {
+      const termActive = { activity_id: 'a_term', name: '已终止', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
+      expect(pickCurrentActivity([termActive], now)).toBe(termActive);
+    });
+
+    it('全部 terminated → 回退最近终止活动（按 terminated_at 降序）', () => {
+      const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true, terminated_at: '2026-07-10T00:00:00Z' };
+      const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true, terminated_at: '2026-07-15T00:00:00Z' };
+      // t2 的 terminated_at 更晚 → 回退 t2；顺序打乱仍选 t2
+      expect(pickCurrentActivity([t1, t2], now)).toBe(t2);
+      expect(pickCurrentActivity([t2, t1], now)).toBe(t2);
+    });
+
+    it('全部 terminated 且无 terminated_at → 回退按 updated_at 降序', () => {
+      const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true, updated_at: '2026-07-10T00:00:00Z' };
+      const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true, updated_at: '2026-07-15T00:00:00Z' };
+      expect(pickCurrentActivity([t1, t2], now)).toBe(t2);
     });
 
     it('无 active 时选 pending（未开始）优先于 ended', () => {

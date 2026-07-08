@@ -118,7 +118,8 @@ Page({
     const statusText = {
       [STATUS.PENDING]: '未开始',
       [STATUS.ACTIVE]: '进行中',
-      [STATUS.ENDED]: '已结束'
+      [STATUS.ENDED]: '已结束',
+      [STATUS.TERMINATED]: '已终止'
     }[countdown.status];
     this.setData({
       status: countdown.status,

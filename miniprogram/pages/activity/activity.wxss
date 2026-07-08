@@ -51,6 +51,7 @@
 .status-pending { background: #999; }
 .status-active { background: #07c160; }
 .status-ended { background: #888; }
+.status-terminated { background: #e64340; }
 
 /* 信息块 */
 .info-block {

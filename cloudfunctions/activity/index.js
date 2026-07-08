@@ -53,8 +53,9 @@ const handlers = {
     const db = cloud.database();
 
     // 1. 真实活动：读 Activity 集合（管理员经 save 发布），选「当前活动」。
-    //    pickCurrentActivity：排除 terminated，按 active→pending→ended 优先（与 listActivities
-    //    排序同源）。新增活动据此顶替旧活动；终止活动被排除；全终止/库空→null→走空态。
+    //    pickCurrentActivity：先在非终止活动中按 active→pending→ended 优先（与 listActivities
+    //    排序同源）；无非终止活动时回退最近终止活动（员工端展示「已终止」tag，非空态）。
+    //    新增活动据此顶替旧活动；全终止→回退最近终止；库空→null→走空态。
     //    旧逻辑取 activities[0]：loadByWhere 返回顺序无保证且不排除 terminated →
     //    「新增活动不更新 + 终止活动仍展示」根因。
     //    F2：空集合不回退 mock（旧 mock 带假时间窗 2026-07-01~07-21 会误导用户），
@@ -124,7 +125,15 @@ const handlers = {
 
     // 云轨：写回 Activity（upsert：存在 update，不存在 add）。单条失败不阻断、幂等可重跑。
     await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
-    return result;
+    // 新建活动 = 开启新一期：重置所有用户报名状态（join_status: joined → pending），
+    // 避免历史报名残留致新活动按钮误显「我的步数」、参与人数沿袭旧值（与 delete 同口径）。
+    // 单期活动模型：编辑（_isNew:false）不重置，保留现有报名。
+    if (result._isNew) {
+      await resetUserJoinStatusToCloud(cloud, now);
+    }
+    // _isNew 仅供 handler 判断是否重置，不下发前端。
+    const { _isNew, ...out } = result;
+    return out;
   },
 
   // 编辑页回填：返回完整活动字段（含 signup_deadline/terminated/terminated_at）。管理员（assertAdmin）。
@@ -193,7 +202,15 @@ const handlers = {
     };
     assertAdmin(store, context.openid);
     const activityId = (event && event.activity_id) || '';
+    const now = (event && event.now) || new Date().toISOString();
     const result = deleteActivity(store, { activity_id: activityId });
+    // 先重置报名、后硬删活动：reset 幂等且轻量（按 join_status 过滤，与 activity_id 无关），
+    // deleteActivityToCloud 不幂等（活动文档删后重试 delete 会被纯函数 find 不到活动拦下抛
+    // BIZ_PARAM_MISSING）。先 reset 保证「参与人数归零」不受 delete 部分集合删除失败影响——
+    // 反过来 reset 在后时，delete 成功 + reset 失败会致「活动没了但参与人数残留」的卡死态
+    // （重试 delete 因活动已删被纯函数拦下，reset 永不执行）。join_status 全局不绑 activity_id，
+    // 删活动后已报名用户仍 joined 会致看板参与人数不归零，故一并清（dept_id 不动，部门与活动无关）。
+    await resetUserJoinStatusToCloud(cloud, now);
     await deleteActivityToCloud(cloud, result.activity_id);
     return result;
   }
@@ -270,6 +287,36 @@ async function deleteActivityToCloud(cloudSdk, activityId) {
   }
   if (failed.length) {
     throw BizError(CODE.SYS_DB_ERROR, 'deleteActivity 部分集合删除失败(' + activityId + '): ' + failed.join(','));
+  }
+}
+
+/**
+ * 云轨：重置所有已报名用户的报名状态（join_status: joined → pending）。
+ * 用于活动新建（save 新建分支）/ 删除（delete）时清空历史报名，使参与人数归零、
+ * 新活动按钮显示「报名参加」——join_status 全局不绑 activity_id，须在活动切换点显式清。
+ *
+ * where().update() 单次最多 20 条（与 where().remove() 同限，见 wrapRemoveAll/deleteActivityToCloud），
+ * 循环到 updated=0。只重置 joined 用户（pending 不动，避免无谓写）；dept_id 不动
+ * （部门注册时选定、与活动无关，userChooseDept 固定不可换）。joined_at 一并清（报名时间对新活动无意义）。
+ * P1-3：失败上抛 SYS_DB_ERROR，不静默吞（否则前端假成功，参与人数不归零）。
+ * 本地轨单测不经此路径（与 deleteActivityToCloud 同口径）。
+ * @param {object} cloudSdk
+ * @param {string} nowIso 当前时间 ISO（写 updated_at）
+ */
+async function resetUserJoinStatusToCloud(cloudSdk, nowIso) {
+  const db = cloudSdk.database();
+  try {
+    let guard = 0;
+    while (guard++ < 1000) {
+      const r = await db
+        .collection('User')
+        .where({ join_status: 'joined' })
+        .update({ data: { join_status: 'pending', joined_at: null, updated_at: nowIso } });
+      const n = (r && r.stats && r.stats.updated) || 0;
+      if (n === 0) break; // 无更多 joined 用户 → 终止（guard 上限防异常库状态死循环）
+    }
+  } catch (err) {
+    throw BizError(CODE.SYS_DB_ERROR, 'resetUserJoinStatus 写回失败: ' + ((err && err.message) || err));
   }
 }
 

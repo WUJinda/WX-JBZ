@@ -54,7 +54,7 @@ function genActivityId(ts) {
  * @param {object} params
  * @param {object} params.activity {activity_id?, name, start_time, end_time, signup_deadline?, rules}
  * @param {Date|number} [params.now] 当前时间（默认 new Date()）
- * @returns {object} projectSavedActivity 结果（含推算 status）
+ * @returns {object} projectSavedActivity 结果（含推算 status）+ `_isNew` 布尔（新建 true / 编辑 false，云轨 save handler 据此决定是否重置 User.join_status）
  * @throws {BizError}
  *   - name 空 / start_time、end_time 缺失或非法 / start>=end → BIZ_PARAM_MISSING
  *   - store.Activity 缺失 → SYS_DB_ERROR
@@ -124,7 +124,8 @@ function saveActivity(store, params) {
     existing.status = status;
     existing.updated_at = nowIso;
     // terminated/terminated_at 由 terminate action 维护，save 不触碰（保留现有终止态）。
-    return projectSavedActivity(existing);
+    // _isNew:false 标记编辑（云轨 save handler 据此判断不重置 User.join_status）。
+    return Object.assign(projectSavedActivity(existing), { _isNew: false });
   }
 
   const newId = activityId || genActivityId();
@@ -141,7 +142,9 @@ function saveActivity(store, params) {
     updated_at: nowIso
   };
   store.Activity.push(doc);
-  return projectSavedActivity(doc);
+  // _isNew:true 标记新建（云轨 save handler 据此重置所有 User.join_status=pending——
+  // 新建活动=开启新一期，旧报名状态不再适用，参与人数随之归零，与新活动口径一致）。
+  return Object.assign(projectSavedActivity(doc), { _isNew: true });
 }
 
 module.exports = {

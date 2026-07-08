@@ -5,7 +5,8 @@
  *   - 删除 = 硬删除：彻底移除活动文档 + 连带清理该 activity_id 下的 StepRecord/RankCache/Department。
  *     区别于 terminate（软终止 terminated=true，文档保留、榜单冻结）。
  *   - 不可恢复（与 terminate 同为危险操作，前端二次确认 + 危险样式）。
- *   - 不重置 User.join_status/dept_id（用户是全局表，删活动不改用户状态；参加新活动时自然更新）。
+ *   - 重置 User.join_status（云轨 resetUserJoinStatusToCloud 把 joined → pending，参与人数归零；
+ *     join_status 全局不绑 activity_id，不清则删活动后看板参与人数仍是旧值）。dept_id 不动（部门与活动无关）。
  *   - 找不到活动 → BIZ_PARAM_MISSING。
  *
  * 与 terminate 的结构差异：

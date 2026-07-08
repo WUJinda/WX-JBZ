@@ -8,7 +8,8 @@
 const STATUS = {
   PENDING: 'pending', // 未开始
   ACTIVE: 'active', // 进行中
-  ENDED: 'ended' // 已结束
+  ENDED: 'ended', // 已结束（自然到期）
+  TERMINATED: 'terminated' // 已终止（管理员手动终止，前端红标区别于自然结束）
 };
 
 function toTs(t) {
@@ -41,10 +42,12 @@ function toTs(t) {
  */
 function calcCountdown(activity, now) {
   const a = activity || {};
-  // 手动终止优先（与后端 deriveStatus 同口径）：terminated=true 一律已结束，忽略时间窗。
+  // 手动终止优先：terminated=true → TERMINATED（红标「已终止」），忽略时间窗。
+  // 区别于自然到期 ENDED（灰标「已结束」）：后端 deriveStatus 仍把 terminated 折叠成 ended（排序/索引用），
+  // 前端在此单独区分，以红标向用户强调「管理员已终止」；后端已下发 terminated 字段（projectActivity）。
   if (a.terminated === true) {
     const end = toTs(a.end_time);
-    return { status: STATUS.ENDED, label: '已结束', days: 0, hours: 0, minutes: 0, targetTs: Number.isFinite(end) ? end : NaN };
+    return { status: STATUS.TERMINATED, label: '已终止', days: 0, hours: 0, minutes: 0, targetTs: Number.isFinite(end) ? end : NaN };
   }
   const start = toTs(a.start_time);
   const end = toTs(a.end_time);
@@ -171,6 +174,10 @@ function deriveCta(status, joinStatus, signupEnded) {
     return { text: '活动未开始', action: 'none', disabled: true };
   }
   if (status === STATUS.ENDED) {
+    return { text: '查看战绩', action: 'rank', disabled: false };
+  }
+  // 已终止（手动终止）：与已结束同 CTA，可查看历史排名（终止前聚合的榜单冻结可看）。
+  if (status === STATUS.TERMINATED) {
     return { text: '查看战绩', action: 'rank', disabled: false };
   }
   // 进行中

@@ -98,10 +98,14 @@ describe('活动主页计算纯函数（C2）', () => {
       expect(cd.status).toBe(STATUS.PENDING);
     });
 
-    it('terminated=true 一律 ended（与后端 deriveStatus 同口径）', () => {
+    it('terminated=true → TERMINATED（红标「已终止」，区别于自然到期 ENDED）', () => {
+      // 即便时间窗仍在进行中，terminated 也直接判 TERMINATED（前端单独区分，后端 deriveStatus 仍折叠成 ended）
       const cd = calcCountdown({ start_time: START, end_time: END, terminated: true }, Date.parse('2026-07-10T00:00:00Z'));
-      expect(cd.status).toBe(STATUS.ENDED);
-      expect(cd.label).toBe('已结束');
+      expect(cd.status).toBe(STATUS.TERMINATED);
+      expect(cd.label).toBe('已终止');
+      expect(cd.days).toBe(0);
+      expect(cd.hours).toBe(0);
+      expect(cd.minutes).toBe(0);
     });
   });
 
@@ -183,6 +187,17 @@ describe('活动主页计算纯函数（C2）', () => {
       expect(cta.text).toBe('查看战绩');
       expect(cta.disabled).toBe(false);
       expect(cta.action).toBe('rank');
+    });
+
+    it('已终止 → 「查看战绩」（与已结束同 CTA，可看历史排名）', () => {
+      const cta = deriveCta(STATUS.TERMINATED, 'joined');
+      expect(cta.text).toBe('查看战绩');
+      expect(cta.disabled).toBe(false);
+      expect(cta.action).toBe('rank');
+      // 未报名用户终止后也走查看战绩（不区分报名态）
+      const cta2 = deriveCta(STATUS.TERMINATED, 'pending');
+      expect(cta2.text).toBe('查看战绩');
+      expect(cta2.action).toBe('rank');
     });
 
     it('未开始即使已报名仍置灰（状态优先于报名）', () => {

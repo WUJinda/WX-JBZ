@@ -69,16 +69,38 @@ function deriveStatus(activity, now) {
 }
 
 /**
+ * 按档位权重选最优活动（active→pending→ended，同档 start_time 降序）。
+ * 供 pickCurrentActivity 复用；输入应为已过滤的非终止活动。
+ *
+ * @param {object[]} items Activity 文档数组（已过滤终止）
+ * @param {Date|number} [cur] now
+ * @returns {object|null} 选中的原始活动文档，或 null（空数组）
+ */
+function pickByRank(items, cur) {
+  if (!Array.isArray(items) || !items.length) return null;
+  const ranked = items.map((a) => ({ item: a, status: deriveStatus(a, cur), startTs: toTs(a.start_time) }));
+  ranked.sort((x, y) => {
+    const wx = RANK_WEIGHT[x.status] != null ? RANK_WEIGHT[x.status] : 99;
+    const wy = RANK_WEIGHT[y.status] != null ? RANK_WEIGHT[y.status] : 99;
+    if (wx !== wy) return wx - wy;
+    // 同档：start_time 降序（更晚开始的靠前）；非法时间（NaN）排末尾
+    const sx = Number.isFinite(x.startTs) ? x.startTs : -Infinity;
+    const sy = Number.isFinite(y.startTs) ? y.startTs : -Infinity;
+    return sy - sx;
+  });
+  return ranked[0].item;
+}
+
+/**
  * 从活动集合里选「当前活动」（current / getActiveActivityId / getActiveActivity 共用口径）。
  *
  * 业务规则（与 listActivities 排序同源，对齐用户诉求）：
- *   - terminated=true 一律排除——终止活动不再展示在活动页 / 个人页顶部，也不再作为
- *     rank / stats / tasks 聚合的「当前活动」（终止即冻结，见 terminateActivity）；
- *   - 剩余按 deriveStatus 推算状态，档位权重升序（active → pending → ended），
- *     即「进行中 → 未开始 → 已结束」优先；这样新增活动（无论 active/pending）都会
- *     顶替已结束的旧活动，且不会有多个活动时仍取到 activities[0] 的旧顺序问题；
- *   - 同档按 start_time 降序（更晚开始的靠前，新增活动优先于同档旧活动）；
- *   - 库空 / 非数组 / 全终止 → 返回 null（调用方据此返回空态 / 空榜 / 空统计）。
+ *   - 先在非终止活动中按档位选（active → pending → ended，同档 start_time 降序）——
+ *     新增活动据此顶替旧活动，终止活动不挡新活动；
+ *   - 无非终止活动时，回退「最近终止活动」（按 terminated_at 降序，缺则 updated_at / start_time），
+ *     让员工端活动页展示红色「已终止」tag，而非空态「活动未发布」（终止后活动消失会困惑用户）。
+ *     终止活动作 current 时 steps.sync 经 terminated 拦截拒绝同步、rank 聚合冻结数据，均安全；
+ *   - 库空 / 非数组 → 返回 null（调用方据此返回空态 / 空榜 / 空统计）。
  *
  * 纯函数：注入 now 便于单测；不改入参。宽容：不抛错（current/getActiveActivity 在
  *   handler 层已保证拿到数组，此处与 listActivities 的 SYS_DB_ERROR 不同，返 null 即可）。
@@ -90,19 +112,22 @@ function deriveStatus(activity, now) {
 function pickCurrentActivity(activities, now) {
   if (!Array.isArray(activities)) return null;
   const cur = now === undefined ? undefined : now;
-  const items = activities
-    .filter((a) => a && typeof a === 'object' && a.terminated !== true)
-    .map((a) => ({ item: a, status: deriveStatus(a, cur), startTs: toTs(a.start_time) }));
-  items.sort((x, y) => {
-    const wx = RANK_WEIGHT[x.status] != null ? RANK_WEIGHT[x.status] : 99;
-    const wy = RANK_WEIGHT[y.status] != null ? RANK_WEIGHT[y.status] : 99;
-    if (wx !== wy) return wx - wy;
-    // 同档：start_time 降序（更晚开始的靠前）；非法时间（NaN）排末尾
-    const sx = Number.isFinite(x.startTs) ? x.startTs : -Infinity;
-    const sy = Number.isFinite(y.startTs) ? y.startTs : -Infinity;
+  const valid = activities.filter((a) => a && typeof a === 'object');
+  // 1. 先在非终止活动中选（active→pending→ended，同档 start 降序）——终止活动不挡新活动。
+  const picked = pickByRank(valid.filter((a) => a.terminated !== true), cur);
+  if (picked) return picked;
+  // 2. 无非终止活动 → 回退最近终止活动（员工端展示「已终止」tag，而非空态）。
+  //    按 terminated_at 降序（更近终止的靠前），缺则 updated_at / start_time。
+  const terminated = valid.filter((a) => a.terminated === true);
+  if (!terminated.length) return null;
+  terminated.sort((x, y) => {
+    const tx = toTs(x.terminated_at || x.updated_at || x.start_time);
+    const ty = toTs(y.terminated_at || y.updated_at || y.start_time);
+    const sx = Number.isFinite(tx) ? tx : -Infinity;
+    const sy = Number.isFinite(ty) ? ty : -Infinity;
     return sy - sx;
   });
-  return items.length ? items[0].item : null;
+  return terminated[0];
 }
 
 /**

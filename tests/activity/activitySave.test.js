@@ -46,6 +46,8 @@ describe('saveActivity（正常路径）', () => {
     expect(doc.activity_id).toBe(out.activity_id);
     expect(doc.created_at).toBeTruthy();
     expect(doc.updated_at).toBeTruthy();
+    // _isNew 标记新建（云轨 save handler 据此重置 User.join_status）
+    expect(out._isNew).toBe(true);
   });
 
   it('更新：指定 activity_id 命中已有文档 → 原地更新（不新增），返回投影', () => {
@@ -86,6 +88,8 @@ describe('saveActivity（正常路径）', () => {
     expect(existing.updated_at).toBe('2026-06-20T00:00:00.000Z');
     // created_at 保留
     expect(existing.created_at).toBe('2026-06-01T00:00:00Z');
+    // _isNew 标记编辑（不重置 User.join_status）
+    expect(out._isNew).toBe(false);
   });
 
   it('更新：activity_id 不存在于库 → 视为新建（用该 activity_id）', () => {
@@ -101,6 +105,8 @@ describe('saveActivity（正常路径）', () => {
     expect(out.activity_id).toBe('a_custom_001');
     expect(store.Activity.length).toBe(1);
     expect(store.Activity[0].activity_id).toBe('a_custom_001');
+    // activity_id 不存在于库 → 走新建分支，_isNew=true
+    expect(out._isNew).toBe(true);
   });
 });
 
@@ -298,6 +304,8 @@ describe('saveActivity（幂等）', () => {
     expect(store.Activity[0].updated_at).toBe('2026-06-02T00:00:00.000Z');
     // start_time 已更新为新值
     expect(store.Activity[0].start_time).toBe('2026-08-01T00:00:00+08:00');
+    // 二次保存为编辑（同 activity_id 命中），_isNew=false
+    expect(second._isNew).toBe(false);
   });
 
   it('前端传入 publish 字段被后端忽略（不落库 published 字段）', () => {

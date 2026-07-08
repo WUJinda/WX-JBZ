@@ -69,7 +69,7 @@ describe('activityResolver.getActivityById：按 activity_id 精确查活动文�
   });
 });
 
-describe('activityResolver.getActiveActivity / getActiveActivityId：选当前活动（排除 terminated，active 优先）', () => {
+describe('activityResolver.getActiveActivity / getActiveActivityId：选当前活动（非终止优先，全终止回退最近终止）', () => {
   // 时间窗：ACTIVE 在期中 / ENDED 已结束；now 锚 07-10（active 期中）
   const ACTIVE = { activity_id: 'a_active', name: '进行中', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z' };
   const ENDED = { activity_id: 'a_ended', name: '已结束', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z' };
@@ -85,24 +85,24 @@ describe('activityResolver.getActiveActivity / getActiveActivityId：选当前�
     expect(await getActiveActivityId(cloud, now)).toBe('a_active');
   });
 
-  it('唯一活动 terminated → getActiveActivity 返回 null（终止不再作当前）', async () => {
+  it('唯一活动 terminated → getActiveActivity 回退该终止活动（员工端展示「已终止」）', async () => {
     const term = { activity_id: 'a_term', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
     const cloud = mockCloud([term]);
-    expect(await getActiveActivity(cloud, now)).toBeNull();
+    expect(await getActiveActivity(cloud, now)).toBe(term);
   });
 
-  it('唯一活动 terminated → getActiveActivityId 返回空串', async () => {
+  it('唯一活动 terminated → getActiveActivityId 返回该终止活动 id', async () => {
     const term = { activity_id: 'a_term', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
     const cloud = mockCloud([term]);
-    expect(await getActiveActivityId(cloud, now)).toBe('');
+    expect(await getActiveActivityId(cloud, now)).toBe('a_term');
   });
 
-  it('全部 terminated → null / 空串', async () => {
-    const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true };
-    const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true };
+  it('全部 terminated → 回退最近终止活动（按 terminated_at 降序）', async () => {
+    const t1 = { activity_id: 't1', start_time: '2026-07-01T00:00:00Z', end_time: '2026-07-21T23:59:59Z', terminated: true, terminated_at: '2026-07-10T00:00:00Z' };
+    const t2 = { activity_id: 't2', start_time: '2026-05-01T00:00:00Z', end_time: '2026-05-21T23:59:59Z', terminated: true, terminated_at: '2026-07-15T00:00:00Z' };
     const cloud = mockCloud([t1, t2]);
-    expect(await getActiveActivity(cloud, now)).toBeNull();
-    expect(await getActiveActivityId(cloud, now)).toBe('');
+    expect(await getActiveActivity(cloud, now)).toBe(t2);
+    expect(await getActiveActivityId(cloud, now)).toBe('t2');
   });
 
   it('terminated 与 active 并存 → 跳过 terminated 选 active', async () => {

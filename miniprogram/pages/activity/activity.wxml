@@ -29,15 +29,15 @@
       <text class="info-value">{{statusText}}</text>
     </view>
 
-    <!-- 倒计时（R7.3：精确到日时分；结束当日到 23:59:59；已结束归零） -->
+    <!-- 倒计时（R7.3：精确到日时分；结束当日到 23:59:59；已结束/已终止归零） -->
     <view class="countdown" wx:if="{{countdown}}">
       <text class="countdown-label">{{countdown.label}}</text>
-      <view class="countdown-timer" wx:if="{{countdown.status !== 'ended'}}">
+      <view class="countdown-timer" wx:if="{{countdown.status === 'pending' || countdown.status === 'active'}}">
         <text class="cd-num">{{countdown.days}}</text><text class="cd-unit">天</text>
         <text class="cd-num">{{countdown.hours}}</text><text class="cd-unit">时</text>
         <text class="cd-num">{{countdown.minutes}}</text><text class="cd-unit">分</text>
       </view>
-      <text class="countdown-ended" wx:else>活动已结束</text>
+      <text class="countdown-ended" wx:else>{{countdown.status === 'terminated' ? '活动已终止' : '活动已结束'}}</text>
     </view>
   </view>
 

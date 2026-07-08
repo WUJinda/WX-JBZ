@@ -5,9 +5,10 @@
  * 替代旧的硬编码 'a_demo_001'（F1：假数据改实际查库）。
  *
  * 选「当前活动」口径与 activity.current handler 一致（均用 pickCurrentActivity）：
- *   排除 terminated，按 active → pending → ended 优先。终止活动不再作为榜单 / 统计 /
- *   聚合的「当前活动」（终止即冻结，见 terminateActivity）。getActivityById 则按 id 精确
- *   查（供 steps.sync 取活动文档传 syncSteps 做活动期过滤，与选取规则无关）。
+ *   非终止活动按 active → pending → ended 优先；无非终止活动时回退最近终止活动
+ *   （员工端展示「已终止」tag + 查看战绩。终止活动作 current 时 steps.sync 经 terminated
+ *   拦截拒绝同步、rank 聚合冻结数据，均安全）。getActivityById 则按 id 精确查
+ *   （供 steps.sync 取活动文档传 syncSteps 做活动期过滤，与选取规则无关）。
  *
  * 解耦：依赖 loadByWhere（common/db）+ pickCurrentActivity（activityStatus），
  *   不 require wx-server-sdk（cloud 由 handler 注入）。
@@ -17,11 +18,11 @@ const { loadByWhere } = require('../common/db');
 const { pickCurrentActivity } = require('./activityStatus');
 
 /**
- * 查当前活动 id（排除 terminated，active 优先；库空 / 全终止返回 ''）。
+ * 查当前活动 id（非终止优先 active→pending→ended；无非终止时回退最近终止活动；库空返回 ''）。
  *
  * @param {object} cloudSdk wx-server-sdk 实例
  * @param {Date|number} [now] 时间参考（可注入便于测试；默认 new Date()）
- * @returns {Promise<string>} activity_id（库空 / 全终止时 ''，handler 据此返回空榜/空统计）
+ * @returns {Promise<string>} activity_id（库空时 ''，handler 据此返回空榜/空统计）
  */
 async function getActiveActivityId(cloudSdk, now) {
   const activities = await loadByWhere(cloudSdk, 'Activity');
@@ -30,7 +31,7 @@ async function getActiveActivityId(cloudSdk, now) {
 }
 
 /**
- * 查当前活动文档（排除 terminated，active 优先；库空 / 全终止返回 null）。
+ * 查当前活动文档（非终止优先；无非终止时回退最近终止活动；库空返回 null）。
  * 供 user.stats 的 loadActivity 用（需完整活动文档算活动期天数 total_days）。
  *
  * @param {object} cloudSdk
