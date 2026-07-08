@@ -149,14 +149,18 @@ Page({
       }
       this._joining = true;
       api
-        .call('user', { action: 'join' }, { loading: '报名中', silent: true })
+        .call('user', { action: 'join' }, { loading: '正在报名...', silent: true })
         .then(() => {
           this._joining = false;
+          // 先弹「报名成功」并给足展示时间（duration 1500ms）再跳转——原 700ms < toast 默认时长，
+          // switchTab 会打断 toast，用户来不及看到成功反馈（join 冷启动慢、已等数秒时尤甚，
+          // 易误以为没报上而提前点同步）。同步侧已用 assertJoinedFresh 吸收写后读，不必抢这几秒。
+          wx.showToast({ title: '报名成功', icon: 'success', duration: 1500 });
           // join_status → joined：刷新派生，CTA 自动变「我的步数」。
           this.setData({ joinStatus: 'joined' }, () => this.refreshDerived());
-          wx.showToast({ title: '报名成功', icon: 'success' });
           // 报名成功 → 进首页看步数（home 是 tabBar 页，必须用 switchTab）。
-          setTimeout(() => wx.switchTab({ url: '/pages/home/home' }), 700);
+          // 延迟到 toast 展示完毕再跳，确保用户看到「报名成功」反馈。
+          setTimeout(() => wx.switchTab({ url: '/pages/home/home' }), 1500);
         })
         .catch((err) => {
           this._joining = false;

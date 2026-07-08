@@ -18,7 +18,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const https = require('https');
 const querystring = require('querystring');
 
-const { authMiddleware, assertUserExists, assertJoined } = require('../common/authMiddleware');
+const { authMiddleware, assertUserExists, assertJoined, assertJoinedFresh } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { decryptSteps } = require('./decrypt');
@@ -117,9 +117,12 @@ const handlers = {
     const config = event && event.config;
 
     // P1-1：sync 要求已报名（架构 §4.3：steps.sync 需 join_status=joined）。
-    // 用户存在性已由 main 的 requireUser 统一校验（context.user）；此处仅校验报名状态，
+    // 用户存在性已由 main 的 requireUser 统一校验（context.user）；此处校验报名状态，
     // 未报名用户不浪费 code2Session 外部调用与解密开销。
-    assertJoined(context.user);
+    // 用 assertJoinedFresh 吸收「写后读」窗口：user.join 主写 join_status、本函数从读 User，
+    // 刚报名副本未同步时会读到旧 'pending' → 单次校验误报未报名（1004），表现为「刚报名立即同步失败」。
+    // firstUser=context.user：老用户已 joined 时零额外读；仅刚报名窗口内退避重读到 joined。
+    await assertJoinedFresh(cloud.database(), context.openid, { firstUser: context.user });
 
     // 提前查活动文档：① 判 terminated（管理员终止后立即拒绝同步，省 code2Session 外部调用与解密开销）；
     // ② 供 syncSteps 活动期过滤（start_date ~ today）——修「累计步数过大」bug 的关键。

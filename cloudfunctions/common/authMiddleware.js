@@ -107,4 +107,69 @@ function assertJoined(user) {
   }
 }
 
-module.exports = { getOpenid, authMiddleware, assertUserExists, assertJoined };
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * 按 openid 读 User 文档（不抛错，返回 doc|null）。
+ * 复用 assertUserExists 的查询形态，供 assertJoinedFresh 重试循环每次重读最新值。
+ *
+ * @param {object} db 云数据库句柄
+ * @param {string} openid
+ * @returns {Promise<object|null>}
+ */
+async function findUserByOpenid(db, openid) {
+  const res = await db.collection('User').where({ _openid: openid }).limit(1).get();
+  const arr = (res && res.data) || [];
+  return arr.length > 0 ? arr[0] : null;
+}
+
+/**
+ * 断言用户已报名（吸收云库「写后读」最终一致性窗口的实现）。
+ *
+ * 背景：user.join 落库走主节点写 join_status='joined'，本函数（steps.sync 鉴权用）走从节点读 User，
+ *   副本同步延迟窗口内可能读到注册初值 'pending' → 单次 assertJoined 会误判「未报名」抛 1004，
+ *   表现为「刚报名立即同步失败，十几秒后才正常」。本函数读不到 joined 时短退避重读，窗口内自愈。
+ *
+ * 稳态（用户早已报名）：firstUser（调用方已查得的 user，如 main 的 context.user）为 joined 时直接
+ *   返回，零额外读、零 sleep，无性能回归。仅「刚报名且副本未同步」才进入重读循环（最坏 retries×delayMs）。
+ *
+ * @param {object} db cloud.database()
+ * @param {string} openid 调用者 openid
+ * @param {object} [options]
+ * @param {number} [options.retries=3] 读不到 joined 时的退避重读次数（每次先 sleep）
+ * @param {number} [options.delayMs=400] 退避间隔（ms）
+ * @param {object} [options.firstUser] 调用方已查得的 User 文档；为 joined 时跳过首次读库
+ * @param {(ms:number)=>Promise} [options.sleepFn] 注入 sleep（便于单测；默认 Promise+setTimeout）
+ * @returns {Promise<object>} join_status==='joined' 的 User 文档
+ * @throws {BizError} AUTH_USER_NOT_FOUND(1002) / AUTH_JOIN_STATUS_DENIED(1004，复用 assertJoined)
+ */
+async function assertJoinedFresh(db, openid, options) {
+  const opts = options || {};
+  const retries = Number.isFinite(opts.retries) ? opts.retries : 3;
+  const delayMs = Number.isFinite(opts.delayMs) ? opts.delayMs : 400;
+  const sleep = typeof opts.sleepFn === 'function' ? opts.sleepFn : defaultSleep;
+
+  let user = opts.firstUser || null;
+  // 首次判定：firstUser 已是 joined 则零读零 sleep 直接返回。
+  if (!user || user.join_status !== 'joined') {
+    user = await findUserByOpenid(db, openid);
+    if (!user) {
+      throw BizError(CODE.AUTH_USER_NOT_FOUND, 'assertJoinedFresh: user not found for openid');
+    }
+  }
+  if (user.join_status === 'joined') return user;
+
+  // 退避重读：副本同步窗口内反复读最新值，直到 joined 或用尽重试。
+  for (let i = 0; i < retries; i++) {
+    await sleep(delayMs);
+    user = await findUserByOpenid(db, openid);
+    if (!user) {
+      throw BizError(CODE.AUTH_USER_NOT_FOUND, 'assertJoinedFresh: user not found for openid');
+    }
+    if (user.join_status === 'joined') return user;
+  }
+  // 重试用尽仍非 joined：真未报名（或副本延迟超窗口，罕见）→ 复用 assertJoined 抛 1004。
+  assertJoined(user);
+}
+
+module.exports = { getOpenid, authMiddleware, assertUserExists, assertJoined, assertJoinedFresh };
