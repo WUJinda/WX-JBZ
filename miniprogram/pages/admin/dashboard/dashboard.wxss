@@ -30,6 +30,20 @@
   padding: 12rpx 0;
 }
 
+/* 运维：刷新排行榜按钮 */
+.refresh-block { margin-bottom: 32rpx; }
+.refresh-btn {
+  width: 100%;
+  background: #07c160;
+  color: #fff;
+  font-size: 28rpx;
+  border-radius: 16rpx;
+  padding: 20rpx 0;
+  line-height: 1.4;
+}
+.refresh-btn.refreshing { background: #9ad8b6; }
+.refresh-btn[disabled] { color: #fff; opacity: 0.85; }
+
 /* 指标卡网格（6 指标，3 列 2 行） */
 .metric-grid {
   display: flex;

@@ -29,6 +29,13 @@
     </view>
   </view>
 
+  <!-- 运维：一键刷新排行榜（管理员手动触发 tasks.rankAggregate，覆盖写 RankCache） -->
+  <view class="refresh-block">
+    <button class="refresh-btn {{refreshing ? 'refreshing' : ''}}" bindtap="onRefreshRank" disabled="{{refreshing}}">
+      {{refreshing ? '刷新中...' : '刷新排行榜'}}
+    </button>
+  </view>
+
   <!-- 加载态 -->
   <view class="state-tip" wx:if="{{loading}}">加载中...</view>
 

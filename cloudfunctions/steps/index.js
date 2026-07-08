@@ -26,7 +26,7 @@ const { syncSteps } = require('./stepsSync');
 const { getToday, getHistory, getUserRecords } = require('./stepsQuery');
 const { buildTrend } = require('./stepsTrend');
 const { loadByWhere } = require('../common/db');
-const { triggerRankAggregate, extractMyRank } = require('./stepsTriggerRank');
+const { triggerRankAggregateFresh } = require('./stepsTriggerRank');
 const { getActivityById, getActiveActivityId } = require('../activity/activityResolver');
 
 // P0-5：steps handler 只拉「该用户该活动」的 StepRecord（约活动天数条，非全表），
@@ -160,9 +160,15 @@ const handlers = {
     await persistStepRecordsToCloud(cloud, store.StepRecord);
     // 同步成功后即时聚合 RankCache（await 等聚合完成）。聚合结果直接取本人 my_rank 随 sync 返回前端，
     // 免前端 loadStats 二次查 RankCache——跨请求「写后读」会命中聚合前旧快照致「同步后排名不更新」。
-    // 容错：聚合失败返回 null（triggerRankAggregate 内部 catch），my_rank=null，不阻断 sync 主返回。
-    const rankRes = await triggerRankAggregate(cloud, activityId);
-    return Object.assign({}, result, { my_rank: extractMyRank(rankRes, openid) });
+    // triggerRankAggregateFresh 吸收「跨函数写后读」：steps 写 StepRecord 后 callFunction tasks 读
+    // StepRecord，副本同步延迟窗口内 tasks 可能读不到本人刚写的记录 → 聚合缺本人 → RankCache 缺本人
+    // （表现：第一个同步者在榜、第二个同步者不在榜）。首次聚合拿不到本人 my_rank 且本人确有步数
+    // （total>0）时退避重试聚合，确保本人进 RankCache + sync 返回准确 my_rank。
+    // 容错：聚合失败返回 null（triggerRankAggregateFresh 内部 catch），my_rank=null，不阻断 sync 主返回。
+    const { myRank } = await triggerRankAggregateFresh(cloud, activityId, openid, {
+      hasSteps: (result.total || 0) > 0
+    });
+    return Object.assign({}, result, { my_rank: myRank });
   },
 
   // E3: 当日步数。

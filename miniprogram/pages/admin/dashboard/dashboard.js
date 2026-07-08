@@ -30,7 +30,9 @@ Page({
     // 通用
     loading: true,
     errorMsg: '',
-    empty: false
+    empty: false,
+    // 刷新排行榜按钮态（防双击 + 文案切换）
+    refreshing: false
   },
 
   onShow() {
@@ -100,6 +102,43 @@ Page({
           deptRank: [],
           empty: true
         });
+      });
+  },
+
+  /**
+   * 一键刷新排行榜：调 admin.refreshRank（assertAdmin 守卫 + 转发 tasks.rankAggregate），
+   * 覆盖写 RankCache。成功后重载看板（部门榜等同步更新）。
+   * 场景：排查榜单问题 / 用户同步后榜单未即时更新时，管理员手动兜底刷新。
+   */
+  onRefreshRank() {
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      wx.showToast({ title: '云能力未就绪', icon: 'none' });
+      return;
+    }
+    if (this.data.refreshing) return; // 防双击
+    this.setData({ refreshing: true });
+    api
+      .call(
+        'admin',
+        { action: 'refreshRank', activity_id: app.getActivityId() },
+        { loading: false, silent: true }
+      )
+      .then((data) => {
+        this.setData({ refreshing: false });
+        const d = data || {};
+        wx.showToast({
+          title: '榜单已刷新（' + (d.personal_count || 0) + '人/' + (d.dept_count || 0) + '部门）',
+          icon: 'none',
+          duration: 2500
+        });
+        // 刷新成功 → 重载看板（部门榜 / 累计步数同步更新）。
+        this.loadDashboard();
+      })
+      .catch((err) => {
+        this.setData({ refreshing: false });
+        wx.showToast({ title: (err && err.message) || '刷新失败', icon: 'none' });
       });
   },
 

@@ -29,6 +29,7 @@ const { queryAbnormal } = require('./abnormalList');
 const { applyVerdict } = require('./verdict');
 const { createDept, updateDept, deleteDept } = require('./deptManage');
 const { buildDashboard } = require('./dashboard');
+const { handleRefreshRank } = require('./refreshRank');
 const { ensureSchema } = require('../schema/initIndexes');
 
 const handlers = {
@@ -206,6 +207,16 @@ const handlers = {
       throw BizError(CODE.SYS_DB_ERROR, 'deptManage: invalid op (create|update|delete)');
     }
     return result;
+  },
+
+  // 运维：一键刷新排行榜（管理员手动触发 tasks.rankAggregate，覆盖写 RankCache）。
+  // 场景：排查榜单问题 / 用户同步后榜单未即时更新时，管理员手动兜底刷新，不必等定时任务。
+  // 守卫（assertAdmin）在此完成；聚合转发 handleRefreshRank（callFunction tasks，复用幂等聚合）。
+  // 返回摘要（personal_count/dept_count/updated_at）供前端展示，不下发完整 rows。
+  refreshRank: async (event, context) => {
+    const store = { User: await loadByWhere(cloud, 'User') };
+    assertAdmin(store, context.openid);
+    return handleRefreshRank({ cloud, event });
   },
 
   // 运维：一键建集合 + 索引（幂等可重跑）。

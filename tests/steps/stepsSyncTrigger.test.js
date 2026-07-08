@@ -10,7 +10,7 @@
  * vitest globals:true —— describe/it/expect/vi 全局可用，无需 import（与现有测试同风格）。
  */
 
-const { triggerRankAggregate, extractMyRank } = require('../../cloudfunctions/steps/stepsTriggerRank');
+const { triggerRankAggregate, triggerRankAggregateFresh, extractMyRank } = require('../../cloudfunctions/steps/stepsTriggerRank');
 
 /**
  * 构造 mock cloud：仅含 callFunction。
@@ -95,5 +95,121 @@ describe('extractMyRank: 从聚合结果取本人排名（sync 返回 my_rank �
   it('openid 为空 → null（防御）', () => {
     const rankRes = { personal: [{ rank: 1, user_id: 'u_me', total_steps: 100 }] };
     expect(extractMyRank(rankRes, '')).toBeNull();
+  });
+});
+
+/**
+ * 构造 mock cloud：callFunction 按序返回不同的聚合结果（模拟「首次写后读缺失 → 重试后命中」）。
+ * 序列用尽后重复返回最后一项。
+ * @param {object[]} rankDataSeq 每次调用的聚合 data
+ */
+function mockCloudSequence(rankDataSeq) {
+  let i = 0;
+  return {
+    callFunction: vi.fn(() => {
+      const data = rankDataSeq[Math.min(i, rankDataSeq.length - 1)];
+      i++;
+      return Promise.resolve({ result: { code: 0, data } });
+    })
+  };
+}
+
+describe('triggerRankAggregateFresh: 写后读退避重试', () => {
+  it('快路径：首次聚合命中本人 → 零重试、零 sleep', async () => {
+    const rankData = {
+      personal: [{ rank: 1, user_id: 'u_me', total_steps: 5000 }],
+      dept: [],
+      updatedAt: 't'
+    };
+    const cloud = mockCloud({
+      callFunction: vi.fn().mockResolvedValue({ result: { code: 0, data: rankData } })
+    });
+    const sleepFn = vi.fn().mockResolvedValue();
+    const { myRank } = await triggerRankAggregateFresh(cloud, 'a1', 'u_me', { sleepFn });
+    expect(myRank).toEqual({ rank: 1, total_steps: 5000 });
+    expect(cloud.callFunction).toHaveBeenCalledTimes(1);
+    expect(sleepFn).not.toHaveBeenCalled();
+  });
+
+  it('写后读重试：首次聚合缺本人 → 退避重试后命中（覆盖写 RankCache 含本人）', async () => {
+    const miss = {
+      personal: [{ rank: 1, user_id: 'u_other', total_steps: 9000 }],
+      dept: []
+    };
+    const hit = {
+      personal: [
+        { rank: 1, user_id: 'u_other', total_steps: 9000 },
+        { rank: 2, user_id: 'u_me', total_steps: 5000 }
+      ],
+      dept: []
+    };
+    const cloud = mockCloudSequence([miss, hit]);
+    const sleepFn = vi.fn().mockResolvedValue();
+    const { myRank } = await triggerRankAggregateFresh(cloud, 'a1', 'u_me', {
+      sleepFn,
+      retries: 2,
+      delayMs: 10
+    });
+    expect(myRank).toEqual({ rank: 2, total_steps: 5000 });
+    expect(cloud.callFunction).toHaveBeenCalledTimes(2); // 首次 + 1 次重试命中
+    expect(sleepFn).toHaveBeenCalledTimes(1); // 重试前 sleep 一次
+  });
+
+  it('0 步用户(hasSteps=false)不重试：首次 null 即返回（R5.5 本就不进榜）', async () => {
+    const rankData = { personal: [{ rank: 1, user_id: 'u_other', total_steps: 9000 }], dept: [] };
+    const cloud = mockCloud({
+      callFunction: vi.fn().mockResolvedValue({ result: { code: 0, data: rankData } })
+    });
+    const sleepFn = vi.fn().mockResolvedValue();
+    const { myRank } = await triggerRankAggregateFresh(cloud, 'a1', 'u_me', {
+      hasSteps: false,
+      sleepFn
+    });
+    expect(myRank).toBeNull();
+    expect(cloud.callFunction).toHaveBeenCalledTimes(1);
+    expect(sleepFn).not.toHaveBeenCalled();
+  });
+
+  it('openid 为空不重试（无定位键，重试无意义）', async () => {
+    const rankData = { personal: [{ rank: 1, user_id: 'u_other', total_steps: 9000 }], dept: [] };
+    const cloud = mockCloud({
+      callFunction: vi.fn().mockResolvedValue({ result: { code: 0, data: rankData } })
+    });
+    const sleepFn = vi.fn().mockResolvedValue();
+    const { myRank } = await triggerRankAggregateFresh(cloud, 'a1', '', { sleepFn });
+    expect(myRank).toBeNull();
+    expect(cloud.callFunction).toHaveBeenCalledTimes(1);
+    expect(sleepFn).not.toHaveBeenCalled();
+  });
+
+  it('重试用尽仍缺本人 → 返回 null（StepRecord 已落库，定时任务兜底覆盖）', async () => {
+    const miss = { personal: [{ rank: 1, user_id: 'u_other', total_steps: 9000 }], dept: [] };
+    const cloud = mockCloud({
+      callFunction: vi.fn().mockResolvedValue({ result: { code: 0, data: miss } })
+    });
+    const sleepFn = vi.fn().mockResolvedValue();
+    const { myRank } = await triggerRankAggregateFresh(cloud, 'a1', 'u_me', {
+      sleepFn,
+      retries: 2,
+      delayMs: 10
+    });
+    expect(myRank).toBeNull();
+    expect(cloud.callFunction).toHaveBeenCalledTimes(3); // 首次 + 2 次重试
+    expect(sleepFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('聚合失败(callFunction reject)不抛 → myRank=null（triggerRankAggregate 内部 catch）', async () => {
+    const cloud = mockCloud({
+      callFunction: vi.fn().mockRejectedValue(new Error('tasks 超时'))
+    });
+    const sleepFn = vi.fn().mockResolvedValue();
+    const { myRank } = await triggerRankAggregateFresh(cloud, 'a1', 'u_me', {
+      sleepFn,
+      retries: 2,
+      delayMs: 10
+    });
+    expect(myRank).toBeNull();
+    // 失败也走重试（每次返回 null → 触发退避），最终不抛、myRank=null。
+    expect(cloud.callFunction).toHaveBeenCalledTimes(3);
   });
 });
