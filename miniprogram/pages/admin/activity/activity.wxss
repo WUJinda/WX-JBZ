@@ -97,3 +97,17 @@
   color: #f0a0a0;
   border-color: #f0a0a0;
 }
+
+/* 删除活动按钮（危险操作，实心红，比终止描边更强警示） */
+.delete-btn {
+  width: 100%;
+  background: #e64340;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 32rpx;
+  margin-top: 24rpx;
+}
+.delete-btn[disabled] {
+  background: #f0a0a0;
+  color: #fff;
+}

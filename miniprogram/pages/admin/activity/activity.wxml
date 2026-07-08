@@ -77,4 +77,15 @@
     <block wx:if="{{terminating}}">终止中...</block>
     <block wx:else>终止活动</block>
   </button>
+
+  <!-- 删除活动按钮（已存在活动均可删，含已终止；硬删除+连带清步数/榜单/部门） -->
+  <button
+    wx:if="{{activityId}}"
+    class="delete-btn"
+    bindtap="onDelete"
+    disabled="{{deleting}}"
+  >
+    <block wx:if="{{deleting}}">删除中...</block>
+    <block wx:else>删除活动</block>
+  </button>
 </view>

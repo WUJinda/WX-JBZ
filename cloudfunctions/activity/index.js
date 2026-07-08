@@ -1,6 +1,6 @@
 /**
  * activity 云函数入口：活动（对齐技术架构 §4.1 / §5.4，开发计划阶段 C/I，PRD F7/F8）。
- * Action: current（游客可调，F7）/ save（管理员，F8）/ get / list / terminate（管理员）
+ * Action: current（游客可调，F7）/ save（管理员，F8）/ get / list / terminate / delete（管理员）
  *
  * 红线（游客可见）：
  *   - current 允许游客访问（无 OPENID 也能取活动信息）——不强制 authMiddleware；
@@ -25,6 +25,7 @@ const { getCurrent, deriveStatus, pickCurrentActivity } = require('./activitySta
 const { saveActivity } = require('./activitySave');
 const { terminateActivity } = require('./activityTerminate');
 const { listActivities } = require('./activityList');
+const { deleteActivity } = require('./activityDelete');
 
 /**
  * 游客友好地取 openid：无 OPENID 不抛错，返回空串。
@@ -180,6 +181,21 @@ const handlers = {
     const result = terminateActivity(store, { activity_id: activityId, now });
     await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
     return result;
+  },
+
+  // 硬删除活动（不可恢复，连带清理 StepRecord/RankCache/Department）：管理员（assertAdmin）。
+  // 区别于 terminate（软终止）：delete 彻底移除活动文档 + 该活动名下全部数据。
+  delete: async (event) => {
+    const context = authMiddleware({ getWXContext: cloud.getWXContext });
+    const store = {
+      User: await loadByWhere(cloud, 'User'),
+      Activity: await loadByWhere(cloud, 'Activity')
+    };
+    assertAdmin(store, context.openid);
+    const activityId = (event && event.activity_id) || '';
+    const result = deleteActivity(store, { activity_id: activityId });
+    await deleteActivityToCloud(cloud, result.activity_id);
+    return result;
   }
 };
 
@@ -221,6 +237,39 @@ async function upsertActivityToCloud(cloudSdk, activity, activityId, now) {
   } catch (err) {
     // P1-3：写库失败上抛（不再静默吞致前端假成功）。
     throw BizError(CODE.SYS_DB_ERROR, 'Activity.upsert 写回失败(' + activityId + '): ' + ((err && err.message) || err));
+  }
+}
+
+/**
+ * 云轨：硬删除活动 + 连带清理该 activity_id 下的 StepRecord/RankCache/Department。
+ * where().remove() 为云数据库原生批量删除（与 tasks dailyLock 的 where().update() 同类，非事务批量，可用）。
+ * 某集合无该 activity_id 文档时 removed=0，不报错（幂等）。
+ * P1-3：失败收集上抛，不静默吞（否则前端假成功，与 upsert/persist 写回同口径）。
+ * 本地轨单测不经此路径。
+ * @param {object} cloudSdk
+ * @param {string} activityId
+ */
+async function deleteActivityToCloud(cloudSdk, activityId) {
+  const db = cloudSdk.database();
+  const failed = [];
+  // 4 个集合均按 activity_id 过滤批量删：活动文档本体 + 该活动名下的步数/榜单/部门。
+  for (const name of ['Activity', 'StepRecord', 'RankCache', 'Department']) {
+    try {
+      // wx-server-sdk 的 where().remove() 单次最多删 20 条（见 user/index.js wrapRemoveAll）；
+      // StepRecord 可能远超 20（多用户×多天），须循环删到 removed=0，否则漏删留孤儿数据。
+      let guard = 0;
+      while (guard++ < 1000) {
+        const r = await db.collection(name).where({ activity_id: activityId }).remove();
+        const n = (r && r.stats && r.stats.removed) || 0;
+        if (n === 0) break; // 无更多匹配 → 终止（guard 上限防异常库状态死循环）
+      }
+    } catch (err) {
+      failed.push(name);
+      console.warn('[删除失败]', name, (err && err.message) || err);
+    }
+  }
+  if (failed.length) {
+    throw BizError(CODE.SYS_DB_ERROR, 'deleteActivity 部分集合删除失败(' + activityId + '): ' + failed.join(','));
   }
 }
 

@@ -524,20 +524,20 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(callCount).toBe(actions.length);
   });
 
-  it('activity 管理员 action（save/get/list/terminate）均调用 assertAdmin（与 admin 9 action 同口径）', () => {
+  it('activity 管理员 action（save/get/list/terminate/delete）均调用 assertAdmin（与 admin 9 action 同口径）', () => {
     const src = readSource('cloudfunctions/activity/index.js');
-    // save/get/list/terminate 四个管理员 action 各调一次 assertAdmin，语句调用精确 4 次。
+    // save/get/list/terminate/delete 五个管理员 action 各调一次 assertAdmin，语句调用精确 5 次。
     const callCount = (src.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(callCount).toBe(4);
+    expect(callCount).toBe(5);
     // 各 handler 块内均含 assertAdmin
-    for (const key of ['save:', 'get:', 'list:', 'terminate:']) {
+    for (const key of ['save:', 'get:', 'list:', 'terminate:', 'delete:']) {
       const idx = src.indexOf(key);
       expect(idx, `缺少 handler: ${key}`).toBeGreaterThan(-1);
       expect(src.slice(idx, idx + 900).includes('assertAdmin('), `${key} 块内缺 assertAdmin`).toBe(true);
     }
   });
 
-  it('assertAdmin 全仓调用总数 = 13（admin 9 + activity 4），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 14（admin 9 + activity 5），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
@@ -545,8 +545,8 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     expect(adminCount).toBe(9);
-    expect(activityCount).toBe(4);
-    expect(adminCount + activityCount).toBe(13);
+    expect(activityCount).toBe(5);
+    expect(adminCount + activityCount).toBe(14);
   });
 
   it('admin 纯函数模块文件存在（9 个）', () => {
@@ -1072,6 +1072,36 @@ describe('activity.save action 挂载与共享 adminGuard（I）', () => {
     expect(src).toMatch(/require\(['"]\.\.\/common\/adminGuard['"]\)/);
     // 不应再内嵌 assertAdmin 实现体（实现已移走）
     expect(src).not.toMatch(/function assertAdmin/);
+  });
+
+  it('activity.delete action 挂载：handler 调 assertAdmin + deleteActivityToCloud，require activityDelete', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    expect(src).toMatch(/\bdelete\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/activityDelete['"]\)/);
+    // delete handler 内调用 deleteActivity 纯函数 + 云轨批量删除
+    expect(src).toMatch(/deleteActivity\(store/);
+    expect(src).toMatch(/deleteActivityToCloud/);
+    // where().remove() 批量删 4 集合（Activity/StepRecord/RankCache/Department）
+    expect(src).toMatch(/where\(\s*\{\s*activity_id:\s*activityId\s*\}\s*\)\.remove/);
+  });
+
+  it('activityDelete.js 纯函数模块存在且不调真实云 API', () => {
+    expect(fs.existsSync(path.join(ROOT, 'cloudfunctions/activity/activityDelete.js')), '缺少 activityDelete.js').toBe(true);
+    const src = readSource('cloudfunctions/activity/activityDelete.js');
+    expect(src).toMatch(/function deleteActivity/);
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(src).not.toMatch(/cloud\.database\(\)/);
+  });
+
+  it('编辑页 activity.js 含删除入口 onDelete/doDelete + activity.delete（与终止并列）', () => {
+    const js = readSource('miniprogram/pages/admin/activity/activity.js');
+    expect(js).toMatch(/onDelete/);
+    expect(js).toMatch(/doDelete/);
+    expect(js).toMatch(/action:\s*['"]delete['"]/);
+    expect(js).toMatch(/deleting/);
+    const wxml = readSource('miniprogram/pages/admin/activity/activity.wxml');
+    expect(wxml).toMatch(/delete-btn/);
+    expect(wxml).toMatch(/bindtap="onDelete"/);
   });
 });
 

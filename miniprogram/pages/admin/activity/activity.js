@@ -32,6 +32,7 @@ Page({
     // 状态
     submitting: false,
     terminating: false,
+    deleting: false,
     errorMsg: '',
     formErrors: {}, // {name, startEnd, ...}
     publishText: '未发布'
@@ -227,6 +228,56 @@ Page({
         this.setData({
           terminating: false,
           errorMsg: (err && err.message) || '终止失败，请稍后重试'
+        });
+      });
+  },
+
+  /** 删除活动（硬删除，不可恢复，连带清步数/榜单/部门）：二次确认 → activity.delete。 */
+  onDelete() {
+    if (this.data.deleting) return;
+    if (!this.data.activityId) return;
+    if (typeof wx === 'undefined' || !wx.showModal) return;
+    const name = this.data.name || '该活动';
+    wx.showModal({
+      title: '删除活动',
+      content: '将永久删除活动「' + name + '」及其全部步数记录、榜单、部门，不可恢复。确定删除？',
+      confirmText: '删除',
+      confirmColor: '#e64340',
+      success: (res) => {
+        if (!res || !res.confirm) return;
+        this.doDelete();
+      }
+    });
+  },
+
+  doDelete() {
+    const app = getApp();
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') {
+      this.setData({ errorMsg: '云能力未就绪，无法删除' });
+      return;
+    }
+    this.setData({ deleting: true, errorMsg: '' });
+    api
+      .call('activity', { action: 'delete', activity_id: this.data.activityId }, { loading: '删除中' })
+      .then(() => {
+        this.setData({ deleting: false });
+        const app = getApp();
+        if (app && app.globalData) {
+          app.globalData._activityDirty = true; // activity 页重拉即见活动已消失
+        }
+        wx.showToast({ title: '已删除', icon: 'success' });
+        // 返回列表页，列表 onShow 刷新即见该活动消失。
+        setTimeout(() => {
+          if (typeof wx !== 'undefined' && wx.navigateBack) {
+            wx.navigateBack({ delta: 1 });
+          }
+        }, 600);
+      })
+      .catch((err) => {
+        this.setData({
+          deleting: false,
+          errorMsg: (err && err.message) || '删除失败，请稍后重试'
         });
       });
   }
