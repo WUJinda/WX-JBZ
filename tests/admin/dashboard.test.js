@@ -1,7 +1,7 @@
 /**
  * admin.buildDashboard 数据看板单测（H1 R8.5）：
  *   - participated / whitelistTotal / rate（含除零）；
- *   - totalSteps（有效步数口径 locked||today）；
+ *   - totalSteps（有效步数口径：活动期内已同步即有效，不依赖 locked）；
  *   - validParticipants / avgSteps（含除零）；
  *   - dailyActive（近 trendDays 天，缺日补 0）；
  *   - deptRank 复用 RankCache（不重算）。
@@ -60,19 +60,19 @@ describe('buildDashboard（数据看板指标）', () => {
     expect(r.rate).toBe(0);
   });
 
-  it('totalSteps：有效步数口径（locked || date===today）求和', () => {
+  it('totalSteps：有效步数口径（活动期内已同步即有效，不依赖 locked）求和', () => {
     const store = {
       User: [],
       Whitelist: [],
       StepRecord: [
-        rec('u1', '2026-06-25', 1000, { locked: true }), // 有效（locked）
-        rec('u2', '2026-06-26', 2000), // 有效（today）
-        rec('u3', '2026-06-25', 9999, { locked: false }) // 无效（非 today 且未 locked）
+        rec('u1', '2026-06-25', 1000, { locked: true }),
+        rec('u2', '2026-06-26', 2000), // today
+        rec('u3', '2026-06-25', 9999, { locked: false }) // 新口径：已同步 → 有效
       ],
       RankCache: []
     };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
-    expect(r.totalSteps).toBe(3000);
+    expect(r.totalSteps).toBe(1000 + 2000 + 9999);
   });
 
   it('totalSteps 跨活动不混入（按 activity_id 过滤）', () => {
@@ -99,12 +99,12 @@ describe('buildDashboard（数据看板指标）', () => {
         rec('u1', '2026-06-26', 1000), // 有效 today
         rec('u1', '2026-06-25', 1000, { locked: true }), // 同一 u1 有效
         rec('u2', '2026-06-26', 2000), // 有效
-        rec('u3', '2026-06-25', 9999) // 无效
+        rec('u3', '2026-06-25', 9999) // 新口径：已同步 → 有效
       ],
       RankCache: []
     };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
-    expect(r.validParticipants).toBe(2); // u1, u2
+    expect(r.validParticipants).toBe(3); // u1, u2, u3（新口径 u3 已同步即有效）
   });
 
   it('avgSteps = totalSteps / validParticipants', () => {
@@ -300,10 +300,10 @@ describe('buildDashboard deptRank（复用 RankCache，不重算）', () => {
 describe('isValidRecord 口径与 rankAggregate/stepsQuery/userStats 一致', () => {
   const today = '2026-06-26';
 
-  it('locked || date===today', () => {
+  it('活动期内已同步即有效（date<=today），不依赖 locked', () => {
     expect(isValidRecord({ locked: true, date: '2026-06-01' }, today)).toBe(true);
     expect(isValidRecord({ locked: false, date: today }, today)).toBe(true);
-    expect(isValidRecord({ locked: false, date: '2026-06-25' }, today)).toBe(false);
+    expect(isValidRecord({ locked: false, date: '2026-06-25' }, today)).toBe(true); // 新口径：已同步即有效
     expect(isValidRecord({ locked: false, date: '' }, today)).toBe(false);
   });
 

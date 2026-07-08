@@ -50,15 +50,15 @@ describe('calcTotalDays 活动期天数', () => {
 });
 
 describe('buildStats 统计（F4）', () => {
-  it('today_steps/total_steps 与 stepsQuery 口径一致（locked + 今日）', () => {
+  it('today_steps/total_steps 与 stepsQuery 口径一致（活动期内已同步即有效，不依赖 locked）', () => {
     const records = [
       rec({ date: '2026-07-01', steps: 8000, locked: true }),
-      rec({ date: '2026-07-02', steps: 9000, locked: false }), // 未锁且非今日 → 无效
-      rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日有效
+      rec({ date: '2026-07-02', steps: 9000, locked: false }), // 活动期内已同步 → 有效（新口径不依赖 locked）
+      rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日
     ];
     const out = buildStats({ records, activity: ACTIVITY, now: NOW });
     expect(out.today_steps).toBe(7000);
-    expect(out.total_steps).toBe(8000 + 7000); // locked(07-01) + 今日(07-03)
+    expect(out.total_steps).toBe(8000 + 9000 + 7000); // 活动期内三条全有效
   });
 
   it('active_days = 有效记录的不同 date 数', () => {
@@ -71,10 +71,10 @@ describe('buildStats 统计（F4）', () => {
     expect(out.active_days).toBe(3);
   });
 
-  it('active_days 不计无效记录', () => {
+  it('active_days 不计活动期外脏记录', () => {
     const records = [
       rec({ date: '2026-07-01', steps: 8000, locked: true }),
-      rec({ date: '2026-07-02', steps: 9000, locked: false }) // 未锁且非今日 → 无效
+      rec({ date: '2026-06-29', steps: 9000, locked: true }) // 活动期外（date<start_date）→ 无效
     ];
     const out = buildStats({ records, activity: ACTIVITY, now: NOW });
     expect(out.active_days).toBe(1);

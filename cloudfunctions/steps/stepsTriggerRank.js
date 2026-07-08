@@ -20,18 +20,36 @@
  * @param {object} cloudSdk 注入的 cloud 实例（steps/index.js 的模块级 cloud）
  * @param {string} activityId 活动 id（可能为空串：前端 getActivityId() 冷启动可能返回空；
  *   tasks handler 会 getActiveActivityId 兜底，故原样透传，不私自吞空值）
- * @returns {Promise<void>} 永不 reject（内部 catch，失败仅 warn）
+ * @returns {Promise<object|null>} tasks.rankAggregate 的 data（{personal, dept, updatedAt}）；
+ *   永不 reject（内部 catch，失败返回 null 仅 warn）。供 sync handler 取本人 my_rank。
  */
 async function triggerRankAggregate(cloudSdk, activityId) {
   try {
-    await cloudSdk.callFunction({
+    const res = await cloudSdk.callFunction({
       name: 'tasks',
       data: { action: 'rankAggregate', activity_id: activityId }
     });
+    // tasks.main 返回 ok(data) → callFunction 结果 { result: { code, message, data } }。
+    // 返回 data（含 personal/dept）供 sync handler 直接取 my_rank，免前端二次查 RankCache（写后读旧快照）。
+    return (res && res.result && res.result.data) || null;
   } catch (e) {
     // 聚合失败不阻断 sync：StepRecord 已落库，定时任务（每 10 分钟）幂等覆盖兜底。
     console.warn('[sync] 触发 rankAggregate 失败，榜单将由定时任务兜底', (e && e.message) || e);
+    return null;
   }
 }
 
-module.exports = { triggerRankAggregate };
+/**
+ * 从 rankAggregate 结果里取本人排名行（供 sync 返回 my_rank，免前端二次查 RankCache 写后读旧快照）。
+ * @param {object|null} rankRes triggerRankAggregate 返回的 {personal, dept, updatedAt}
+ * @param {string} openid 本人 openid（= StepRecord.user_id = personal row.user_id）
+ * @returns {{rank:number, total_steps:number}|null} 未进榜/未聚合/失败 → null
+ */
+function extractMyRank(rankRes, openid) {
+  if (!rankRes || !Array.isArray(rankRes.personal) || !openid) return null;
+  const row = rankRes.personal.find((r) => r && r.user_id === openid);
+  if (!row) return null;
+  return { rank: row.rank, total_steps: row.total_steps };
+}
+
+module.exports = { triggerRankAggregate, extractMyRank };

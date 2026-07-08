@@ -1,6 +1,6 @@
 /**
  * steps.today / steps.history 聚合纯函数单测（E3）。
- * 仅 locked 或今日已入库的有效步数参与累计/历史返回。
+ * 有效步数（活动期内已同步即有效，不依赖 locked）参与累计/历史返回。
  */
 const { getToday, getHistory } = require('../../cloudfunctions/steps/stepsQuery');
 const { CODE } = require('../../cloudfunctions/common/errors');
@@ -22,18 +22,18 @@ function rec(overrides) {
 const NOW = new Date('2026-07-03T04:00:00Z'); // 北京时间 07-03 12:00
 
 describe('getToday 今日步数（E3）', () => {
-  it('返回当日已入库步数 + 累计（locked + 今日）', async () => {
+  it('返回当日已入库步数 + 累计（活动期内已同步即有效）', async () => {
     const store = {
       StepRecord: [
         rec({ date: '2026-07-01', steps: 8000, locked: true }),
-        rec({ date: '2026-07-02', steps: 9000, locked: false }), // 未锁定且非今日 → 不计入累计
+        rec({ date: '2026-07-02', steps: 9000, locked: false }), // 活动期内已同步 → 有效（新口径）
         rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日
       ]
     };
     const out = await getToday({ store, userId: USER_ID, activityId: ACTIVITY_ID, now: NOW });
     expect(out.date).toBe('2026-07-03');
     expect(out.steps).toBe(7000);
-    expect(out.total).toBe(8000 + 7000); // locked(07-01) + 今日(07-03)
+    expect(out.total).toBe(8000 + 9000 + 7000); // 三条全有效
   });
 
   it('无当日记录 → steps=0', async () => {
@@ -57,7 +57,7 @@ describe('getHistory 区间查询（E3，仅 locked/今日有效）', () => {
     const store = {
       StepRecord: [
         rec({ date: '2026-07-01', steps: 8000, locked: true }),
-        rec({ date: '2026-07-02', steps: 9000, locked: false }), // 非有效（未锁且非今日）
+        rec({ date: '2026-07-02', steps: 9000, locked: false }), // 新口径有效
         rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日有效
       ]
     };
@@ -65,8 +65,8 @@ describe('getHistory 区间查询（E3，仅 locked/今日有效）', () => {
       store, userId: USER_ID, activityId: ACTIVITY_ID,
       from: '2026-07-01', to: '2026-07-03', now: NOW
     });
-    expect(out.list).toHaveLength(2); // 07-01(locked) + 07-03(今日)
-    expect(out.total).toBe(15000);
+    expect(out.list).toHaveLength(3); // 三条全有效
+    expect(out.total).toBe(24000);
   });
 
   it('from/to 区间裁剪', async () => {

@@ -51,6 +51,14 @@ Page({
     this.ensureActivityStatus();
   },
 
+  onUnload() {
+    // 清理趋势写后读兜底定时器（见 callCloudSync）：home 为 tabBar 常驻页通常不卸载，此处兜底防泄漏。
+    if (this._trendRetryTimer) {
+      clearTimeout(this._trendRetryTimer);
+      this._trendRetryTimer = null;
+    }
+  },
+
   /**
    * 加载管理员标识（决定首页是否显示管理入口）。
    * 优先读 globalData.isAdmin（profile 已写入），命中即不请求；
@@ -291,10 +299,18 @@ Page({
           }
         });
         // 同步成功后刷新排名/天数/趋势。
-        // keepSyncedSteps=true：today/total 保留 sync 返回的最即时值，不让 stats 的二次查询覆盖
-        // （云库「写后立即查」的最终一致性会读到旧快照，致刚显示的新步数「闪回」成旧值）。
-        this.loadStats({ keepSyncedSteps: true });
+        // my_rank：直接用 sync 返回的即时值（来自聚合结果，不经二次查库）setData 立即显示，并透传给
+        //   loadStats 保持一致——避免 stats 二次查 RankCache 命中「写后读」旧快照（sync 刚聚合）致排名不更新；
+        //   stats 失败也不影响（myRank 已定）。
+        // keepSyncedSteps=true：today/total 保留 sync 返回的最即时值，不让 stats 二次查询覆盖
+        //   （云库「写后立即查」最终一致性会读旧快照，致刚显示的新步数「闪回」成旧值）。
+        this.setData({ myRank: (data && data.my_rank) || null });
+        this.loadStats({ keepSyncedSteps: true, myRank: (data && data.my_rank) || null });
         this.loadTrend(this.data.trendRange);
+        // 趋势写后读兜底：sync 刚写 StepRecord，loadTrend 立即查可能命中写入前旧快照（今日柱缺失）；
+        // 延迟再查一次覆盖最终一致性窗口。my_rank 已由 sync 返回值解决，无需重试。
+        if (this._trendRetryTimer) clearTimeout(this._trendRetryTimer);
+        this._trendRetryTimer = setTimeout(() => this.loadTrend(this.data.trendRange), 600);
         wx.showToast({ title: '同步成功', icon: 'success' });
       })
       .catch((err) => {
@@ -363,6 +379,9 @@ Page({
     this._statsSeq = (this._statsSeq || 0) + 1;
     const seq = this._statsSeq;
     const keepSyncedSteps = !!(opts && opts.keepSyncedSteps);
+    // sync 透传的即时 my_rank（来自 sync 返回值，不经二次查库）：提供则优先用它，避免 stats 二次查
+    // RankCache 命中「写后读」旧快照（sync 刚聚合，立即查可能读到聚合前 → myRank 不更新）。
+    const overrideMyRank = opts && Object.prototype.hasOwnProperty.call(opts, 'myRank');
     // 写后读一致性窗口：距上次成功同步 < 2min 内，user.stats 二次查库可能命中写入前旧快照，
     // 此时保留 sync 写入的即时 today/total（切回主页 loadStats 不覆盖）；窗口外按稳态处理，
     // stats 值即真实当前值正常覆盖。与 sync 后立即那次（keepSyncedSteps=true）互补——
@@ -380,7 +399,7 @@ Page({
         const patch = {
           activeDays: d.active_days || 0,
           totalDays: d.total_days || 0,
-          myRank: d.my_rank == null ? null : d.my_rank
+          myRank: overrideMyRank ? opts.myRank : (d.my_rank == null ? null : d.my_rank)
         };
         if (!keepSyncedSteps && !recentSync) {
           // 稳态刷新（窗口外的 onShow / 下拉刷新）：stats 的 today/total 即真实当前值，正常覆盖。

@@ -26,8 +26,8 @@ const { syncSteps } = require('./stepsSync');
 const { getToday, getHistory, getUserRecords } = require('./stepsQuery');
 const { buildTrend } = require('./stepsTrend');
 const { loadByWhere } = require('../common/db');
-const { triggerRankAggregate } = require('./stepsTriggerRank');
-const { getActivityById } = require('../activity/activityResolver');
+const { triggerRankAggregate, extractMyRank } = require('./stepsTriggerRank');
+const { getActivityById, getActiveActivityId } = require('../activity/activityResolver');
 
 // P0-5：steps handler 只拉「该用户该活动」的 StepRecord（约活动天数条，非全表），
 //   投影掉 _openid（不入内存/不下发）；sync 需 sync_count 做频控，其余 handler 多取无害。
@@ -155,10 +155,11 @@ const handlers = {
     // P0：把 syncSteps 在内存 store 上的 upsert 改动写回云库（syncSteps 已打 _dirty 标记）。
     // 修复历史 bug——sync 曾只改内存不落库，导致 StepRecord 集合实际为空、dashboard 统计全 0。
     await persistStepRecordsToCloud(cloud, store.StepRecord);
-    // 同步成功后即时聚合 RankCache（await 等聚合完成，前端 loadStats 即时拿到新名次）。
-    // 容错：聚合失败仅 warn（triggerRankAggregate 内部 catch），不阻断 sync 主返回（StepRecord 已写，定时任务兜底）。
-    await triggerRankAggregate(cloud, activityId);
-    return result;
+    // 同步成功后即时聚合 RankCache（await 等聚合完成）。聚合结果直接取本人 my_rank 随 sync 返回前端，
+    // 免前端 loadStats 二次查 RankCache——跨请求「写后读」会命中聚合前旧快照致「同步后排名不更新」。
+    // 容错：聚合失败返回 null（triggerRankAggregate 内部 catch），my_rank=null，不阻断 sync 主返回。
+    const rankRes = await triggerRankAggregate(cloud, activityId);
+    return Object.assign({}, result, { my_rank: extractMyRank(rankRes, openid) });
   },
 
   // E3: 当日步数。
@@ -202,8 +203,11 @@ const handlers = {
   trend: async (event, context) => {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅 OPENID，禁止 event.user_id（防越权读他人步数）
-    const activityId = event && event.activity_id;
+    // activity_id 兜底（与 today/history 一致）：前端冷启动可能传空，后端查当前活动。
+    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const range = event && event.range;
+    // 查活动文档：供 buildTrend 算活动期起点过滤活动期外脏记录（与 today/history/sync 同口径）。
+    const activity = await getActivityById(cloud, activityId);
     const store = {
       StepRecord: await loadByWhere(
         cloud, 'StepRecord',
@@ -212,7 +216,7 @@ const handlers = {
       )
     };
     const records = getUserRecords(store, userId, activityId);
-    return buildTrend({ records, range });
+    return buildTrend({ records, range, activity });
   }
 };
 

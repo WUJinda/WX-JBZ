@@ -3,7 +3,7 @@
  *
  * 职责（聚合个人榜 + 部门榜，覆盖写 RankCache）：
  *   - 个人榜：
- *     · 遍历 StepRecord 按 user 聚合有效步数 total_steps（口径 = locked || date===today，复用 stepsQuery 口径）。
+ *     · 遍历 StepRecord 按 user 聚合有效步数 total_steps（口径 = 活动期内已同步的非未来日，复用 stepsSync.isValidStepRecord）。
  *     · 算 first_reach_at（R5.1）：按 synced_at 升序遍历该用户有效 StepRecord，累加 steps，
  *       累计值首次 ≥ total_steps 的那条 record 的 synced_at。total_steps=0 的用户 first_reach_at=null。
  *     · 过滤 total_steps=0（R5.5 未产生有效步数不进榜）。
@@ -17,7 +17,7 @@
  *     · 覆盖写 RankCache(dept)。
  *
  * 红线：
- *   - 有效步数口径复用 `locked || date===today`，与 stepsQuery/buildTrend 一致，禁止另立。
+ *   - 有效步数口径复用 stepsSync.isValidStepRecord（活动期内已同步即有效，不依赖 locked），与 stepsQuery/buildTrend 一致，禁止另立。
  *   - first_reach_at 必须「按 synced_at 升序累加，首次达到或超过」记录，不是最后一条也不是随便取。
  *   - total_steps=0 不进榜。
  *   - 投影脱敏 nickname，不下发 _openid / phone / sync_count。
@@ -28,7 +28,7 @@
  * 解耦：本模块不 require wx-server-sdk。
  */
 
-const { dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
 const { maskNickname } = require('../common/mask');
 
 /**
@@ -51,16 +51,15 @@ function getActivityRecords(store, activityId) {
 }
 
 /**
- * 有效步数口径（复用 stepsQuery：locked || date===today）。
+ * 有效步数口径（复用 stepsSync.isValidStepRecord：活动期内已同步即有效，不依赖 locked）。
  * @param {object} r StepRecord
  * @param {string} today
  * @returns {boolean}
  */
 function isValidRecord(r, today, startDate) {
-  // 有效步数：locked || date===today（口径复用 stepsQuery）；且在活动期内（date>=start_date），
-  // 过滤早期 sync bug 回灌的活动期外脏记录。startDate 缺失 → 不强加过滤（兜底）。
-  if (!r.locked && r.date !== today) return false;
-  return !startDate || r.date >= startDate;
+  // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
+  // 详见 stepsSync.isValidStepRecord 注释。startDate 缺失 → 不强加左界（兜底）。
+  return isValidStepRecord(r, today, startDate);
 }
 
 /**

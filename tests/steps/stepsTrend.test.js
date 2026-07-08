@@ -1,7 +1,7 @@
 /**
  * steps.trend 聚合纯函数单测（F4）。
  * 区间=最近 range 天（含今日），无记录日期补 0，按 date 升序；
- * 复用有效步数口径（locked || 今日）；empty=true 当且仅当区间全 0 且无任何有效记录。
+ * 复用有效步数口径（活动期内已同步即有效，不依赖 locked；activity 缺失→不过滤活动期）；empty=true 当且仅当区间全 0。
  */
 const { buildTrend, buildDateRange, projectTrend } = require('../../cloudfunctions/steps/stepsTrend');
 
@@ -84,22 +84,41 @@ describe('buildTrend 趋势（F4）', () => {
     expect(out2.range).toBe(7);
   });
 
-  it('复用有效步数口径：未锁定且非今日的记录不计入趋势', () => {
+  it('复用有效步数口径：活动期内已同步即有效（不依赖 locked）', () => {
     const records = [
-      rec({ date: '2026-07-02', steps: 9000, locked: false }), // 非今日且未锁 → 无效
+      rec({ date: '2026-07-02', steps: 9000, locked: false }), // 非今日未锁 → 新口径仍有效
       rec({ date: '2026-07-01', steps: 8000, locked: true })
     ];
     const out = buildTrend({ records, range: 7, now: NOW });
     const byDate = new Map(out.list.map((i) => [i.date, i.steps]));
-    expect(byDate.get('2026-07-02')).toBe(0); // 无效 → 0
+    expect(byDate.get('2026-07-02')).toBe(9000); // 新口径有效
     expect(byDate.get('2026-07-01')).toBe(8000);
   });
 
-  it('空态：无任何有效记录 → empty=true（R4.3）', () => {
+  it('activity 过滤：活动期外记录不计入趋势（与 today/history 同口径）', () => {
     const records = [
-      rec({ date: '2026-07-02', steps: 9000, locked: false }) // 非今日且未锁 → 无效
+      rec({ date: '2026-06-29', steps: 9999, locked: true }), // 区间内但 date<start_date → 无效
+      rec({ date: '2026-07-01', steps: 8000, locked: true }), // 活动期内
+      rec({ date: '2026-07-03', steps: 7000, locked: false }) // 今日
     ];
-    const out = buildTrend({ records, range: 7, now: NOW });
+    const out = buildTrend({
+      records, range: 7, now: NOW,
+      activity: { start_time: '2026-07-01T00:00:00+08:00' }
+    });
+    const byDate = new Map(out.list.map((i) => [i.date, i.steps]));
+    expect(byDate.get('2026-06-29')).toBe(0); // 活动期外被过滤
+    expect(byDate.get('2026-07-01')).toBe(8000);
+    expect(byDate.get('2026-07-03')).toBe(7000);
+  });
+
+  it('空态：区间内仅活动期外记录 → empty=true（R4.3）', () => {
+    const records = [
+      rec({ date: '2026-07-01', steps: 9000, locked: true }) // 区间内但 date<start_date → 无效
+    ];
+    const out = buildTrend({
+      records, range: 7, now: NOW,
+      activity: { start_time: '2026-07-02T00:00:00+08:00' }
+    });
     expect(out.empty).toBe(true);
     expect(out.list.every((i) => i.steps === 0)).toBe(true);
   });

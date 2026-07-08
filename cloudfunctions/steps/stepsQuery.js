@@ -1,8 +1,9 @@
 /**
  * steps.today / steps.history 业务纯函数（对齐技术架构 §6.3/§5.5，PRD F3 R3.1，开发计划 E3）。
  *
- * 区分「有效步数」（参与排名/累计的口径）与「原始步数」：
- *   - 有效步数 = locked=true 的记录 OR 今日（now 所在日）已入库的记录（架构 §6.3「仅 locked 或今日已入库的有效步数」）。
+ * 「有效步数」（参与排名/累计的口径，全链路统一 isValidStepRecord）：
+ *   - 有效步数 = 活动期内已同步的非未来日（date>=startDate && date<=today，不依赖 locked）。
+ *     旧口径 `locked||today` 已废弃（dailyLock 未部署时历史步数被误过滤→home 全 0）；locked 仅作 sync 写入禁止覆盖标记。
  *   - 历史区间查询返回有效步数；today 返回当日已入库步数。
  *
  * 红线：
@@ -12,7 +13,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { projectStep, dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('./stepsSync');
+const { projectStep, dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('./stepsSync');
 
 /**
  * 取某用户某活动的全部 StepRecord（按 date 升序）。
@@ -54,10 +55,10 @@ async function getToday(params) {
 
   const recs = getUserRecords(store, userId, activityId);
   const todayRec = recs.find((r) => r.date === today) || null;
-  // 累计：仅有效步数（locked 或今日已入库），且在活动期内（过滤活动期外脏记录）。
+  // 累计：全链路统一有效步数口径 isValidStepRecord（活动期内已同步的非未来日，不依赖 locked）。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
   const total = recs
-    .filter((r) => (r.locked || r.date === today) && (!startDate || r.date >= startDate))
+    .filter((r) => isValidStepRecord(r, today, startDate))
     .reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
 
   return {
@@ -98,11 +99,9 @@ async function getHistory(params) {
   const to = p.to || '';
 
   const recs = getUserRecords(store, userId, activityId);
-  // 有效步数过滤：locked 或今日已入库，且在活动期内（过滤活动期外脏记录）。
+  // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
-  const valid = recs.filter(
-    (r) => (r.locked || r.date === today) && (!startDate || r.date >= startDate)
-  );
+  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate));
   // 区间过滤。
   const ranged = valid.filter((r) => {
     if (from && r.date < from) return false;

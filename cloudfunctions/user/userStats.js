@@ -2,14 +2,15 @@
  * user.stats 业务纯函数（对齐 PRD F4 R4.1/R4.4，开发计划阶段 F4）。
  *
  * 个人主页统计：
- *   - today_steps  当日有效步数（今日已入库）
- *   - total_steps  累计有效步数（locked + 今日）
+ *   - today_steps  当日步数（今日已入库）
+ *   - total_steps  累计有效步数（活动期内已同步的非未来日）
  *   - total_days   活动期天数（start_date ~ 今日，activity 缺失/未开始 → 0）
  *   - active_days  已参与天数（有效步数记录的不同 date 数）
  *   - my_rank      本地轨占位 null（真实排名留 F5）
  *
  * 复用约定（与 stepsQuery 完全一致，绝不另立口径）：
- *   - 「有效步数」= locked=true 的记录 OR 今日（now 所在日）已入库的记录。
+ *   - 「有效步数」= 活动期内已同步的非未来日（isValidStepRecord，不依赖 locked）。
+ *     locked 仅作 syncSteps 写入「禁止覆盖」标记，详见 stepsSync.isValidStepRecord。
  *   - today_steps / total_steps 口径直接复用 stepsQuery.getToday。
  *   - 日期计算复用 stepsSync.dateFromTimestamp。
  *
@@ -19,7 +20,7 @@
  * 本地轨：records/activity/now/config 注入式，纯函数可单测；不调真实微信云 API。
  */
 
-const { dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
 
 /**
  * 取该用户该活动的全部 StepRecord（按 date 升序）。
@@ -84,10 +85,8 @@ function buildStats(params) {
   // 活动期外脏记录（locked=true 但 date<start_date）。activity 缺失 → '' → 不强加过滤（兜底）。
   const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
 
-  // 有效步数口径：locked || date===today（与 stepsQuery 完全一致），且在活动期内。
-  const valid = recs.filter(
-    (r) => (r.locked || r.date === today) && (!startDate || r.date >= startDate)
-  );
+  // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
+  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate));
 
   // today_steps：当日有效步数。
   const todayRec = valid.find((r) => r.date === today);

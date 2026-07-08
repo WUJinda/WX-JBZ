@@ -5,7 +5,7 @@
  * 区间内无记录的日期补 steps:0；无任何有效记录时 empty=true（R4.3 空态）。
  *
  * 复用约定（与 stepsQuery 一致，绝不另立口径）：
- *   - 「有效步数」= locked=true 的记录 OR 今日（now 所在日）已入库的记录（架构 §6.3）。
+ *   - 「有效步数」= 活动期内已同步的非未来日（isValidStepRecord，不依赖 locked；activity 缺失→不过滤活动期）。
  *   - 日期计算复用 stepsSync.dateFromTimestamp(ts, timezoneOffsetMinutes)。
  *   - 配置复用 stepsSync.DEFAULT_CONFIG。
  *
@@ -15,7 +15,7 @@
  * 本地轨：records/now/config 注入式，纯函数可单测；不调真实微信云 API。
  */
 
-const { dateFromTimestamp, DEFAULT_CONFIG } = require('./stepsSync');
+const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('./stepsSync');
 
 /**
  * 取某用户某活动的全部 StepRecord（按 date 升序）。
@@ -72,6 +72,7 @@ function buildDateRange(today, range) {
  * @param {object} params
  * @param {object[]} params.records 该用户该活动的 StepRecord 子集（含有效与无效，内部按口径过滤）
  * @param {number} [params.range=7] 区间天数，仅接受 7 / 30，其余按 7 兜底（调用方兜底；此处再次兜底）
+ * @param {object} [params.activity] 活动文档（含 start_time；算活动期起点过滤活动期外脏记录）
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
  * @param {object} [params.config] 配置覆盖（timezoneOffsetMinutes）
  * @returns {{list:{date:string,steps:number}[], range:number, empty:boolean}}
@@ -91,8 +92,10 @@ function buildTrend(params) {
 
   const recs = sortRecords(p.records);
 
-  // 有效步数口径：locked || date===today（与 stepsQuery 完全一致）。
-  const valid = recs.filter((r) => r.locked || r.date === today);
+  // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
+  // activity 缺失 → startDate='' → 不强加左界（兜底，与 today/history 同口径）。
+  const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
+  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate));
 
   // 按 date 聚合：同日多条求和（理论上 (user,date) 唯一，聚合稳健）。
   const map = new Map();

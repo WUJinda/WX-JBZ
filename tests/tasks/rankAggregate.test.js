@@ -1,7 +1,7 @@
 /**
  * tasks.rankAggregate 业务纯函数单测（G1）：
  * first_reach_at 同分早达成排前 / 单条达成 / 0步不进榜；
- * 有效步数口径（locked||today）；个人榜排序；部门榜 total/avg/member_count；
+ * 有效步数口径（活动期内已同步即有效，不依赖 locked）；个人榜排序；部门榜 total/avg/member_count；
  * 小部门处理（可配阈值）；幂等覆盖写。
  */
 const {
@@ -103,28 +103,28 @@ describe('computeFirstReachAt（R5.1 同分排序核心）', () => {
 });
 
 describe('aggregateRanking 个人榜（有效步数口径 + 排序 + 脱敏）', () => {
-  it('有效步数口径 = locked || today（未锁非今日的不计入）', async () => {
-    // u1: 07-01 locked=100 + 07-02 未锁非今日=200(不计) + 07-03 today=50(计)
-    // 有效 = 100 + 50 = 150
+  it('有效步数口径 = 活动期内已同步即有效（不依赖 locked）', async () => {
+    // u1: 07-01 locked=100 + 07-02 未锁=200（新口径有效）+ 07-03 today=50
+    // 有效 = 100 + 200 + 50 = 350
     const store = makeStore({
       StepRecord: [
         rec('u1', '2026-07-01', 100, { locked: true }),
-        rec('u1', '2026-07-02', 200, { locked: false }), // 未锁非今日 → 不计
-        rec('u1', '2026-07-03', 50, { locked: false }) // 今日 → 计
+        rec('u1', '2026-07-02', 200, { locked: false }), // 新口径：活动期内已同步 → 有效
+        rec('u1', '2026-07-03', 50, { locked: false }) // 今日
       ],
       User: [user('u1', '甲', 'd1')]
     });
     const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
     expect(result.personal).toHaveLength(1);
-    expect(result.personal[0].total_steps).toBe(150);
+    expect(result.personal[0].total_steps).toBe(350);
   });
 
   it('total_steps=0 不进榜（R5.5）', async () => {
-    // u2 全部未锁非今日（有效=0）→ 不进榜
+    // u2: 07-02 steps=0 → 有效口径通过但 total=0 → 不进榜
     const store = makeStore({
       StepRecord: [
         rec('u1', '2026-07-01', 100, { locked: true }),
-        rec('u2', '2026-07-02', 200, { locked: false }) // 未锁非今日，有效=0
+        rec('u2', '2026-07-02', 0, { locked: false }) // 0 步 → total=0 不进榜
       ],
       User: [user('u1', '甲', 'd1'), user('u2', '乙', 'd1')]
     });

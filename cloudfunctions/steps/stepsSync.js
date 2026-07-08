@@ -67,6 +67,32 @@ function activityStartDate(activity, offsetMinutes) {
 }
 
 /**
+ * 有效步数口径（全链路统一，buildStats/rankAggregate/stepsQuery/stepsTrend/syncSteps 共用）。
+ *
+ * 新口径（2026-07-08 起）：**活动期内已同步的非未来日** = `date >= startDate && date <= today`，
+ * **不再依赖 locked**。
+ *
+ * 变更背景：旧口径 `(locked || date===today) && date>=startDate` 要求历史日必须 locked 才算有效；
+ * 但 tasks 定时触发器（dailyLock）未部署时历史日永不锁定 → 用户已同步的历史步数被口径过滤
+ * → home「累计/参与天数/排名/趋势」进入即全 0（仅 sync 当下用 sync 返回值才正常）。
+ *
+ * 语义调整：`locked` 降级为 syncSteps 写入时「禁止覆盖」的标记（防活动后期篡改），不再是
+ * 「是否有效」的前置。理由：步数解密自微信运动（真实不可伪造）+ 每日频控 + 活动结束 sync 拒绝
+ * （STEP_ACTIVITY_CLOSED）→ 活动期内允许 sync 用最新真实值刷新历史日，结束后自然固化。
+ *
+ * @param {object} r StepRecord（须含 date 字符串）
+ * @param {string} today YYYY-MM-DD（北京日）
+ * @param {string} [startDate] 活动期起点 YYYY-MM-DD（空串/缺省 → 不强加左界，兜底向后兼容）
+ * @returns {boolean}
+ */
+function isValidStepRecord(r, today, startDate) {
+  if (!r || typeof r.date !== 'string' || !r.date) return false;
+  if (r.date > today) return false; // 非未来日
+  if (startDate && r.date < startDate) return false; // 活动期内
+  return true;
+}
+
+/**
  * 异常阈值判定（R3.6）。
  * @param {number} steps
  * @param {number} threshold
@@ -222,9 +248,9 @@ async function syncSteps(params) {
         date: item.date,
         steps: item.steps,
         abnormal,
-        // P1 历史日即锁：date<today 视为已固化 → locked=true（口径 locked || date===today），
-        // 保证回灌进来的历史步数立即成为有效步数；今日 locked=false（当日可多次同步刷新）。
-        // 与 dailyLock（锁昨日）互补、幂等不冲突。
+        // P1 历史日即锁：date<today → locked=true。新口径（isValidStepRecord）下 locked 不再决定
+        // 「是否有效」（历史日已同步即有效），仅作 sync 写入「禁止覆盖」标记防活动后期篡改；
+        // 今日 locked=false（当日可多次同步刷新）。与 dailyLock（锁昨日）互补、幂等不冲突。
         locked: item.date < today,
         synced_at: syncedAtIso,
         sync_count: item.date === today ? newCount : 0,
@@ -242,9 +268,11 @@ async function syncSteps(params) {
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const todayRecord = userRecs.find((r) => r.date === today) || null;
-  // total/history 仅算活动期内（与 upsert 写入过滤同口径）：过滤早期 bug 回灌的 date<start_date
-  // 脏记录（locked=true 但活动期外），避免累计虚高、history 混入活动期外噪音。
-  const inRangeRecs = startDate ? userRecs.filter((r) => r.date >= startDate) : userRecs;
+  // total/history 用全链路统一有效步数口径 isValidStepRecord（活动期内已同步的非未来日）。
+  // sync 写入已过滤未来日/活动期外，store 内本就只有合法记录；此处显式用统一口径，与
+  // buildStats/getToday 完全一致，消除「sync total（旧宽松）vs stats total（旧严格 locked||today）」
+  // 的分叉（曾是「同步后累计正常、刷新后又变小」根因）。
+  const inRangeRecs = userRecs.filter((r) => isValidStepRecord(r, today, startDate));
   const total = inRangeRecs.reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
 
   return {
@@ -261,6 +289,7 @@ module.exports = {
   aggregateByDate,
   dateFromTimestamp,
   activityStartDate,
+  isValidStepRecord,
   isAbnormal,
   projectStep,
   DEFAULT_CONFIG

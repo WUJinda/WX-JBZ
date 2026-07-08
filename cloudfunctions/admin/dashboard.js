@@ -5,15 +5,15 @@
  *   - participated：store.User 中 join_status==='joined' 计数。
  *   - whitelistTotal：store.Whitelist 计数。
  *   - rate：participated / whitelistTotal，除零→0。
- *   - totalSteps：store.StepRecord 有效步数（locked||today，非异常，活动期内）steps 求和。
+ *   - totalSteps：store.StepRecord 有效步数（活动期内已同步的非未来日，非异常）steps 求和。
  *   - validParticipants：至少有一条有效 StepRecord 且 join_status==='joined' 的不同 user_id 数。
  *   - avgSteps：totalSteps / validParticipants，除零→0。
  *   - dailyActive：按 date 分组，每日 count distinct user_id（有同步行为）；近 trendDays 天升序，缺日补 0。
  *   - deptRank：直接读 store.RankCache（type==='dept' && activity_id）按 rank 升序（R8.5 复用，不重算）。
  *
  * 红线：
- *   - 有效步数口径复用 `locked || date===today`（与 stepsQuery/rankAggregate/userStats 一致，禁止另立）；
- *     且排除 abnormal（待裁定异常不计入）+ 活动期过滤（date>=start_date，剔除早期 sync bug 回灌的活动期外脏记录）。
+ *   - 有效步数口径复用 stepsSync.isValidStepRecord（活动期内已同步即有效，不依赖 locked；与 stepsQuery/rankAggregate/userStats 一致）；
+ *     dashboard 额外排除 abnormal（待裁定异常不计入）+ 活动期过滤（date>=start_date，剔除活动期外脏记录）。
  *   - validParticipants 校验 join_status==='joined'（与 rankAggregate 个人榜同口径，防已注销/未注册用户灌大人均分母）。
  *   - deptRank 复用 RankCache，绝不重算（R8.5）。
  *   - 投影脱敏，不下发 _openid / phone / sync_count。
@@ -27,20 +27,23 @@ const { dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('../ste
 const DEFAULT_TREND_DAYS = 30;
 
 /**
- * 有效步数口径（复用 stepsQuery / rankAggregate / userStats）：
- *   locked || date===today，且非异常（abnormal），且在活动期内（date>=start_date）。
+ * 有效步数口径（与 stepsSync.isValidStepRecord 同源 + dashboard 额外排除 abnormal）：
+ *   活动期内已同步的非未来日（date>=startDate && date<=today，**不依赖 locked**），且非异常。
  * - 排除 abnormal：待裁定异常不计入看板（裁定 ignore/zero 后 abnormal 必为 false，已认可/清零的仍参与）。
- * - 活动期过滤：剔除早期 sync bug 回灌的活动期外脏记录（locked=true 但 date<start_date），
- *   与 userStats/rankAggregate 同口径；startDate 缺失 → 兜底不过滤。
+ * - 活动期过滤：剔除早期 sync bug 回灌的活动期外脏记录；startDate 缺失 → 兜底不过滤。
+ * - 不 require stepsSync.isValidStepRecord（避免 admin→steps 跨域 require 致 sync-shared manifest 复杂化），
+ *   此处同步实现并标明同源；口径变更时与 isValidStepRecord 一起改。
  * @param {object} r StepRecord
  * @param {string} today YYYY-MM-DD
  * @param {string} [startDate] 活动期起点 YYYY-MM-DD（缺失→不过滤）
  * @returns {boolean}
  */
 function isValidRecord(r, today, startDate) {
-  if (!r.locked && r.date !== today) return false;
+  if (!r || typeof r.date !== 'string' || !r.date) return false;
+  if (r.date > today) return false;
+  if (startDate && r.date < startDate) return false;
   if (r.abnormal) return false;
-  return !startDate || r.date >= startDate;
+  return true;
 }
 
 /**
@@ -102,7 +105,7 @@ function buildDashboard(params) {
   // 3. 参与率（除零→0）。
   const rate = whitelistTotal > 0 ? participated / whitelistTotal : 0;
 
-  // 4. 有效步数记录（口径 locked||today，非异常，活动期内），按 activity_id 过滤。
+  // 4. 有效步数记录（口径：活动期内已同步的非未来日，非异常；见 isValidRecord），按 activity_id 过滤。
   const activityRecords = records.filter(
     (r) => r && (activityId == null || r.activity_id === activityId)
   );
@@ -139,7 +142,7 @@ function buildDashboard(params) {
 
   // 7. 日活：按 date 分组，每日 count distinct user_id（有同步行为）。
   //    口径：活动期内（start_date~today）、非异常、有同步记录即视为当日活跃
-  //    （不要求 locked||today——日活看「有无同步动作」，与有效步数口径互补）。
+  //    （日活口径与有效步数一致，算「当日有同步动作的 distinct 用户」，反映参与活跃度）。
   //    返回近 trendDays 天升序，缺日补 0。
   const dailyMap = new Map(); // date -> Set(user_id)
   for (const r of activityRecords) {
