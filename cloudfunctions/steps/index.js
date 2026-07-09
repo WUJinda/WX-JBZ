@@ -110,7 +110,9 @@ const handlers = {
   sync: async (event, context) => {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅用 OPENID，禁止 event.user_id（防越权读写他人步数）
-    const activityId = event && event.activity_id;
+    // activity_id 兜底（与 today/history/trend 一致）：home 冷启动时 getActivityId() 可能返回空串
+    //   → activity_id 缺失会让 StepRecord 三字段之一为空、撞唯一索引 null 坑。后端查当前活动兜底。
+    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const jsCode = event && event.code;
     const iv = event && event.iv;
     const encryptedData = event && event.encrypted_data;
@@ -135,6 +137,11 @@ const handlers = {
     const { sessionKey } = await code2Session(jsCode);
     // 立即解密 → stepInfoList。
     const { stepInfoList } = decryptSteps({ sessionKey, iv, encryptedData });
+    // 诊断日志：确认解密出来的步数数据长度（为 0 说明微信运动确实没数据或解密失败）。
+    console.log('[sync] decrypted stepInfoList length=' + (stepInfoList && stepInfoList.length));
+    if (stepInfoList && stepInfoList.length > 0) {
+      console.log('[sync] first 3 steps:', JSON.stringify(stepInfoList.slice(0, 3)));
+    }
     // sessionKey 变量自此不再被引用（GC 回收）；不落库、不下发。
 
     const store = {
@@ -155,6 +162,8 @@ const handlers = {
       activity,
       config
     });
+    // 诊断日志：确认 syncSteps 聚合后的结果（today.steps=0 且 total=0 说明确实没步数）。
+    console.log('[sync] syncSteps result today.steps=' + (result.today && result.today.steps) + ' total=' + result.total);
     // P0：把 syncSteps 在内存 store 上的 upsert 改动写回云库（syncSteps 已打 _dirty 标记）。
     // 修复历史 bug——sync 曾只改内存不落库，导致 StepRecord 集合实际为空、dashboard 统计全 0。
     await persistStepRecordsToCloud(cloud, store.StepRecord);
@@ -162,12 +171,10 @@ const handlers = {
     // 免前端 loadStats 二次查 RankCache——跨请求「写后读」会命中聚合前旧快照致「同步后排名不更新」。
     // triggerRankAggregateFresh 吸收「跨函数写后读」：steps 写 StepRecord 后 callFunction tasks 读
     // StepRecord，副本同步延迟窗口内 tasks 可能读不到本人刚写的记录 → 聚合缺本人 → RankCache 缺本人
-    // （表现：第一个同步者在榜、第二个同步者不在榜）。首次聚合拿不到本人 my_rank 且本人确有步数
-    // （total>0）时退避重试聚合，确保本人进 RankCache + sync 返回准确 my_rank。
+    // （表现：第一个同步者在榜、第二个同步者不在榜）。**即使 0 步也重试聚合**（2026-07-09 修改：
+    // 0 步用户也应进榜，只是排在最后），确保本人进 RankCache + sync 返回准确 my_rank。
     // 容错：聚合失败返回 null（triggerRankAggregateFresh 内部 catch），my_rank=null，不阻断 sync 主返回。
-    const { myRank } = await triggerRankAggregateFresh(cloud, activityId, openid, {
-      hasSteps: (result.total || 0) > 0
-    });
+    const { myRank } = await triggerRankAggregateFresh(cloud, activityId, openid);
     return Object.assign({}, result, { my_rank: myRank });
   },
 
@@ -233,27 +240,16 @@ const handlers = {
 // 改用 loadByWhere(cloud,'StepRecord',{user_id,activity_id}, STEP_RECORD_FIELDS) 精确拉取。
 
 /**
- * 判定是否唯一索引冲突（并发 upsert 时另一请求已插入同 (user_id,activity_id,date) 文档）。
- * 云开发 errCode -502005 / MongoDB 11000 / errMsg 含 duplicate key。
- */
-function isUniqueConflict(err) {
-  if (!err) return false;
-  const code = err.errCode || err.code;
-  const msg = String(err.errMsg || err.message || '');
-  return code === -502005 || code === 11000 || /duplicate key|E11000|already exists/i.test(msg);
-}
-
-/**
  * 云轨：把 syncSteps 在内存 store 上改动的 StepRecord 写回云库。
  * syncSteps 对每条改动 record 打 _dirty=true；_isNew=true 表示新建。
  *   - _isNew（或无 _id）→ upsert（见下 P0-2）
  *   - 有 _id 且 _dirty  → doc(_id).update()
  * 写回前剔除 _dirty / _isNew / _id 内部字段（不落库；_id 由库管理）。
  *
- * P0-2 并发去重：新建记录走 update-or-insert，防双击同步产生重复 StepRecord（致排行榜翻倍）：
- *   先 where(user_id,activity_id,date).update；updated===0 再 add；add 撞唯一索引
- *   idx_step_user_activity_date（控制台手动建）冲突 → 重试 update（另一并发请求已插入）。
- *   ※ 微信云开发 runTransaction 事务内禁批量 API，故用「唯一索引 + 应用层 upsert」而非事务。
+ * P0-2 并发去重：新建记录走 update-or-insert，防双击同步产生重复 StepRecord（致排行榜翻倍）。
+ *   由于云开发控制台手建的唯一索引不可靠（见 docs/排查-StepRecord-null索引冲突.md），
+ *   完全依赖应用层去重：先 where().update（第一层） → 未命中则 where().get（第二层），
+ *   命中则直接 update 覆盖；否则 add。
  *
  * P1-3：写库失败不再静默吞——收集失败条数上抛，前端不再假成功（与 admin 写回一致）。
  * 本地轨/单测不经此路径（直接调 syncSteps 纯函数注入 store）。
@@ -264,6 +260,8 @@ function isUniqueConflict(err) {
 async function persistStepRecordsToCloud(cloudSdk, records) {
   const db = cloudSdk.database();
   const dirty = (records || []).filter((r) => r && r._dirty);
+  // 诊断日志：确认 persist 收到的待写条数（若为 0 说明 syncSteps 未打 _dirty，问题在纯函数侧）。
+  console.log('[persist] dirty=' + dirty.length + ' user=' + (dirty[0] && dirty[0].user_id));
   const failed = [];
   for (const r of dirty) {
     // 剔除内部标记 + _id：add 时库生成 _id；update 时用 doc(_id) 定位、_id 不入 data。
@@ -278,18 +276,41 @@ async function persistStepRecordsToCloud(cloudSdk, records) {
           .collection('StepRecord')
           .where({ user_id: r.user_id, activity_id: r.activity_id, date: r.date })
           .update({ data: doc });
-        if (!upd || !upd.stats || upd.stats.updated === 0) {
-          try {
-            await db.collection('StepRecord').add({ data: doc });
-          } catch (addErr) {
-            if (isUniqueConflict(addErr)) {
-              // 并发：另一请求已插入 → 重试 update 覆盖为最新值。
-              await db
-                .collection('StepRecord')
-                .where({ user_id: r.user_id, activity_id: r.activity_id, date: r.date })
-                .update({ data: doc });
-            } else {
-              throw addErr;
+        const updated = upd && upd.stats && upd.stats.updated;
+        if (!updated) {
+          // update 未命中 → 先做「写前读」去重（并发控制，防双击同步产生重复）。
+          // 验证三字段不为 null（诊断：如果有文档三字段为 null，说明写入在丢字段）。
+          const preCheck = await db
+            .collection('StepRecord')
+            .where({ user_id: r.user_id, activity_id: r.activity_id, date: r.date })
+            .get();
+          const existing = preCheck && preCheck.data && preCheck.data[0];
+          if (existing) {
+            // 并发：另一请求已插完 → 直接 update 覆盖为最新值。
+            console.log(
+              '[persist] pre-check dup found, update date=' + r.date + ' _id=' + (existing._id || '?')
+            );
+            const upd3 = await db.collection('StepRecord').doc(existing._id).update({ data: doc });
+            const updated3 = upd3 && upd3.stats && upd3.stats.updated;
+            if (!updated3) {
+              console.warn('[persist] pre-check dup update failed date=' + r.date);
+            }
+          } else {
+            // 确实不存在 → 安全 add（删掉唯一索引后，并发窗口已被上方的 get 收窄）。
+            console.log(
+              '[persist] try add user_id=' + JSON.stringify(r.user_id) +
+              ' activity_id=' + JSON.stringify(r.activity_id) +
+              ' date=' + JSON.stringify(r.date)
+            );
+            try {
+              const addRes = await db.collection('StepRecord').add({ data: doc });
+              console.log('[persist] add ok date=' + r.date + ' _id=' + (addRes && addRes._id));
+            } catch (addErr) {
+              // 非冲突错误（集合/权限/字段问题）→ 上抛带完整错误（P1-3：不假成功）。
+              throw BizError(
+                CODE.SYS_DB_ERROR,
+                'StepRecord add 失败(' + r.date + '): ' + JSON.stringify(addErr)
+              );
             }
           }
         }

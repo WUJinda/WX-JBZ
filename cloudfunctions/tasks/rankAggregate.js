@@ -6,7 +6,7 @@
  *     · 遍历 StepRecord 按 user 聚合有效步数 total_steps（口径 = 活动期内已同步的非未来日，复用 stepsSync.isValidStepRecord）。
  *     · 算 first_reach_at（R5.1）：按 synced_at 升序遍历该用户有效 StepRecord，累加 steps，
  *       累计值首次 ≥ total_steps 的那条 record 的 synced_at。total_steps=0 的用户 first_reach_at=null。
- *     · 过滤 total_steps=0（R5.5 未产生有效步数不进榜）。
+ *     · **所有已报名用户均进榜，包括 total_steps=0**（2026-07-09 修改：0 步用户排在榜末）。
  *     · 按 total_steps desc / first_reach_at asc 排序，赋 rank。
  *     · 附脱敏 nickname + dept_name + dept_id（从 User/Department 关联）。
  *     · 覆盖写 RankCache(personal)。
@@ -19,7 +19,6 @@
  * 红线：
  *   - 有效步数口径复用 stepsSync.isValidStepRecord（活动期内已同步即有效，不依赖 locked），与 stepsQuery/buildTrend 一致，禁止另立。
  *   - first_reach_at 必须「按 synced_at 升序累加，首次达到或超过」记录，不是最后一条也不是随便取。
- *   - total_steps=0 不进榜。
  *   - 投影脱敏 nickname，不下发 _openid / phone / sync_count。
  *   - 幂等：覆盖写 RankCache，重复执行无副作用（§6.3）。
  *
@@ -129,8 +128,6 @@ function buildPersonalRanking({ store, activityId, today, startDate }) {
 
   const rows = [];
   for (const [userId, entry] of byUser.entries()) {
-    // R5.5：total_steps=0 不进榜。
-    if (!entry.total || entry.total <= 0) continue;
     const user = userMap.get(userId) || {};
     const hasUserCollection = Array.isArray(store.User);
     // 仅展示已报名用户（join_status === 'joined'）；查不到 User（未建号/已退出）的裸步数记录不进榜

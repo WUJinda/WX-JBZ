@@ -119,18 +119,21 @@ describe('aggregateRanking 个人榜（有效步数口径 + 排序 + 脱敏）',
     expect(result.personal[0].total_steps).toBe(350);
   });
 
-  it('total_steps=0 不进榜（R5.5）', async () => {
-    // u2: 07-02 steps=0 → 有效口径通过但 total=0 → 不进榜
+  it('total_steps=0 也进榜（2026-07-09 修改：0 步用户排在榜末）', async () => {
+    // u2: 07-02 steps=0 → 有效口径通过但 total=0 → 也进榜，排在最后
     const store = makeStore({
       StepRecord: [
         rec('u1', '2026-07-01', 100, { locked: true }),
-        rec('u2', '2026-07-02', 0, { locked: false }) // 0 步 → total=0 不进榜
+        rec('u2', '2026-07-02', 0, { locked: false }) // 0 步 → 也进榜，但排在最后
       ],
       User: [user('u1', '甲', 'd1'), user('u2', '乙', 'd1')]
     });
     const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
-    expect(result.personal).toHaveLength(1);
-    expect(result.personal[0].user_id).toBe('u1');
+    expect(result.personal).toHaveLength(2); // u1 和 u2 都进榜
+    expect(result.personal[0].user_id).toBe('u1'); // u1 排第一（100 步）
+    expect(result.personal[1].user_id).toBe('u2'); // u2 排第二（0 步）
+    expect(result.personal[1].total_steps).toBe(0);
+    expect(result.personal[1].first_reach_at).toBeNull(); // 0 步无 first_reach_at
   });
 
   it('按 total_steps desc 排序，赋 rank 从 1 起', async () => {

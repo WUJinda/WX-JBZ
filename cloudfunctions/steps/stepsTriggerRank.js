@@ -70,13 +70,9 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *   与 common/authMiddleware.assertJoinedFresh（user.join 写 User → steps 读 User 跨函数写后读）
  *   同类、同环境、已证真实存在。
  *
- * 解法：第一次聚合后取本人 my_rank，若为 null 且当前用户确有有效步数（hasSteps=true，排除
- *   「真 0 步不进榜」的正常情况），延迟重试聚合（参考 assertJoinedFresh 退避）。重试时副本已同步，
- *   tasks 能读到当前用户 → 覆盖写 RankCache → 当前用户进榜 + sync 返回准确 my_rank。
- *
- * 不重试的合法 null 场景：
- *   - hasSteps=false（用户当日 0 步，sync 未写有效记录）：R5.5 本就不进榜，null 正常；
- *   - openid 为空：无定位键，重试无意义（不应发生，sync 已校验 openid）。
+ * 解法：第一次聚合后取本人 my_rank，若为 null → 延迟重试聚合（参考 assertJoinedFresh 退避）。
+ *   重试时副本已同步，tasks 能读到当前用户 → 覆盖写 RankCache → 当前用户进榜 + sync 返回准确 my_rank。
+ *   **2026-07-09 修改：0 步用户也进榜（只是排在最后），不再区分 hasSteps**。
  *
  * 容错：聚合失败（triggerRankAggregate 内部 catch 返回 null）→ my_rank=null，不阻断 sync 主返回
  *   （StepRecord 已落库，定时任务兜底覆盖）。
@@ -89,17 +85,14 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {string} activityId 活动 id（透传给 tasks，空串由 tasks getActiveActivityId 兜底）
  * @param {string} openid 本人 openid（= StepRecord.user_id，用于定位 my_rank）
  * @param {object} [options]
- * @param {boolean} [options.hasSteps=true] 当前用户是否有有效步数（sync result.total>0）。
- *   true 且 my_rank=null → 判为写后读，重试；false → 0 步不进榜，不重试。
  * @param {number} [options.retries=2] 退避重试次数（每次先 sleep delayMs 再聚合）
  * @param {number} [options.delayMs=500] 退避间隔（ms）
  * @param {(ms:number)=>Promise} [options.sleepFn] 注入 sleep（便于单测；默认 Promise+setTimeout）
  * @returns {Promise<{rankRes:object|null, myRank:{rank,total_steps}|null}>}
- *   rankRes 最后一次聚合结果；myRank 本人排名或 null（未进榜/聚合失败/0步）。
+ *   rankRes 最后一次聚合结果；myRank 本人排名或 null（未进榜/聚合失败）。
  */
 async function triggerRankAggregateFresh(cloudSdk, activityId, openid, options) {
   const opts = options || {};
-  const hasSteps = opts.hasSteps !== false; // 默认 true（sync 调用方 total>0 时显式传 true）
   const retries = Number.isFinite(opts.retries) ? opts.retries : 2;
   const delayMs = Number.isFinite(opts.delayMs) ? opts.delayMs : 500;
   const sleep = typeof opts.sleepFn === 'function' ? opts.sleepFn : defaultSleep;
@@ -109,10 +102,11 @@ async function triggerRankAggregateFresh(cloudSdk, activityId, openid, options) 
   let myRank = openid ? extractMyRank(rankRes, openid) : null;
   if (myRank) return { rankRes, myRank };
 
-  // 合法 null：0 步用户（hasSteps=false）或 openid 缺失 → 不重试，null 是正常结果。
-  if (!hasSteps || !openid) return { rankRes, myRank };
+  // openid 缺失 → 无定位键，重试无意义（不应发生，sync 已校验 openid）。
+  if (!openid) return { rankRes, myRank };
 
-  // 写后读退避：有步数却没读到本人 → 副本延迟窗口，延迟重试聚合（覆盖写 RankCache 含本人）。
+  // 写后读退避：没读到本人 → 副本延迟窗口，延迟重试聚合（覆盖写 RankCache 含本人）。
+  // **2026-07-09：0 步用户也重试，确保所有已报名用户都进榜**。
   for (let i = 0; i < retries; i++) {
     await sleep(delayMs);
     rankRes = await triggerRankAggregate(cloudSdk, activityId);
