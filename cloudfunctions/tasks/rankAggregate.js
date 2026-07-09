@@ -193,26 +193,29 @@ function lookupDeptName(store, deptId, activityId) {
  * @returns {object[]} DeptRow[]（已排序、赋 rank）
  */
 function buildDeptRanking({ store, activityId, personalRows, minMembers }) {
-  // 按部门聚合：total=成员有效步数累加、member_count=有效成员数（已在 personalRows 中的成员即「有效成员」，R6.2）。
-  const byDept = new Map(); // dept_id -> { total, members: [] }
+  // 按部门聚合：total=成员有效步数累加、member_count=非 0 步成员数（2026-07-09：人均只算有步数的用户）。
+  const byDept = new Map(); // dept_id -> { total, activeMembers: [] }
   for (const row of personalRows) {
     const did = row.dept_id;
     if (!did) continue; // 无部门的用户不计入部门榜
-    if (!byDept.has(did)) byDept.set(did, { total: 0, members: [] });
+    if (!byDept.has(did)) byDept.set(did, { total: 0, activeMembers: [] });
     const entry = byDept.get(did);
-    entry.total += row.total_steps;
-    entry.members.push(row);
+    entry.total += row.total_steps; // total 照样累加（0 不影响）
+    // 只把非 0 步用户计入 activeMembers（用于算人均）
+    if (row.total_steps > 0) {
+      entry.activeMembers.push(row);
+    }
   }
 
   const rows = [];
   for (const [deptId, entry] of byDept.entries()) {
-    const memberCount = entry.members.length;
-    const avg = memberCount > 0 ? Math.round(entry.total / memberCount) : 0;
-    const small = memberCount < minMembers;
+    const activeCount = entry.activeMembers.length; // 只算非 0 步用户
+    const avg = activeCount > 0 ? Math.round(entry.total / activeCount) : 0;
+    const small = activeCount < minMembers;
     rows.push({
       dept_id: deptId,
       total_steps: entry.total,
-      member_count: memberCount,
+      member_count: activeCount,
       avg_steps: avg,
       small_sample: small,
       dept_name: lookupDeptName(store, deptId, activityId)

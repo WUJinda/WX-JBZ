@@ -27,6 +27,15 @@ const handlers = {
     const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const config = event && event.config;
     const now = event && event.now ? new Date(event.now) : undefined;
+
+    // 清理历史残留：idx_rankcache_type_activity 索引定义不完整（只按 type，不按 type+activity_id），
+    //   导致旧代码可能写入 type=null 的文档，后续 add 撞唯一索引。聚合前先删这类残留（幂等）。
+    try {
+      await cloud.database().collection('RankCache').where({ type: cloud.database().command.isNull(true) }).remove();
+    } catch (e) {
+      // 清理失败不影响主流程（残留下次再清）
+    }
+
     // 查活动文档（含 start_time）：供 aggregateRanking 算活动期起点，过滤活动期外脏记录。
     const activity = await getActivityById(cloud, activityId);
 
@@ -73,45 +82,77 @@ const handlers = {
 
 /**
  * 云轨：覆盖写某 (type, activity_id) 的 RankCache 单文档（P0-3）。
- * 从聚合产物 cacheAll（store.RankCache）里取该 (type, activity_id) 的文档，整体 upsert：
- *   where(type, activity_id) 命中 → doc(id).update({rows, updated_at})；否则 add 单文档。
- * 一次原子写，无并发 double（替代旧「查旧id→逐条add→删旧」非原子流程，并发聚合会双倍）。
+ * 采用与 StepRecord.persistStepRecordsToCloud 相同的三层并发去重：
+ *   1. 先 where(type,activity_id).update（命中则直接覆盖，零 add）
+ *   2. 未命中则 where().get() 预检查是否存在（防并发窗口）
+ *   3. 预检查命中则 doc(id).update，否则 add
+ *
+ * 由于云开发控制台手建的唯一 idx_rankcache_type_activity 不可靠（只按 type 字段，
+ *   不是 type+activity_id），完全依赖应用层去重，不依赖索引约束。
+ *   修复见 docs/排查-StepRecord-null索引冲突.md。
+ *
  * 定时任务容错：失败 warn 留痕（下次聚合幂等覆盖），不上抛以免一次失败致整次定时任务报错。
  * 本地轨单测不经此路径。
  * @param {object} cloudSdk
- * @param {string} type
+ * @param {string} type 'personal' | 'dept'
  * @param {string} activityId
- * @param {object[]} cacheAll store.RankCache（含 personal/dept 单文档）
+ * @param {object[]} cacheAll store.RankCache（含 personal/dept 单文档，纯函数已写入 rows/updated_at）
  */
 async function overwriteRankCacheToCloud(cloudSdk, type, activityId, cacheAll) {
   const db = cloudSdk.database();
+  // 从纯函数改过的 store.RankCache 取聚合结果（overwriteRankCache 确保该文档存在）。
   const doc = cacheAll.find((d) => d && d.type === type && d.activity_id === activityId);
-  const rows = (doc && doc.rows) || [];
-  const updatedAt = (doc && doc.updated_at) || new Date().toISOString();
+  if (!doc) {
+    console.warn('[写回失败] RankCache(' + type + ') 纯函数未生成文档，跳过写入');
+    return;
+  }
+  const rows = doc.rows || [];
+  const updatedAt = doc.updated_at || new Date().toISOString();
 
-  let existingId = null;
+  // 第一层：先尝试 update（若存在则直接覆盖，无需 add）。
+  try {
+    const upd = await db
+      .collection('RankCache')
+      .where({ type, activity_id: activityId })
+      .update({ data: { rows, updated_at: updatedAt } });
+    const updated = upd && upd.stats && upd.stats.updated;
+    if (updated) {
+      console.log('[写回成功] RankCache(' + type + ') updated existing document');
+      return; // 命中并覆盖，完成
+    }
+  } catch (err) {
+    console.warn('[写回失败] RankCache(' + type + ') first update attempt', (err && err.message) || err);
+  }
+
+  // 第二层：预检查是否存在（防并发窗口：另一聚合可能刚 add 完）。
   try {
     const res = await db
       .collection('RankCache')
       .where({ type, activity_id: activityId })
       .limit(1)
       .get();
-    existingId = res && res.data && res.data[0] && res.data[0]._id;
-  } catch (err) {
-    console.warn('[写回失败]', 'RankCache(' + type + ') lookup', (err && err.message) || err);
-  }
-  try {
-    if (existingId) {
-      await db.collection('RankCache').doc(existingId).update({
+    const existing = res && res.data && res.data[0];
+    if (existing) {
+      // 并发：另一请求已插完 → 直接 update 覆盖为最新值。
+      console.log('[写回] RankCache(' + type + ') pre-check found existing, updating');
+      await db.collection('RankCache').doc(existing._id).update({
         data: { rows, updated_at: updatedAt }
       });
-    } else {
-      await db.collection('RankCache').add({
-        data: { type, activity_id: activityId, rows, updated_at: updatedAt }
-      });
+      return;
     }
   } catch (err) {
-    console.warn('[写回失败]', 'RankCache(' + type + ') upsert', (err && err.message) || err);
+    console.warn('[写回失败] RankCache(' + type + ') pre-check get', (err && err.message) || err);
+  }
+
+  // 第三层：确实不存在 → add（并发窗口已被上方的 get 收窄）。
+  try {
+    await db.collection('RankCache').add({
+      data: { type, activity_id: activityId, rows, updated_at: updatedAt }
+    });
+    console.log('[写回成功] RankCache(' + type + ') added new document');
+  } catch (err) {
+    // add 失败（唯一索引冲突等）→ warn 留痕，不上抛（定时任务下次幂试覆盖）。
+    console.warn('[写回失败] RankCache(' + type + ') add', (err && err.message) || err);
   }
 }
 
