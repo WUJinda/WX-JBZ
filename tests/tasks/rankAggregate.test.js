@@ -136,6 +136,36 @@ describe('aggregateRanking 个人榜（有效步数口径 + 排序 + 脱敏）',
     expect(result.personal[1].first_reach_at).toBeNull(); // 0 步无 first_reach_at
   });
 
+  it('已报名但无任何 StepRecord 的用户也进榜（决策2：0 步排在榜末）', async () => {
+    // u1 有记录（100 步）；u2 已报名但从未同步（无任何 StepRecord）→ 也应进榜，total=0 排末尾
+    const store = makeStore({
+      StepRecord: [rec('u1', '2026-07-01', 100, { locked: true })],
+      User: [user('u1', '甲', 'd1'), user('u2', '乙', 'd1')]
+    });
+    const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
+    expect(result.personal).toHaveLength(2);
+    expect(result.personal[0].user_id).toBe('u1');
+    expect(result.personal[0].total_steps).toBe(100);
+    expect(result.personal[1].user_id).toBe('u2'); // 无记录用户排末尾
+    expect(result.personal[1].total_steps).toBe(0);
+    expect(result.personal[1].first_reach_at).toBeNull();
+  });
+
+  it('同一 (user,date) 重复 StepRecord 文档只计一次（B1：无索引聚合侧去重兜底）', async () => {
+    // u1 同一天 07-01 有两条记录（模拟写侧并发重复）：100 + 150。
+    // 去重取 steps 最大者（150），total 应为 150 而非 250（否则排名翻倍）。
+    const store = makeStore({
+      StepRecord: [
+        rec('u1', '2026-07-01', 100, { locked: true, synced_at: '2026-07-01T01:00:00.000Z' }),
+        rec('u1', '2026-07-01', 150, { locked: true, synced_at: '2026-07-01T02:00:00.000Z' }) // 重复文档
+      ],
+      User: [user('u1', '甲', 'd1')]
+    });
+    const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
+    expect(result.personal).toHaveLength(1);
+    expect(result.personal[0].total_steps).toBe(150); // 去重后取最大，非 250
+  });
+
   it('按 total_steps desc 排序，赋 rank 从 1 起', async () => {
     const store = makeStore({
       StepRecord: [

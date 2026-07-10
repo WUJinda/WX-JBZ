@@ -247,7 +247,7 @@ Page({
     const app = getApp();
     if (app && app.globalData) {
       app.globalData.userInfo = null;
-      app.globalData.isAdmin = false;
+      app.globalData.isAdmin = null; // 注销回到「未知」态（非布尔），下次 loadAdminFlag 重新查 profile（E2）
       app.globalData.loggedIn = false;
       app.globalData.currentActivity = { activity_id: '', name: '', status: '' };
     }

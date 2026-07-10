@@ -70,10 +70,11 @@ function chooseDepartment(params) {
     throw BizError(CODE.AUTH_USER_NOT_FOUND, 'chooseDept: user not found');
   }
 
-  // 部门已选定不可换：已选不同部门 → 拒绝；同部门 → 幂等成功（不改 updated_at）。
+  // 部门已选定不可换（决策3）：已选不同部门 → 专用码 BIZ_DEPT_LOCKED 拒绝；同部门 → 幂等成功（不改 updated_at）。
+  //   不复用 AUTH_JOIN_STATUS_DENIED(1004)：那是「报名状态不符」，语义不同，前端需差异化提示。
   if (user.dept_id && user.dept_id !== deptId) {
     throw BizError(
-      CODE.AUTH_JOIN_STATUS_DENIED,
+      CODE.BIZ_DEPT_LOCKED,
       '部门已选定，不可更换，如需调整联系管理员'
     );
   }

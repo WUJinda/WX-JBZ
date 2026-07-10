@@ -1,7 +1,7 @@
 /**
  * user.chooseDept 单测（选部门，与报名解耦）：
  *   - 写 dept_id + updated_at，不动 join_status；
- *   - 部门已选定不可换（已选不同部门 → AUTH_JOIN_STATUS_DENIED）；
+ *   - 部门已选定不可换（已选不同部门 → BIZ_DEPT_LOCKED）；
  *   - 同部门幂等（不改 updated_at）；
  *   - 部门不存在 / 用户不存在 / 缺参 → 对应错误码。
  */
@@ -78,12 +78,12 @@ describe('user.chooseDept 纯函数（选部门，与报名解耦）', () => {
   });
 
   describe('部门已选定不可换', () => {
-    it('已选 d_01 再选 d_02 → 拒绝 AUTH_JOIN_STATUS_DENIED', () => {
+    it('已选 d_01 再选 d_02 → 拒绝 BIZ_DEPT_LOCKED（决策3 专用码）', () => {
       const { store, user } = makeStore({ dept_id: 'd_01' });
       const err = catchCode(() =>
         chooseDepartment({ store, openid: 'oU', deptId: 'd_02', now: NOW })
       );
-      expect(err.code).toBe(CODE.AUTH_JOIN_STATUS_DENIED);
+      expect(err.code).toBe(CODE.BIZ_DEPT_LOCKED);
       expect(user.dept_id).toBe('d_01'); // 未被改
     });
   });

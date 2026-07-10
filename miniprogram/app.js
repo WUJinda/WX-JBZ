@@ -34,7 +34,9 @@ App({
     // F1：全局活动上下文（activity 页 loadActivity 成功后写入；各页读 activity_id 替代硬编码 a_demo_001）。
     currentActivity: { activity_id: '', name: '', status: '' },
     // P1-7：admin 路由守卫用（profile 下发 is_admin 后写入）。
-    isAdmin: false
+    // null=未知（未查 profile）；true/false=已查。home loadAdminFlag 用 typeof==='boolean' 区分，
+    // 初值须非布尔（null）否则冷启动恒短路、管理员 home 入口不显示（E2 修复）。
+    isAdmin: null
   },
 
   /** 取当前活动 id（各页替代硬编码 a_demo_001；空串时后端 handler 兜底查 active 活动）。 */

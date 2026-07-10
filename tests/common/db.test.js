@@ -137,13 +137,26 @@ describe('loadByWhere（按 where + field 分页加载，P0-5）', () => {
     expect(rows).toHaveLength(150); // PAGE=100 → 两轮拉取合并
   });
 
-  it('查询异常（collection 抛错）→ 返回空数组兜底', async () => {
+  it('集合未创建（errCode -502005）→ 返回空数组兜底', async () => {
     const cloud = {
       database: () => ({
-        collection() { throw new Error('collection not found'); }
+        collection() {
+          const e = new Error('database collection not exists');
+          e.errCode = -502005;
+          throw e;
+        }
       })
     };
     const rows = await loadByWhere(cloud, 'NotExist', { x: 1 });
     expect(rows).toEqual([]);
+  });
+
+  it('其他 DB 异常（超时/权限等）→ 上抛，不静默返空（A1：防假成功）', async () => {
+    const cloud = {
+      database: () => ({
+        collection() { throw new Error('db timeout'); }
+      })
+    };
+    await expect(loadByWhere(cloud, 'User', { x: 1 })).rejects.toThrow('db timeout');
   });
 });

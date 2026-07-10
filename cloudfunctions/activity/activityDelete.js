@@ -8,6 +8,8 @@
  *   - 重置 User.join_status（云轨 resetUserJoinStatusToCloud 把 joined → pending，参与人数归零；
  *     join_status 全局不绑 activity_id，不清则删活动后看板参与人数仍是旧值）。dept_id 不动（部门与活动无关）。
  *   - 找不到活动 → BIZ_PARAM_MISSING。
+ *   - 状态守卫（决策1，2026-07-10）：仅 ended（已结束）或 terminated（已终止）活动可删；
+ *     进行中 active / 未开始 pending 删活动会丢失在跑数据 → BIZ_ACTIVITY_NOT_REMOVABLE。
  *
  * 与 terminate 的结构差异：
  *   - terminate 纯函数就地改文档（terminated=true）→ 云轨 upsert 写回；
@@ -22,6 +24,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
+const { deriveStatus } = require('./activityStatus');
 
 /**
  * 被删活动投影（供前端提示 + 云轨定位 activity_id）。
@@ -44,10 +47,12 @@ function projectDeletedActivity(a) {
  * @param {object} store mock db（{ Activity: object[] }）
  * @param {object} params
  * @param {string} params.activity_id 目标活动 id
+ * @param {Date|number} [params.now] 当前时间（状态守卫推算用，注入便于单测；默认 deriveStatus 内部 new Date()）
  * @returns {object} projectDeletedActivity 结果（含 activity_id 供云轨批量 remove）
  * @throws {BizError}
  *   - activity_id 空 / 活动不存在 → BIZ_PARAM_MISSING
  *   - store.Activity 缺失 → SYS_DB_ERROR
+ *   - 活动进行中/未开始（非 ended/terminated）→ BIZ_ACTIVITY_NOT_REMOVABLE
  */
 function deleteActivity(store, params) {
   const p = params || {};
@@ -61,6 +66,15 @@ function deleteActivity(store, params) {
   const activity = store.Activity.find((a) => a && a.activity_id === activityId);
   if (!activity) {
     throw BizError(CODE.BIZ_PARAM_MISSING, 'deleteActivity: activity not found');
+  }
+  // 决策1：仅已结束（ended）或已终止（terminated）活动可删；进行中/未开始删活动会丢失在跑数据，拒绝。
+  //   deriveStatus 优先判 terminated→ended，故 terminated 活动 status 必为 ended；显式判 terminated 更清晰。
+  const status = deriveStatus(activity, p.now === undefined ? undefined : p.now);
+  if (activity.terminated !== true && status !== 'ended') {
+    throw BizError(
+      CODE.BIZ_ACTIVITY_NOT_REMOVABLE,
+      '活动进行中或未开始，不可删除（仅已结束或已终止的活动可删除）'
+    );
   }
   return projectDeletedActivity(activity);
 }

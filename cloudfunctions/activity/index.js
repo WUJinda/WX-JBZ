@@ -203,7 +203,7 @@ const handlers = {
     assertAdmin(store, context.openid);
     const activityId = (event && event.activity_id) || '';
     const now = (event && event.now) || new Date().toISOString();
-    const result = deleteActivity(store, { activity_id: activityId });
+    const result = deleteActivity(store, { activity_id: activityId, now });
     // 先重置报名、后硬删活动：reset 幂等且轻量（按 join_status 过滤，与 activity_id 无关），
     // deleteActivityToCloud 不幂等（活动文档删后重试 delete 会被纯函数 find 不到活动拦下抛
     // BIZ_PARAM_MISSING）。先 reset 保证「参与人数归零」不受 delete 部分集合删除失败影响——

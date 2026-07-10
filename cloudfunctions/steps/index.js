@@ -74,13 +74,22 @@ async function code2Session(jsCode) {
   });
   const raw = await new Promise((resolve, reject) => {
     const req = https.request(
-      { hostname: 'api.weixin.qq.com', path: '/sns/jscode2session?' + qs, method: 'GET' },
+      {
+        hostname: 'api.weixin.qq.com',
+        path: '/sns/jscode2session?' + qs,
+        method: 'GET',
+        timeout: 5000 // C2：socket 超时 5s，防微信 API 挂起拖垮云函数（默认无超时会一直等到函数 timeout）
+      },
       (res) => {
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => resolve(data));
       }
     );
+    req.on('timeout', () => {
+      // socket 空闲超时 → 主动销毁触发 'error' → reject，免长挂耗尽云函数执行时间。
+      req.destroy(new Error('jscode2session timeout(5s)'));
+    });
     req.on('error', (e) => reject(new Error('jscode2session network error: ' + (e && e.message))));
     req.end();
   });
@@ -116,7 +125,7 @@ const handlers = {
     const jsCode = event && event.code;
     const iv = event && event.iv;
     const encryptedData = event && event.encrypted_data;
-    const config = event && event.config;
+    // C1：config 不取自 event（客户端不可信，防覆盖服务端时区/阈值等配置）；syncSteps 用内置 DEFAULT_CONFIG。
 
     // P1-1：sync 要求已报名（架构 §4.3：steps.sync 需 join_status=joined）。
     // 用户存在性已由 main 的 requireUser 统一校验（context.user）；此处校验报名状态，
@@ -159,8 +168,7 @@ const handlers = {
       userId,
       activityId,
       stepInfoList,
-      activity,
-      config
+      activity
     });
     // 诊断日志：确认 syncSteps 聚合后的结果（today.steps=0 且 total=0 说明确实没步数）。
     console.log('[sync] syncSteps result today.steps=' + (result.today && result.today.steps) + ' total=' + result.total);
@@ -293,7 +301,9 @@ async function persistStepRecordsToCloud(cloudSdk, records) {
             const upd3 = await db.collection('StepRecord').doc(existing._id).update({ data: doc });
             const updated3 = upd3 && upd3.stats && upd3.stats.updated;
             if (!updated3) {
-              console.warn('[persist] pre-check dup update failed date=' + r.date);
+              // C3：预检查命中但 update 0 行（文档刚被并发删除等罕见情况）→ 计入 failed，不静默（P1-3）。
+              console.warn('[persist] pre-check dup update 0 rows date=' + r.date);
+              failed.push(r.date || 'unknown');
             }
           } else {
             // 确实不存在 → 安全 add（删掉唯一索引后，并发窗口已被上方的 get 收窄）。

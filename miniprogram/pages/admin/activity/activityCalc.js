@@ -70,4 +70,18 @@ function formatPublishState(publish) {
   return publish === true || publish === 'true' ? '已发布' : '未发布';
 }
 
-module.exports = { validateActivityForm, formatPublishState, isValidTime };
+/**
+ * picker 纯日期串（YYYY-MM-DD）→ 后端带时区 ISO 串（修时区 bug E1）。
+ * 纯日期串 Date.parse 按 UTC 解析，会导致活动在北京时间结束日早 8 点就翻 ENDED：
+ *   end_time='2026-07-21' → Date.parse 按 UTC 00:00 = 北京 08:00，cur>end 在结束日早 8 点即成立
+ *   → 同步被提前截断 / 排名提前冻结。补 +08:00 后前后端 Date.parse 均按北京时间正确翻转。
+ * @param {string} dateStr YYYY-MM-DD（picker 产出）
+ * @param {boolean} endOfDay true=当日 23:59:59（end_time/signup_deadline 截止），false=当日 00:00:00（start_time）
+ * @returns {string} 形如 '2026-07-21T23:59:59+08:00'；空入参返回 ''
+ */
+function toDateTime(dateStr, endOfDay) {
+  if (!dateStr) return '';
+  return endOfDay ? dateStr + 'T23:59:59+08:00' : dateStr + 'T00:00:00+08:00';
+}
+
+module.exports = { validateActivityForm, formatPublishState, isValidTime, toDateTime };

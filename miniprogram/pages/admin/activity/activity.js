@@ -8,7 +8,7 @@
 //   - 本页只展示/提交活动配置字段（name/start_time/end_time/signup_deadline/rules/publish），无敏感字段。
 //   - 进入即调 activity.get 回填现有活动（修「无法修改」根因——此前 onLoad 只取 id 不回填）。
 //   - 本地轨：getApp().api 不存在 → 占位提示；api.call 失败 → .catch 错误提示，不白屏。
-const { validateActivityForm, formatPublishState } = require('./activityCalc');
+const { validateActivityForm, formatPublishState, toDateTime } = require('./activityCalc');
 const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 /** 后端 ISO/日期串 → picker 用的 YYYY-MM-DD（取前 10 位；空值返回空串）。 */
@@ -142,9 +142,11 @@ Page({
           action: 'save',
           activity_id: this.data.activityId,
           name: this.data.name,
-          start_time: this.data.start_time,
-          end_time: this.data.end_time,
-          signup_deadline: this.data.signup_deadline || null,
+          // E1：picker 纯日期串补 +08:00 时区再传后端，否则 Date.parse 按 UTC 解析致活动
+          //   在北京时间结束日早 8 点就翻 ENDED（同步被截断 / 排名提前冻结）。
+          start_time: toDateTime(this.data.start_time, false),
+          end_time: toDateTime(this.data.end_time, true),
+          signup_deadline: this.data.signup_deadline ? toDateTime(this.data.signup_deadline, true) : null,
           rules: this.data.rules,
           publish: this.data.publish
         },

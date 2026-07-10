@@ -6,7 +6,7 @@
  *     · 遍历 StepRecord 按 user 聚合有效步数 total_steps（口径 = 活动期内已同步的非未来日，复用 stepsSync.isValidStepRecord）。
  *     · 算 first_reach_at（R5.1）：按 synced_at 升序遍历该用户有效 StepRecord，累加 steps，
  *       累计值首次 ≥ total_steps 的那条 record 的 synced_at。total_steps=0 的用户 first_reach_at=null。
- *     · **所有已报名用户均进榜，包括 total_steps=0**（2026-07-09 修改：0 步用户排在榜末）。
+ *     · **所有已报名用户均进榜，包括 total_steps=0 及从未同步的用户**（2026-07-09 修改：0 步用户排在榜末）。
  *     · 按 total_steps desc / first_reach_at asc 排序，赋 rank。
  *     · 附脱敏 nickname + dept_name + dept_id（从 User/Department 关联）。
  *     · 覆盖写 RankCache(personal)。
@@ -115,10 +115,21 @@ function buildPersonalRanking({ store, activityId, today, startDate }) {
     if (u && u._openid) userMap.set(u._openid, u);
   });
 
-  // 按用户分组有效记录。
-  const byUser = new Map(); // user_id -> { recs: [], total }
+  // B1：按 (user_id, date) 去重（生产无唯一索引，写侧偶发重复 StepRecord 会导致求和翻倍；
+  //   聚合侧按日去重兜底，下次聚合即自愈历史重复）。同 (user, date) 取 steps 最大者（步数只增不减）。
+  const dedupeMap = new Map(); // `${user_id}__${date}` -> StepRecord（该 (user,date) 最大 steps）
   for (const r of records) {
     if (!isValidRecord(r, today, startDate)) continue;
+    const key = r.user_id + '__' + r.date;
+    const prev = dedupeMap.get(key);
+    if (!prev || (Number(r.steps) || 0) > (Number(prev.steps) || 0)) {
+      dedupeMap.set(key, r);
+    }
+  }
+
+  // 按用户分组（去重后的记录）。
+  const byUser = new Map(); // user_id -> { recs: [], total }
+  for (const r of dedupeMap.values()) {
     const uid = r.user_id;
     if (!byUser.has(uid)) byUser.set(uid, { recs: [], total: 0 });
     const entry = byUser.get(uid);
@@ -126,27 +137,39 @@ function buildPersonalRanking({ store, activityId, today, startDate }) {
     entry.total += Number(r.steps) || 0;
   }
 
+  // 收集行：决策2——所有已报名用户均进榜，包括无任何 StepRecord 的 0 步用户（排榜末，first_reach_at=null）。
+  //   以 User 表为权威遍历集（保证无记录用户也进榜）；byUser 提供有记录用户的 total/recs。
   const rows = [];
-  for (const [userId, entry] of byUser.entries()) {
-    const user = userMap.get(userId) || {};
-    const hasUserCollection = Array.isArray(store.User);
-    // 仅展示已报名用户（join_status === 'joined'）；查不到 User（未建号/已退出）的裸步数记录不进榜
-    // （user 为 {} 时 join_status 为 undefined → !== 'joined' → 不进榜）。
-    // 本地轨裸 store（无 User 集合）放行（默认进榜），兼容无 User 的最小 store。
-    if (hasUserCollection && user.join_status !== 'joined') continue;
-
-    const firstReachAt = computeFirstReachAt(entry.recs, entry.total);
-    const deptId = user.dept_id || '';
-    const deptName = lookupDeptName(store, deptId, activityId);
-
-    rows.push({
-      user_id: userId,
-      total_steps: entry.total,
-      first_reach_at: firstReachAt,
-      nickname: maskNickname(user.nickname || ''),
-      dept_id: deptId,
-      dept_name: deptName
-    });
+  const hasUserCollection = Array.isArray(store.User);
+  if (hasUserCollection) {
+    for (const [openid, user] of userMap.entries()) {
+      // 仅展示已报名用户（join_status === 'joined'）。
+      if (!user || user.join_status !== 'joined') continue;
+      const entry = byUser.get(openid) || { recs: [], total: 0 };
+      const firstReachAt = computeFirstReachAt(entry.recs, entry.total);
+      const deptId = user.dept_id || '';
+      rows.push({
+        user_id: openid,
+        total_steps: entry.total,
+        first_reach_at: firstReachAt,
+        nickname: maskNickname(user.nickname || ''),
+        dept_id: deptId,
+        dept_name: lookupDeptName(store, deptId, activityId)
+      });
+    }
+  } else {
+    // 本地轨裸 store（无 User 集合）：放行 byUser 中的所有记录，兼容最小 store。
+    for (const [userId, entry] of byUser.entries()) {
+      const firstReachAt = computeFirstReachAt(entry.recs, entry.total);
+      rows.push({
+        user_id: userId,
+        total_steps: entry.total,
+        first_reach_at: firstReachAt,
+        nickname: maskNickname(''),
+        dept_id: '',
+        dept_name: ''
+      });
+    }
   }
 
   // 排序：total_steps desc / first_reach_at asc（R5.1）。
@@ -188,7 +211,7 @@ function lookupDeptName(store, deptId, activityId) {
  * @param {object} params
  * @param {object} params.store
  * @param {string} params.activityId
- * @param {object[]} params.personalRows 已算好的个人榜行（含 dept_id/total_steps，未进榜的 0 步用户不在此列）
+ * @param {object[]} params.personalRows 已算好的个人榜行（含 dept_id/total_steps；决策2 下 0 步/无记录用户也在列，buildDeptRanking 仅用 total>0 者算人均分母）
  * @param {number} params.minMembers 小部门阈值
  * @returns {object[]} DeptRow[]（已排序、赋 rank）
  */

@@ -4,7 +4,7 @@
  * 注意：本文件测的是 pages/admin/activity/activityCalc.js（后台配置），
  * 与 pages/activity/activityCalc.js（活动详情页 C2）不同模块。
  */
-const { validateActivityForm, formatPublishState, isValidTime } = require('../../miniprogram/pages/admin/activity/activityCalc');
+const { validateActivityForm, formatPublishState, isValidTime, toDateTime } = require('../../miniprogram/pages/admin/activity/activityCalc');
 
 describe('validateActivityForm 活动表单校验（R8.1）', () => {
   it('合法表单 → valid', () => {
@@ -171,5 +171,35 @@ describe('isValidTime 时间格式校验', () => {
     expect(isValidTime(null)).toBe(false);
     expect(isValidTime(undefined)).toBe(false);
     expect(isValidTime({})).toBe(false);
+  });
+});
+
+describe('toDateTime 纯日期串补时区（E1：修活动提前 8h 结束）', () => {
+  it('start（endOfDay=false）→ 当日 00:00:00+08:00', () => {
+    expect(toDateTime('2026-07-01', false)).toBe('2026-07-01T00:00:00+08:00');
+  });
+
+  it('end/signup（endOfDay=true）→ 当日 23:59:59+08:00', () => {
+    expect(toDateTime('2026-07-21', true)).toBe('2026-07-21T23:59:59+08:00');
+  });
+
+  it('空入参 → 空串', () => {
+    expect(toDateTime('', true)).toBe('');
+    expect(toDateTime(null, false)).toBe('');
+    expect(toDateTime(undefined, true)).toBe('');
+  });
+
+  it('补时区后 end 晚于北京时间结束日早 8 点（不再提前结束）', () => {
+    // end='2026-07-21' 补 +08:00 → 北京 07-21 23:59:59 = UTC 07-21 15:59:59
+    const endTs = Date.parse(toDateTime('2026-07-21', true));
+    // 北京 07-21 08:00 = UTC 07-21 00:00（旧 bug 的翻转点）
+    const beijing8am = Date.parse('2026-07-21T00:00:00Z');
+    expect(endTs).toBeGreaterThan(beijing8am);
+  });
+
+  it('对照：纯日期串（旧实现透传）Date.parse = UTC 00:00 = 北京早 8 点（提前结束根因）', () => {
+    const oldEndTs = Date.parse('2026-07-21');
+    const beijing8am = Date.parse('2026-07-21T00:00:00Z');
+    expect(oldEndTs).toBe(beijing8am);
   });
 });

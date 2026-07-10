@@ -91,7 +91,8 @@ const handlers = {
  *   不是 type+activity_id），完全依赖应用层去重，不依赖索引约束。
  *   修复见 docs/排查-StepRecord-null索引冲突.md。
  *
- * 定时任务容错：失败 warn 留痕（下次聚合幂等覆盖），不上抛以免一次失败致整次定时任务报错。
+ * 写回失败一律上抛（P1-3：不假成功）；rankAggregate 由 tasks 定时/手动触发，
+ *   steps.sync 侧的 triggerRankAggregate 会 catch 兜底为 null，不阻断主同步路径。
  * 本地轨单测不经此路径。
  * @param {object} cloudSdk
  * @param {string} type 'personal' | 'dept'
@@ -103,57 +104,45 @@ async function overwriteRankCacheToCloud(cloudSdk, type, activityId, cacheAll) {
   // 从纯函数改过的 store.RankCache 取聚合结果（overwriteRankCache 确保该文档存在）。
   const doc = cacheAll.find((d) => d && d.type === type && d.activity_id === activityId);
   if (!doc) {
-    console.warn('[写回失败] RankCache(' + type + ') 纯函数未生成文档，跳过写入');
-    return;
+    // 纯函数未生成文档是逻辑异常，上抛（P1-3 不假成功）。
+    throw BizError(CODE.SYS_DB_ERROR, 'RankCache(' + type + ') 纯函数未生成文档');
   }
   const rows = doc.rows || [];
   const updatedAt = doc.updated_at || new Date().toISOString();
 
-  // 第一层：先尝试 update（若存在则直接覆盖，无需 add）。
-  try {
-    const upd = await db
-      .collection('RankCache')
-      .where({ type, activity_id: activityId })
-      .update({ data: { rows, updated_at: updatedAt } });
-    const updated = upd && upd.stats && upd.stats.updated;
-    if (updated) {
-      console.log('[写回成功] RankCache(' + type + ') updated existing document');
-      return; // 命中并覆盖，完成
-    }
-  } catch (err) {
-    console.warn('[写回失败] RankCache(' + type + ') first update attempt', (err && err.message) || err);
+  // 第一层：先尝试 where(type,activity_id).update（若存在则直接覆盖，无需 add）。
+  // 错误一律上抛（P1-3：写回失败不假成功；steps.sync 侧 triggerRankAggregate 会 catch 兜底 null）。
+  const upd = await db
+    .collection('RankCache')
+    .where({ type, activity_id: activityId })
+    .update({ data: { rows, updated_at: updatedAt } });
+  const updated = upd && upd.stats && upd.stats.updated;
+  if (updated) {
+    console.log('[写回成功] RankCache(' + type + ') updated existing document');
+    return; // 命中并覆盖，完成
   }
 
   // 第二层：预检查是否存在（防并发窗口：另一聚合可能刚 add 完）。
-  try {
-    const res = await db
-      .collection('RankCache')
-      .where({ type, activity_id: activityId })
-      .limit(1)
-      .get();
-    const existing = res && res.data && res.data[0];
-    if (existing) {
-      // 并发：另一请求已插完 → 直接 update 覆盖为最新值。
-      console.log('[写回] RankCache(' + type + ') pre-check found existing, updating');
-      await db.collection('RankCache').doc(existing._id).update({
-        data: { rows, updated_at: updatedAt }
-      });
-      return;
-    }
-  } catch (err) {
-    console.warn('[写回失败] RankCache(' + type + ') pre-check get', (err && err.message) || err);
+  const res = await db
+    .collection('RankCache')
+    .where({ type, activity_id: activityId })
+    .limit(1)
+    .get();
+  const existing = res && res.data && res.data[0];
+  if (existing) {
+    // 并发：另一请求已插完 → 直接 doc(id).update 覆盖为最新值。
+    console.log('[写回] RankCache(' + type + ') pre-check found existing, updating');
+    await db.collection('RankCache').doc(existing._id).update({
+      data: { rows, updated_at: updatedAt }
+    });
+    return;
   }
 
   // 第三层：确实不存在 → add（并发窗口已被上方的 get 收窄）。
-  try {
-    await db.collection('RankCache').add({
-      data: { type, activity_id: activityId, rows, updated_at: updatedAt }
-    });
-    console.log('[写回成功] RankCache(' + type + ') added new document');
-  } catch (err) {
-    // add 失败（唯一索引冲突等）→ warn 留痕，不上抛（定时任务下次幂试覆盖）。
-    console.warn('[写回失败] RankCache(' + type + ') add', (err && err.message) || err);
-  }
+  await db.collection('RankCache').add({
+    data: { type, activity_id: activityId, rows, updated_at: updatedAt }
+  });
+  console.log('[写回成功] RankCache(' + type + ') added new document');
 }
 
 /**
@@ -198,9 +187,30 @@ async function applyLocksToCloud(cloudSdk, date) {
  * @returns {Promise<object>} { rank, dailyLock }
  */
 async function runScheduledTasks(event) {
-  // 两任务均幂等，每次都跑；dailyLock 已锁记录跳过，无副作用。
-  const rank = await handlers.rankAggregate(event);
-  const dailyLockResult = await handlers.dailyLock(event);
+  // 两任务均幂等，每次都跑；各自 try/catch 隔离，一个失败不影响另一个跑完（A3）。
+  let rank = null;
+  let rankError = null;
+  try {
+    rank = await handlers.rankAggregate(event);
+  } catch (err) {
+    rankError = err;
+    console.error('[定时任务] rankAggregate 失败', (err && err.message) || err);
+  }
+
+  let dailyLockResult = null;
+  let dailyLockError = null;
+  try {
+    dailyLockResult = await handlers.dailyLock(event);
+  } catch (err) {
+    dailyLockError = err;
+    console.error('[定时任务] dailyLock 失败', (err && err.message) || err);
+  }
+
+  // 任一失败上抛（main catch 转 fail，确保失败可见、不静默；已成功任务的副作用已落库保留）。
+  // rankAggregate 是主任务，优先抛；dailyLock 失败次之。
+  if (rankError) throw rankError;
+  if (dailyLockError) throw dailyLockError;
+
   return { rank, dailyLock: dailyLockResult };
 }
 

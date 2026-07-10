@@ -24,6 +24,8 @@ const CODE = {
   BIZ_SELF_DEMOTE_FORBIDDEN: 2006, // 禁止自我降级（管理员不能取消自己的管理员身份）
   BIZ_PHONE_TAKEN: 2007,           // 手机号已被其他账号占用（手动填写保底路径查重命中）
   BIZ_SIGNUP_ENDED: 2008,          // 报名已截止（超过活动 signup_deadline / end_time）
+  BIZ_DEPT_LOCKED: 2009,           // 部门已选定不可换（注册向导选部门后固定，调整需联系管理员）
+  BIZ_ACTIVITY_NOT_REMOVABLE: 2010, // 活动进行中/未开始，不可删除（仅已结束 ended 或已终止 terminated 可删）
 
   // 步数类 3xxx
   STEP_AUTH_FAILED: 3001,      // getWeRunData 授权失败

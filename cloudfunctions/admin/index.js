@@ -148,6 +148,17 @@ const handlers = {
     });
     // 写回 StepRecord（幂等）。
     await applyVerdictToCloud(cloud, result.recordId, result.action, now);
+    // D1：裁定后即时触发聚合刷新 RankCache，否则榜单仍显示裁定前的异常步数（管理员 zero 置零后
+    //   用户仍高居榜首直到下次定时任务）。失败不阻断裁定主返回（StepRecord 已落库），定时任务兜底覆盖。
+    const rec = store.StepRecord.find((r) => r && r._id === result.recordId);
+    const verdictActivityId = rec && rec.activity_id;
+    if (verdictActivityId) {
+      try {
+        await handleRefreshRank({ cloud, event: { activity_id: verdictActivityId } });
+      } catch (e) {
+        console.warn('[verdict] 裁定后聚合刷新失败，定时任务兜底', (e && e.message) || e);
+      }
+    }
     return result;
   },
 
@@ -265,11 +276,12 @@ async function upsertWhitelistToCloud(cloudSdk, whitelist, now) {
   for (const w of whitelist) {
     if (!w || !w.phone) continue;
     try {
-      const existing = await db.collection('Whitelist').where({ phone: w.phone }).limit(1).get();
-      const data = (existing && existing.data) || [];
-      if (data.length > 0 && data[0]._id) {
-        await db.collection('Whitelist').doc(data[0]._id).update({ data: { imported_at: now } });
+      if (w._id) {
+        // D2：loadByWhere 拉取的已有条目含 _id，直接按 _id update imported_at（省去每条 where({phone}).get
+        //   的重复查询，N 条从 2N 次 DB 调用降到 N 次，防大批量白名单导入超时）。
+        await db.collection('Whitelist').doc(w._id).update({ data: { imported_at: now } });
       } else {
+        // 新增（applyWhitelistImport push 的，无 _id）：add。
         await db.collection('Whitelist').add({ data: { phone: w.phone, imported_at: now } });
       }
       written += 1;

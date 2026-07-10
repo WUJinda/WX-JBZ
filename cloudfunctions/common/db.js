@@ -19,7 +19,9 @@ function createDb(cloud) {
  * P0-5：替代各 handler 复制的裸 loadCollection（全量拉取），只拉需要的行 + 字段，
  *   避免大集合 OOM 与 _openid/phone/sync_count 等敏感字段入内存。
  *
- * 容错：集合未创建（如 RankCache 首次）或查询异常 → 返回空数组（与原 loadCollection 一致）。
+ * 容错：仅「集合未创建」（如 RankCache 首次、新环境未 ensureSchema）→ 返回空数组；
+ *   其余 DB 异常（超时/权限/网络）一律上抛——否则静默吞错会让聚合覆盖写空榜、前端却 ok（假成功，
+ *   见 code-review-2026-07 风险链 A）。
  * where/field 均可选：缺省 = 全量、无投影（等同原 loadCollection，供 admin 等需全量内存筛选的 handler）。
  * where 中值为 null/undefined 的键会被剔除（避免向 DB 传 {field:undefined} 的未定义行为）。
  *
@@ -29,6 +31,20 @@ function createDb(cloud) {
  * @param {object} [fieldExpr] 白名单投影，如 { _id:1, steps:1 }（只取列出的字段）
  * @returns {Promise<object[]>}
  */
+/**
+ * 判断是否「集合未创建」错误（云开发 DATABASE_COLLECTION_NOT_EXIST，errCode -502005）。
+ * 仅这种情况返回空数组兜底，其余 DB 异常必须上抛（防假成功）。
+ * @param {object} err
+ * @returns {boolean}
+ */
+function isCollectionNotExist(err) {
+  if (!err) return false;
+  const errCode = err.errCode != null ? err.errCode : err.code;
+  if (errCode === -502005) return true;
+  const msg = (err.errMsg || err.message || '') + '';
+  return /-502005|collection.*(not.*exist|doesn'?t exist|不存在)|集合.*不存在/i.test(msg);
+}
+
 async function loadByWhere(cloudSdk, name, whereExpr, fieldExpr) {
   const db = cloudSdk.database();
   const PAGE = 100;
@@ -54,8 +70,10 @@ async function loadByWhere(cloudSdk, name, whereExpr, fieldExpr) {
       skip += PAGE;
     }
   } catch (err) {
-    // 集合未创建 / 查询异常：返回空数组兜底（与原 loadCollection 容错一致）。
-    return [];
+    // 仅当「集合未创建」时返回空数组兜底（RankCache 首次、新环境未 ensureSchema 等）。
+    // 其他 DB 异常（超时/权限/网络）必须上抛——静默吞 [] 会让聚合覆盖写空榜、前端却 ok（假成功）。
+    if (isCollectionNotExist(err)) return [];
+    throw err;
   }
   return all;
 }
