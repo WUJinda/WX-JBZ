@@ -232,9 +232,19 @@ async function loadUserRecords(cloudSdk, name, userId, activityId) {
  */
 async function loadStatsInput(cloudSdk, userId, opts) {
   const o = opts || {};
-  const activityId = o.activityId || (await getActiveActivityId(cloudSdk));
-  // activity 显式传入优先（测试注入），否则查当前活动文档；查不到/无活动 → null（buildStats 兜底过滤）
-  const activity = o.activity || (await getActiveActivity(cloudSdk)) || null;
+  // activity / activityId 独立兜底；两者都不传（最常见：stats 不带 activity_id）时共享一次 getActiveActivity，
+  //   避免全表拉 Activity 两次（原 getActiveActivityId + getActiveActivity 各拉一次）。显式只传其一时保持原语义。
+  let activityId = o.activityId;
+  let activity = o.activity || null;
+  if (!activityId && !activity) {
+    const activeDoc = await getActiveActivity(cloudSdk);
+    activity = activeDoc || null;
+    activityId = (activeDoc && (activeDoc.activity_id || activeDoc._id)) || '';
+  } else if (!activityId) {
+    activityId = await getActiveActivityId(cloudSdk);
+  } else if (!activity) {
+    activity = (await getActiveActivity(cloudSdk)) || null;
+  }
   const records = await loadUserRecords(cloudSdk, 'StepRecord', userId, activityId);
   return { records, activity, activityId };
 }

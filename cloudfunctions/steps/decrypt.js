@@ -70,6 +70,10 @@ function aesDecryptedBuffer(sessionKeyB64, ivB64, encryptedB64) {
  * @param {string} params.sessionKey 当次 code2Session 取得的 session_key（base64）
  * @param {string} params.iv         wx.getWeRunData 返回的 iv（base64）
  * @param {string} params.encryptedData wx.getWeRunData 返回的 encryptedData（base64）
+ * @param {string} [params.expectedAppid] 可选：本小程序 appid（云函数环境变量 WX_APPID）。
+ *   传入则校验解密 JSON 的 watermark.appid 与之一致（微信官方 encryptedData 防篡改标准检查），
+ *   不一致抛 STEP_DECRYPT_FAILED。纵深防御：session_key 密码学绑定 appid 且用后即弃、不下发，
+ *   正常可达路径 watermark.appid 必然等于本 appid；本校验兜底防「未来 session_key 泄露 / 实现回归」。
  * @returns {{stepInfoList: Array<{timestamp:number, step:number}>, raw: object}}
  *   stepInfoList 近 30 天每日步数；raw 为完整解密 JSON（含 watermark，调试用，不下发前端敏感字段）。
  * @throws {BizError} STEP_DECRYPT_FAILED
@@ -85,6 +89,14 @@ function decryptSteps(params) {
     json = JSON.parse(buf.toString('utf8'));
   } catch (e) {
     throw BizError(STEP_DECRYPT_FAILED, 'decrypt: plaintext is not valid JSON');
+  }
+  // 纵深防御：watermark.appid 校验（微信官方 encryptedData 防篡改标准检查）。
+  // expectedAppid 缺省（本地轨/单测）则跳过；传入则 watermark.appid 必须与之一致，否则视为伪造数据。
+  if (p.expectedAppid) {
+    const wm = json && json.watermark;
+    if (!wm || wm.appid !== p.expectedAppid) {
+      throw BizError(STEP_DECRYPT_FAILED, 'decrypt: watermark appid mismatch（encryptedData 非本小程序产出）');
+    }
   }
   const list = Array.isArray(json && json.stepInfoList) ? json.stepInfoList : [];
   // 归一化：只保留 timestamp / step 数值字段

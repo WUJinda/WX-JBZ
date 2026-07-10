@@ -20,11 +20,14 @@ const { CODE, BizError } = require('../common/errors');
  * @param {string} params.userId 目标用户 id（User._id）
  * @param {string} params.deptId 目标部门 id（Department.dept_id）
  * @param {string} params.now 当前时间 ISO
+ * @param {string} [params.activityId] 当前活动 id（可选）：传入则校验目标部门属同一活动，
+ *   防多活动数据并存时跨活动串部门（用户步数聚合到其活动，部门却属另一活动 → 部门榜错位）。
+ *   兼容历史数据：dept.activity_id 缺失时不校验（不误拒）。
  * @returns {{userId: string, deptId: string, updatedAt: string}}
  */
 function changeUserDept(store, params) {
   const p = params || {};
-  const { userId, deptId, now } = p;
+  const { userId, deptId, now, activityId } = p;
 
   if (!userId) {
     throw BizError(CODE.AUTH_USER_NOT_FOUND, 'changeUserDept: userId required');
@@ -47,6 +50,11 @@ function changeUserDept(store, params) {
   const dept = store.Department.find((d) => d && d.dept_id === deptId);
   if (!dept) {
     throw BizError(CODE.BIZ_DEPT_NOT_FOUND, 'changeUserDept: dept not found');
+  }
+  // 同活动校验（防多活动数据并存时跨活动串部门）：目标部门须属当前活动。
+  // 兼容历史数据：dept.activity_id 缺失时跳过（不误拒）。
+  if (activityId && dept.activity_id && dept.activity_id !== activityId) {
+    throw BizError(CODE.BIZ_DEPT_NOT_FOUND, '目标部门不属于当前活动，不可跨活动换部门');
   }
 
   // 幂等：已是该部门 → 不改 updated_at，视为成功。

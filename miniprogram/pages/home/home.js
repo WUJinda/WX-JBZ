@@ -34,7 +34,10 @@ Page({
     activityStatus: ACT_STATUS.UNKNOWN,
     activityName: '',
     // 管理员快捷入口（仅 is_admin=true 显示）：顶部「管理后台」+ 空态「去创建活动」
-    isAdmin: false
+    isAdmin: false,
+    // 用户报名态（profile.join_status）：'pending' 未报名 / 'joined' 已报名 / 'unknown' 未查到。
+    // 用于 onSyncTap 预判未报名时引导去报名，避免点了同步才被后端 1004 拦截报错。
+    joinStatus: 'unknown'
   },
 
   onLoad() {
@@ -83,7 +86,7 @@ Page({
           app.globalData.isAdmin = isAdmin;
           app.globalData.loggedIn = true;
         }
-        this.setData({ isAdmin });
+        this.setData({ isAdmin, joinStatus: (data && data.join_status) || 'unknown' });
       })
       .catch(() => {
         // 未登录 / 本地轨：保持 isAdmin=false（管理入口不显示）。
@@ -226,6 +229,12 @@ Page({
 
   /** 同步入口：点击「同步步数」。 */
   onSyncTap() {
+    // 未报名预判（profile 已下发 join_status）：pending 直接引导去报名，省 wx.login/getWeRunData/
+    //   code2Session 一连串开销（冷启动 joinStatus 尚未就绪时由 callCloudSync 的 1004 兜底）。
+    if (this.data.joinStatus === 'pending') {
+      this.guideToSignup();
+      return;
+    }
     // R3.3 前端节流：距上次 < 30min 读缓存不重复请求。
     if (shouldThrottle(this.data.lastSyncTs, Date.now(), 30)) {
       wx.showToast({ title: '最近已同步，请稍后再试', icon: 'none' });
@@ -327,10 +336,30 @@ Page({
         } else if (err && err.code === 3003) {
           // STEP_SYNC_LIMIT 频控（R3.3）
           this.apply({ type: 'CLOUD_RATE_LIMIT' });
+        } else if (err && err.code === 1004) {
+          // AUTH_JOIN_STATUS_DENIED：未报名（pending）。预判未拦截到（冷启动 joinStatus 未就绪）时的兜底。
+          // 回 IDLE（RESET 不清 today/total，不显示失败文案，弹窗引导更清晰）+ 引导去 activity 页报名。
+          this.apply({ type: 'RESET' });
+          this.guideToSignup();
         } else {
           this.apply({ type: 'CLOUD_FAIL', payload: { message: (err && err.message) || '同步失败' } });
         }
       });
+  },
+
+  /** 未报名引导：弹窗提示 + 确认后跳 activity 页报名（activity 页 CTA 已登录直接调 user.join）。 */
+  guideToSignup() {
+    if (typeof wx === 'undefined' || !wx.showModal) return;
+    wx.showModal({
+      title: '尚未报名',
+      content: '同步步数需先报名参加活动，是否前往报名？',
+      confirmText: '去报名',
+      success: (res) => {
+        if (res && res.confirm && wx.switchTab) {
+          wx.switchTab({ url: '/pages/activity/activity' });
+        }
+      }
+    });
   },
 
   /** 拒绝授权后「重新授权」入口：引导 openSetting 开启微信运动权限。 */

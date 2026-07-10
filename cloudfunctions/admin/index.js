@@ -17,7 +17,7 @@ const { authMiddleware } = require('../common/authMiddleware');
 const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { loadByWhere } = require('../common/db');
-const { getActivityById } = require('../activity/activityResolver');
+const { getActivityById, getActiveActivityId } = require('../activity/activityResolver');
 
 const { assertAdmin } = require('./adminGuard');
 const { parseWhitelist } = require('./whitelistParse');
@@ -84,10 +84,13 @@ const handlers = {
     assertAdmin(store, context.openid);
 
     const now = (event && event.now) || new Date().toISOString();
+    // 当前活动 id：校验目标部门属同一活动（防跨活动串部门，见 changeUserDept）。
+    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const result = changeUserDept(store, {
       userId: event && event.user_id,
       deptId: event && event.dept_id,
-      now
+      now,
+      activityId
     });
     // 写回 User.dept_id（幂等）。
     await updateUserDeptToCloud(cloud, result.userId, result.deptId, result.updatedAt);

@@ -154,6 +154,45 @@ describe('readPersonal 个人榜分页 + 我的排名', () => {
   });
 });
 
+describe('getCacheRows 多文档兜底（取 updated_at 最新）', () => {
+  it('同 (type,activity_id) 多份文档 → 取 updated_at 最新的那份 rows', async () => {
+    // 旧文档只含 u_old；新文档只含 u_new。应选中最新文档（u_new 在榜、u_old 不在）。
+    const store = { RankCache: [
+      { type: 'personal', activity_id: ACTIVITY_ID, updated_at: '2026-07-01T00:00:00.000Z',
+        rows: [pRow(1, 'u_old', 100, 't', 'd1')] },
+      { type: 'personal', activity_id: ACTIVITY_ID, updated_at: '2026-07-09T00:00:00.000Z',
+        rows: [pRow(1, 'u_new', 999, 't', 'd1')] }
+    ] };
+    const result = await readPersonal({ store, activityId: ACTIVITY_ID, userId: 'u_new' });
+    expect(result.list.map((r) => r.user_id)).toEqual(['u_new']);
+    expect(result.myRank && result.myRank.user_id).toBe('u_new');
+    expect(result.totalCount).toBe(1);
+  });
+
+  it('文档顺序无关：最新文档排在数组首位也正确选中', async () => {
+    const store = { RankCache: [
+      { type: 'personal', activity_id: ACTIVITY_ID, updated_at: '2026-07-09T00:00:00.000Z',
+        rows: [pRow(1, 'u_new', 999, 't', 'd1')] },
+      { type: 'personal', activity_id: ACTIVITY_ID, updated_at: '2026-07-01T00:00:00.000Z',
+        rows: [pRow(1, 'u_old', 100, 't', 'd1')] }
+    ] };
+    const result = await readPersonal({ store, activityId: ACTIVITY_ID });
+    expect(result.list.map((r) => r.user_id)).toEqual(['u_new']);
+  });
+
+  it('不同 type 不串档：personal 读取忽略 updated_at 更新的 dept 文档', async () => {
+    const store = { RankCache: [
+      { type: 'personal', activity_id: ACTIVITY_ID, updated_at: '2026-07-01T00:00:00.000Z',
+        rows: [pRow(1, 'u_old', 100, 't', 'd1')] },
+      { type: 'dept', activity_id: ACTIVITY_ID, updated_at: '2026-07-09T00:00:00.000Z',
+        rows: [dRow(1, 'd1', 1000, 2, 500, false, '一组')] }
+    ] };
+    // 读 personal：dept 文档 updated_at 更新但 type 不同，不被选中 → 仍取 personal 的 u_old。
+    const result = await readPersonal({ store, activityId: ACTIVITY_ID });
+    expect(result.list.map((r) => r.user_id)).toEqual(['u_old']);
+  });
+});
+
 describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）', () => {
   // 构造：d1 avg=300 total=900(3人)，d2 avg=200 total=1000(5人)，d3(小部门) avg=500 total=500(1人)
   const store = { RankCache: dCache([

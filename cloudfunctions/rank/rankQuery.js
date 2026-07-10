@@ -29,12 +29,31 @@ const DEFAULT_PAGE_SIZE = 50; // R5.4：分页默认 50/页
  */
 function getCacheRows(store, type, activityId) {
   if (!store || !Array.isArray(store.RankCache)) return [];
-  const doc = store.RankCache.find(
+  // 多文档兜底：同 (type, activity_id) 理论上单文档（tasks 三层 upsert 维持），
+  // 但历史残留 / 并发 add 窗口可能产生多份 → 按 updated_at desc 取最新，避免读到旧脏数据（静默展示过期榜）。
+  const matched = store.RankCache.filter(
     (d) => d && d.type === type && d.activity_id === activityId
   );
-  const rows = doc && Array.isArray(doc.rows) ? doc.rows : [];
+  if (!matched.length) return [];
+  matched.sort((a, b) => {
+    const ta = (a && a.updated_at) || '';
+    const tb = (b && b.updated_at) || '';
+    if (ta < tb) return 1; // a 更旧 → 排后
+    if (ta > tb) return -1; // a 更新 → 排前
+    return 0;
+  });
+  const doc = matched[0];
+  // updated_at 在文档级（tasks 写入 {rows, updated_at}），行级无此字段；
+  // 注入到行副本，使 pickUpdatedAt(rows) 读 rows[0].updated_at 取到正确值（原读行级错位恒 null）。
+  const updatedAt = doc.updated_at || null;
+  const rows = Array.isArray(doc.rows) ? doc.rows : [];
   return rows
-    .map((r) => (r ? Object.assign({}, r) : r))
+    .map((r) => {
+      if (!r) return r;
+      const copy = Object.assign({}, r);
+      if (updatedAt && copy.updated_at === undefined) copy.updated_at = updatedAt;
+      return copy;
+    })
     .sort((a, b) => ((a && a.rank) || 0) - ((b && b.rank) || 0));
 }
 

@@ -98,4 +98,45 @@ describe('steps.decrypt 解密纯函数（E2，自造样本 round-trip）', () =
     expect(JSON.stringify(out)).not.toContain('sessionKey');
     expect(JSON.stringify(out)).not.toContain(sample.sessionKey);
   });
+
+  // watermark.appid 校验（安全加固：微信官方 encryptedData 防篡改标准检查）
+  it('expectedAppid 与 watermark.appid 一致 → 通过校验', () => {
+    const plain = {
+      stepInfoList: [{ timestamp: 100, step: 200 }],
+      watermark: { appid: 'wxABC', timestamp: 999 }
+    };
+    const sample = makeEncryptedSample(plain);
+    const { stepInfoList } = decryptSteps(Object.assign({}, sample, { expectedAppid: 'wxABC' }));
+    expect(stepInfoList).toEqual([{ timestamp: 100, step: 200 }]);
+  });
+
+  it('expectedAppid 与 watermark.appid 不一致 → 抛 STEP_DECRYPT_FAILED（防伪造）', () => {
+    const plain = {
+      stepInfoList: [{ timestamp: 100, step: 200 }],
+      watermark: { appid: 'wxFORGERY', timestamp: 999 } // 伪造数据
+    };
+    const sample = makeEncryptedSample(plain);
+    let thrown = null;
+    try {
+      decryptSteps(Object.assign({}, sample, { expectedAppid: 'wxREAL' }));
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).not.toBeNull();
+    expect(thrown.code).toBe(CODE.STEP_DECRYPT_FAILED);
+    expect(String(thrown.message)).toMatch(/watermark appid mismatch/);
+  });
+
+  it('expectedAppid 传入但解密 JSON 缺 watermark → 抛 STEP_DECRYPT_FAILED', () => {
+    const plain = { stepInfoList: [{ timestamp: 1, step: 1 }] }; // 无 watermark 字段
+    const sample = makeEncryptedSample(plain);
+    expect(() => decryptSteps(Object.assign({}, sample, { expectedAppid: 'wxX' }))).toThrow(/watermark appid mismatch/);
+  });
+
+  it('expectedAppid 缺省 → 跳过 watermark 校验（向后兼容，不破坏现有调用/单测）', () => {
+    const plain = { stepInfoList: [], watermark: { appid: 'any' } };
+    const sample = makeEncryptedSample(plain);
+    // 不传 expectedAppid，即使 watermark.appid 随意也不报错。
+    expect(() => decryptSteps(sample)).not.toThrow();
+  });
 });

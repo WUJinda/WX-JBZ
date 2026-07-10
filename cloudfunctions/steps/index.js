@@ -27,7 +27,7 @@ const { getToday, getHistory, getUserRecords } = require('./stepsQuery');
 const { buildTrend } = require('./stepsTrend');
 const { loadByWhere } = require('../common/db');
 const { triggerRankAggregateFresh } = require('./stepsTriggerRank');
-const { getActivityById, getActiveActivityId } = require('../activity/activityResolver');
+const { getActivityById, getActiveActivityId, getActiveActivity } = require('../activity/activityResolver');
 
 // P0-5：steps handler 只拉「该用户该活动」的 StepRecord（约活动天数条，非全表），
 //   投影掉 _openid（不入内存/不下发）；sync 需 sync_count 做频控，其余 handler 多取无害。
@@ -119,9 +119,9 @@ const handlers = {
   sync: async (event, context) => {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅用 OPENID，禁止 event.user_id（防越权读写他人步数）
-    // activity_id 兜底（与 today/history/trend 一致）：home 冷启动时 getActivityId() 可能返回空串
-    //   → activity_id 缺失会让 StepRecord 三字段之一为空、撞唯一索引 null 坑。后端查当前活动兜底。
-    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
+    // activity_id 兜底（与 today/history/trend 一致）：home 冷启动 getActivityId() 可能返回空串
+    //   → 缺失会让 StepRecord 三字段之一为空、撞唯一索引 null 坑。活动文档 + activityId 在下方统一解析
+    //   （event.activity_id 有值→getActivityById 精确查；缺省→getActiveActivity 一次拿 doc+id，避免二次全表拉 Activity）。
     const jsCode = event && event.code;
     const iv = event && event.iv;
     const encryptedData = event && event.encrypted_data;
@@ -135,17 +135,31 @@ const handlers = {
     // firstUser=context.user：老用户已 joined 时零额外读；仅刚报名窗口内退避重读到 joined。
     await assertJoinedFresh(cloud.database(), context.openid, { firstUser: context.user });
 
-    // 提前查活动文档：① 判 terminated（管理员终止后立即拒绝同步，省 code2Session 外部调用与解密开销）；
+    // 提前查活动文档：① 判 terminated（终止后立即拒绝，省 code2Session 外部调用与解密开销）；
     // ② 供 syncSteps 活动期过滤（start_date ~ today）——修「累计步数过大」bug 的关键。
-    const activity = await getActivityById(cloud, activityId);
+    // event.activity_id 有值→getActivityById 精确查（一次）；缺省→getActiveActivity 取当前活动，
+    //   activityId 从 doc.activity_id||doc._id 取（省一次全表拉 Activity）。
+    let activity;
+    let activityId;
+    if (event && event.activity_id) {
+      activityId = event.activity_id;
+      activity = await getActivityById(cloud, activityId);
+    } else {
+      activity = await getActiveActivity(cloud);
+      activityId = (activity && (activity.activity_id || activity._id)) || '';
+    }
     if (activity && activity.terminated === true) {
       throw BizError(CODE.STEP_ACTIVITY_CLOSED, '活动已终止，停止同步');
     }
 
-    // 当次取新鲜 session_key（用后即弃）。
-    const { sessionKey } = await code2Session(jsCode);
-    // 立即解密 → stepInfoList。
-    const { stepInfoList } = decryptSteps({ sessionKey, iv, encryptedData });
+    // 当次取新鲜 session_key（用后即弃）。code2Session 返回的 openid 与调用者 OPENID 交叉校验：
+    // 防御「未来 code 与调用者身份错配」回归（如复用他人 code / session 混淆代理）。正常路径两值必然相等。
+    const { sessionKey, openid: codeOpenid } = await code2Session(jsCode);
+    if (codeOpenid !== context.openid) {
+      throw BizError(CODE.STEP_DECRYPT_FAILED, 'code2Session openid 与调用者不一致（code/openid 不匹配）');
+    }
+    // 立即解密 → stepInfoList。expectedAppid 校验 watermark.appid（微信官方防篡改，见 decrypt.js）。
+    const { stepInfoList } = decryptSteps({ sessionKey, iv, encryptedData, expectedAppid: process.env.WX_APPID });
     // 诊断日志：确认解密出来的步数数据长度（为 0 说明微信运动确实没数据或解密失败）。
     console.log('[sync] decrypted stepInfoList length=' + (stepInfoList && stepInfoList.length));
     if (stepInfoList && stepInfoList.length > 0) {
@@ -227,11 +241,18 @@ const handlers = {
   trend: async (event, context) => {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅 OPENID，禁止 event.user_id（防越权读他人步数）
-    // activity_id 兜底（与 today/history 一致）：前端冷启动可能传空，后端查当前活动。
-    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const range = event && event.range;
-    // 查活动文档：供 buildTrend 算活动期起点过滤活动期外脏记录（与 today/history/sync 同口径）。
-    const activity = await getActivityById(cloud, activityId);
+    // 活动文档 + activity_id 统一解析（与 sync 同口径）：event.activity_id 有值→getActivityById 精确查；
+    //   缺省→getActiveActivity 一次拿当前活动 doc + id，避免 getActiveActivityId + getActivityById 二次全表拉。
+    let activity;
+    let activityId;
+    if (event && event.activity_id) {
+      activityId = event.activity_id;
+      activity = await getActivityById(cloud, activityId);
+    } else {
+      activity = await getActiveActivity(cloud);
+      activityId = (activity && (activity.activity_id || activity._id)) || '';
+    }
     const store = {
       StepRecord: await loadByWhere(
         cloud, 'StepRecord',
