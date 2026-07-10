@@ -231,3 +231,118 @@
   color: #bbb;
   padding: 24rpx 0 120rpx;
 }
+
+/* ===== 个人榜二级 Tab：累计榜 / 今日榜 ===== */
+.subtab-bar {
+  display: flex;
+  background: #ffffff;
+  padding: 0 24rpx;
+  gap: 40rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+.subtab-item {
+  padding: 18rpx 0;
+  font-size: 26rpx;
+  color: #999;
+  position: relative;
+}
+.subtab-active {
+  color: #1aad19;
+  font-weight: 600;
+}
+.subtab-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 40rpx;
+  height: 4rpx;
+  background: #1aad19;
+  border-radius: 2rpx;
+  transform: translateX(-50%);
+}
+
+/* ===== 今日榜日期选择器（固定底部 = 参考图红框位置） ===== */
+/* 高度基准：padding 12rpx*2 + chip 72rpx = 96rpx；my-rank-bar.with-picker 与
+   rank-page.has-picker 据此量让位 / 留白。 */
+.day-picker {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 100rpx; /* 贴原生 tabBar 正上方 */
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border-top: 2rpx solid #eee;
+  padding: 12rpx 16rpx;
+}
+.day-arrow {
+  flex: none;
+  width: 40rpx;
+  text-align: center;
+  font-size: 32rpx;
+  color: #ccc;
+  line-height: 72rpx;
+}
+.day-scroll-wrap {
+  flex: 1;
+  overflow: hidden;
+}
+.day-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+.day-list {
+  display: flex;
+  width: -webkit-fit-content;
+  width: fit-content;
+  gap: 16rpx;
+  padding: 0 8rpx;
+}
+.day-chip {
+  flex: none;
+  position: relative;
+  min-width: 96rpx;
+  height: 72rpx;
+  padding: 0 24rpx;
+  border-radius: 36rpx;
+  background: #f5f5f5;
+  color: #666;
+  font-size: 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.day-chip-active {
+  background: #1aad19;
+  color: #ffffff;
+  font-weight: 600;
+}
+.day-today {
+  position: absolute;
+  top: -6rpx;
+  right: -6rpx;
+  font-size: 18rpx;
+  color: #ffffff;
+  background: #f56c6c;
+  border-radius: 18rpx;
+  padding: 0 8rpx;
+  line-height: 24rpx;
+}
+.day-empty {
+  text-align: center;
+  color: #bbb;
+  font-size: 24rpx;
+  line-height: 72rpx;
+}
+
+/* 今日榜模式：我的排名条上移让位日期选择器 */
+.my-rank-bar.with-picker {
+  bottom: calc(100rpx + 96rpx);
+}
+
+/* 今日榜模式：列表底部留白覆盖 日期选择器 + 排名条 + tabBar */
+.rank-page.has-picker {
+  padding-bottom: calc(100rpx + 96rpx + 110rpx);
+}

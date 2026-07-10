@@ -15,6 +15,7 @@ const {
   formatUpdatedAt,
   DEFAULT_PAGE_SIZE
 } = require('./rankCalc');
+const { buildDayList, defaultDayKey } = require('./rankDayList');
 const { hasMore } = require('../../utils/pagination');
 const { handleNotLoggedIn } = require('../../utils/authGuard');
 
@@ -24,6 +25,8 @@ Page({
     tab: 'personal',
     // 同页视图切换：list（榜单）/ members（部门明细）
     viewMode: 'list',
+    // 个人榜二级 Tab：total 累计榜（现状）/ today 今日榜（按日，带日期选择器）
+    subTab: 'total',
     // 个人榜
     personalList: [],
     personalPage: 1,
@@ -31,6 +34,10 @@ Page({
     personalHasMore: true,
     myRank: null, // {rank, user_id, total_steps, ...} | null
     myNeighbors: [], // 我的排名条前后相邻名次（pickNeighbors 输出）
+    // 今日榜日期选择器（仅 subTab==='today'）：活动期 start~今天 的日期列表
+    dayList: [], // [{key:'YYYY-MM-DD', label:'M.D', ts, isToday}]
+    selectedDay: '', // 选中日期 key（默认今天）
+    dayScrollInto: '', // 日期选择器 scroll-into-view 目标 id
     // 部门榜
     deptList: [],
     deptPage: 1,
@@ -56,6 +63,7 @@ Page({
     // 进入 tab 首次加载对应榜；切换 tab 时由 switchTab 触发加载。
     if (this.data.tab === 'personal') {
       this.loadPersonal(true);
+      this.ensureDayList(); // 今日榜日期列表（累计榜模式也预取，切「今日榜」即用）
     } else {
       this.loadDept(true);
     }
@@ -83,6 +91,89 @@ Page({
     } else {
       this.loadDept(true);
     }
+  },
+
+  /** 切换二级 Tab：累计榜 / 今日榜（仅个人榜）。 */
+  onSubTabSwitch(e) {
+    const sub = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.sub;
+    if (sub !== 'total' && sub !== 'today') return;
+    if (sub === this.data.subTab) return;
+    this.setData({ subTab: sub });
+    if (sub === 'today') {
+      // 进入今日榜：日期列表未就绪则补拉；已就绪则把选中项滚进视口。
+      if (this.data.dayList.length === 0) {
+        this.ensureDayList();
+      } else {
+        this.setData({
+          dayScrollInto: this.scrollIdForKey(this.data.dayList, this.data.selectedDay)
+        });
+      }
+    }
+    // 今日榜「按日榜单」数据后写：UI 外壳阶段复用累计 personalList 占位渲染，
+    // 切二级 Tab / 切日期均不重新拉取列表，仅切换选中态。
+  },
+
+  /** 点日期：切换选中（UI 外壳；按日榜单数据后写）。 */
+  onDayPick(e) {
+    const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
+    if (!key || key === this.data.selectedDay) return;
+    this.setData({
+      selectedDay: key,
+      dayScrollInto: this.scrollIdForKey(this.data.dayList, key)
+    });
+  },
+
+  /**
+   * 生成今日榜日期列表（活动期 start~今天）。
+   * 优先读 globalData.currentActivity；时间窗口缺失则兜底调 activity.current（游客可调，无 1002）。
+   */
+  ensureDayList() {
+    const app = getApp();
+    const ga = (app && app.globalData && app.globalData.currentActivity) || {};
+    const list = buildDayList(ga, Date.now());
+    if (list.length > 0) {
+      this.applyDayList(list);
+      return;
+    }
+    const api = app && app.api;
+    if (!api || typeof api.call !== 'function') return;
+    api
+      .call('activity', { action: 'current' }, { loading: false, silent: true })
+      .then((data) => {
+        if (!data) return;
+        // 回写 globalData（同 home.fetchActivityStatus，后续 onShow/他页复用，避免重复补拉）。
+        if (app && app.globalData) {
+          app.globalData.currentActivity = {
+            activity_id: data.activity_id || ga.activity_id || '',
+            name: data.name || ga.name || '',
+            start_time: data.start_time != null ? data.start_time : ga.start_time,
+            end_time: data.end_time != null ? data.end_time : ga.end_time,
+            status: data.status || ga.status || ''
+          };
+        }
+        this.applyDayList(buildDayList(data, Date.now()));
+      })
+      .catch(() => {
+        // activity.current 游客可调、不抛 1002；失败静默（日期选择器维持空态）。
+      });
+  },
+
+  /** 应用日期列表到 data：保留已选且仍存在的日期，否则取默认（今天/最近一天）。 */
+  applyDayList(list) {
+    const prev = this.data.selectedDay;
+    const key = prev && list.some((d) => d.key === prev) ? prev : defaultDayKey(list);
+    this.setData({
+      dayList: list,
+      selectedDay: key,
+      dayScrollInto: this.scrollIdForKey(list, key)
+    });
+  },
+
+  /** 日期项 scroll-into-view 目标 id（'day-<index>'；未命中 → ''）。 */
+  scrollIdForKey(list, key) {
+    const arr = Array.isArray(list) ? list : [];
+    const idx = arr.findIndex((d) => d && d.key === key);
+    return idx >= 0 ? 'day-' + idx : '';
   },
 
   /** 上拉加载更多：按当前 Tab/视图分页。 */

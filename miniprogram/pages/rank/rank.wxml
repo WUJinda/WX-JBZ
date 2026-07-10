@@ -2,12 +2,18 @@
   排行榜页（F5 个人榜 / F6 部门榜 / 部门明细）。
   红线：只渲染后端脱敏字段（nickname 已脱敏），不渲染 _openid/完整 phone/sync_count。
 -->
-<view class="rank-page">
+<view class="rank-page {{tab === 'personal' && viewMode === 'list' && subTab === 'today' ? 'has-picker' : ''}}">
 
   <!-- 顶部 Tab：个人榜 / 部门榜 -->
   <view class="tab-bar" wx:if="{{viewMode === 'list'}}">
     <view class="tab-item {{tab === 'personal' ? 'tab-active' : ''}}" data-tab="personal" bindtap="onTabSwitch">个人榜</view>
     <view class="tab-item {{tab === 'dept' ? 'tab-active' : ''}}" data-tab="dept" bindtap="onTabSwitch">部门榜</view>
+  </view>
+
+  <!-- 个人榜二级 Tab：累计榜 / 今日榜（今日榜带底部日期选择器） -->
+  <view class="subtab-bar" wx:if="{{tab === 'personal' && viewMode === 'list'}}">
+    <view class="subtab-item {{subTab === 'total' ? 'subtab-active' : ''}}" data-sub="total" bindtap="onSubTabSwitch">累计榜</view>
+    <view class="subtab-item {{subTab === 'today' ? 'subtab-active' : ''}}" data-sub="today" bindtap="onSubTabSwitch">今日榜</view>
   </view>
 
   <!-- ============ 个人榜 ============ -->
@@ -113,7 +119,7 @@
   </block>
 
   <!-- ============ 我的排名条（固定底部，仅个人榜） ============ -->
-  <view class="my-rank-bar" wx:if="{{tab === 'personal' && viewMode === 'list' && myRank}}">
+  <view class="my-rank-bar {{subTab === 'today' ? 'with-picker' : ''}}" wx:if="{{tab === 'personal' && viewMode === 'list' && myRank}}">
     <view class="my-rank-left">
       <view class="my-rank-no">第 {{myRank.rank}} 名</view>
       <view class="my-rank-neighbors" wx:if="{{myNeighbors.length > 1}}">
@@ -121,6 +127,30 @@
       </view>
     </view>
     <view class="my-rank-steps">{{myRank.total_steps}} 步</view>
+  </view>
+
+  <!-- ============ 今日榜日期选择器（固定底部，个人榜·今日榜模式 = 参考图红框位置） ============ -->
+  <view class="day-picker" wx:if="{{tab === 'personal' && viewMode === 'list' && subTab === 'today'}}">
+    <view class="day-arrow">‹</view>
+    <view class="day-scroll-wrap">
+      <scroll-view wx:if="{{dayList.length > 0}}" scroll-x class="day-scroll" scroll-into-view="{{dayScrollInto}}" scroll-with-animation>
+        <view class="day-list">
+          <view
+            id="day-{{index}}"
+            wx:for="{{dayList}}"
+            wx:key="key"
+            class="day-chip {{item.key === selectedDay ? 'day-chip-active' : ''}}"
+            data-key="{{item.key}}"
+            bindtap="onDayPick"
+          >
+            <text class="day-label">{{item.label}}</text>
+            <text class="day-today" wx:if="{{item.isToday}}">今</text>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="day-empty" wx:else>暂无可选日期</view>
+    </view>
+    <view class="day-arrow">›</view>
   </view>
 
   <!-- ============ 我的部门卡（固定底部，仅部门榜） ============ -->
