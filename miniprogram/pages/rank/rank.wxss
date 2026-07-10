@@ -12,6 +12,15 @@
   padding-bottom: 140rpx; /* 为底部我的排名条留位 */
 }
 
+/* 顶部固定区（tab-bar + subtab-bar）：sticky 吸顶，列表滚动时常驻顶部。
+   sticky 在文档流正常占位，列表自然排在其下方，无需额外 padding-top 补偿。 */
+.rank-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #ffffff;
+}
+
 /* 顶部 Tab */
 .tab-bar {
   display: flex;
@@ -201,8 +210,9 @@
   align-items: center;
   justify-content: space-between;
   z-index: 100;
-  /* 适配 tabBar 高度（小程序原生 tabBar 约 100rpx） */
-  bottom: calc(100rpx);
+  /* bottom:0 即贴 tabBar 顶部——tabBar 页面 fixed 的 0 参照 webview 可视区底（=tabBar 上方），
+     无需额外避让（早先 100rpx / --tabbar-h 避让反而把元件顶上去、留出灰底空档）。 */
+  bottom: 0;
 }
 .my-rank-left {
   flex: 1;
@@ -236,11 +246,11 @@
 .subtab-bar {
   display: flex;
   background: #ffffff;
-  padding: 0 24rpx;
-  gap: 40rpx;
   border-bottom: 1rpx solid #f0f0f0;
 }
 .subtab-item {
+  flex: 1; /* 两个页签各占一半宽度（同顶部 tab-bar 写法） */
+  text-align: center;
   padding: 18rpx 0;
   font-size: 26rpx;
   color: #999;
@@ -263,19 +273,19 @@
 }
 
 /* ===== 今日榜日期选择器（固定底部 = 参考图红框位置） ===== */
-/* 高度基准：padding 12rpx*2 + chip 72rpx = 96rpx；my-rank-bar.with-picker 与
-   rank-page.has-picker 据此量让位 / 留白。 */
+/* 高度基准：padding-top 10px + chip 72rpx + padding-bottom 12rpx + border-top 2rpx
+   = calc(10px + 86rpx)；with-picker 让位 / has-picker 留白据此量。 */
 .day-picker {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 100rpx; /* 贴原生 tabBar 正上方 */
+  bottom: 0; /* 贴 tabBar 顶部（fixed 的 0 已在 webview 可视区底 = tabBar 上方） */
   z-index: 99;
   display: flex;
   align-items: center;
   background: #ffffff;
   border-top: 2rpx solid #eee;
-  padding: 12rpx 16rpx;
+  padding: 10px 16rpx 12rpx; /* 顶部 10px 留白（胶囊距选择器顶边） */
 }
 .day-arrow {
   flex: none;
@@ -337,12 +347,12 @@
   line-height: 72rpx;
 }
 
-/* 今日榜模式：我的排名条上移让位日期选择器 */
+/* 今日榜模式：我的排名条上移让位日期选择器（= 日期选择器总高 calc(10px+86rpx)） */
 .my-rank-bar.with-picker {
-  bottom: calc(100rpx + 96rpx);
+  bottom: calc(10px + 86rpx);
 }
 
-/* 今日榜模式：列表底部留白覆盖 日期选择器 + 排名条 + tabBar */
+/* 今日榜模式：列表底部留白覆盖 日期选择器(calc(10px+86rpx)) + 排名条(~110rpx) */
 .rank-page.has-picker {
-  padding-bottom: calc(100rpx + 96rpx + 110rpx);
+  padding-bottom: calc(10px + 86rpx + 110rpx);
 }

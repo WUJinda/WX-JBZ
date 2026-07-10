@@ -4,16 +4,18 @@
 -->
 <view class="rank-page {{tab === 'personal' && viewMode === 'list' && subTab === 'today' ? 'has-picker' : ''}}">
 
-  <!-- 顶部 Tab：个人榜 / 部门榜 -->
-  <view class="tab-bar" wx:if="{{viewMode === 'list'}}">
-    <view class="tab-item {{tab === 'personal' ? 'tab-active' : ''}}" data-tab="personal" bindtap="onTabSwitch">个人榜</view>
-    <view class="tab-item {{tab === 'dept' ? 'tab-active' : ''}}" data-tab="dept" bindtap="onTabSwitch">部门榜</view>
-  </view>
+  <!-- 顶部固定区：个人榜/部门榜 Tab + 个人榜二级 Tab（sticky 吸顶，列表滚动时常驻顶部） -->
+  <view class="rank-header" wx:if="{{viewMode === 'list'}}">
+    <view class="tab-bar">
+      <view class="tab-item {{tab === 'personal' ? 'tab-active' : ''}}" data-tab="personal" bindtap="onTabSwitch">个人榜</view>
+      <view class="tab-item {{tab === 'dept' ? 'tab-active' : ''}}" data-tab="dept" bindtap="onTabSwitch">部门榜</view>
+    </view>
 
-  <!-- 个人榜二级 Tab：累计榜 / 今日榜（今日榜带底部日期选择器） -->
-  <view class="subtab-bar" wx:if="{{tab === 'personal' && viewMode === 'list'}}">
-    <view class="subtab-item {{subTab === 'total' ? 'subtab-active' : ''}}" data-sub="total" bindtap="onSubTabSwitch">累计榜</view>
-    <view class="subtab-item {{subTab === 'today' ? 'subtab-active' : ''}}" data-sub="today" bindtap="onSubTabSwitch">今日榜</view>
+    <!-- 个人榜二级 Tab：累计榜 / 今日榜（今日榜带底部日期选择器） -->
+    <view class="subtab-bar" wx:if="{{tab === 'personal'}}">
+      <view class="subtab-item {{subTab === 'total' ? 'subtab-active' : ''}}" data-sub="total" bindtap="onSubTabSwitch">累计榜</view>
+      <view class="subtab-item {{subTab === 'today' ? 'subtab-active' : ''}}" data-sub="today" bindtap="onSubTabSwitch">今日榜</view>
+    </view>
   </view>
 
   <!-- ============ 个人榜 ============ -->
@@ -122,9 +124,6 @@
   <view class="my-rank-bar {{subTab === 'today' ? 'with-picker' : ''}}" wx:if="{{tab === 'personal' && viewMode === 'list' && myRank}}">
     <view class="my-rank-left">
       <view class="my-rank-no">第 {{myRank.rank}} 名</view>
-      <view class="my-rank-neighbors" wx:if="{{myNeighbors.length > 1}}">
-        <text wx:for="{{myNeighbors}}" wx:key="user_id" wx:for-item="nb">{{nb.rank}}.{{nb.nickname || '匿名'}} </text>
-      </view>
     </view>
     <view class="my-rank-steps">{{myRank.total_steps}} 步</view>
   </view>

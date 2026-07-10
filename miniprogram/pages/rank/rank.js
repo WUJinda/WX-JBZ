@@ -9,7 +9,6 @@
 //   - 本地轨云函数未部署：加载失败 → 静默 catch → 空态占位，不白屏不崩（照 home.loadStats 模式）。
 //   - rank 页是 tabBar 页（app.json tabBar.list），不使用 navigateTo 进入。
 const {
-  pickNeighbors,
   contribution,
   switchMetric,
   formatUpdatedAt,
@@ -33,7 +32,6 @@ Page({
     personalPageSize: DEFAULT_PAGE_SIZE,
     personalHasMore: true,
     myRank: null, // {rank, user_id, total_steps, ...} | null
-    myNeighbors: [], // 我的排名条前后相邻名次（pickNeighbors 输出）
     // 今日榜日期选择器（仅 subTab==='today'）：活动期 start~今天 的日期列表
     dayList: [], // [{key:'YYYY-MM-DD', label:'M.D', ts, isToday}]
     selectedDay: '', // 选中日期 key（默认今天）
@@ -256,15 +254,11 @@ Page({
         const list = Array.isArray(d.list) ? d.list : [];
         const merged = reset ? list : this.data.personalList.concat(list);
         const myRank = d.myRank || null;
-        // 我的排名条前后相邻：基于已加载列表 + myRank.user_id 定位。
-        const myUserId = myRank && myRank.user_id;
-        const neighbors = myUserId ? pickNeighbors(merged, myUserId, 1) : [];
         this.setData({
           personalList: merged,
           personalPage: page + 1,
           personalHasMore: hasMore(list.length, this.data.personalPageSize),
           myRank,
-          myNeighbors: neighbors,
           updatedAt: formatUpdatedAt(d.updatedAt),
           loading: false,
           loadingMore: false,
