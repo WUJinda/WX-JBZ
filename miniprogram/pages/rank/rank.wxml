@@ -18,8 +18,8 @@
     </view>
   </view>
 
-  <!-- ============ 个人榜 ============ -->
-  <block wx:if="{{tab === 'personal' && viewMode === 'list'}}">
+  <!-- ============ 个人榜·累计榜 ============ -->
+  <block wx:if="{{tab === 'personal' && viewMode === 'list' && subTab === 'total'}}">
     <view class="list-wrap">
       <block wx:if="{{personalList.length > 0}}">
         <view class="rank-row" wx:for="{{personalList}}" wx:key="user_id">
@@ -39,6 +39,35 @@
       <view class="empty" wx:if="{{!loading && personalList.length === 0}}">
         <view class="empty-icon">🏆</view>
         <view class="empty-text">暂无排行数据</view>
+      </view>
+      <!-- 加载占位 -->
+      <view class="empty" wx:if="{{loading}}">
+        <view class="empty-text">加载中...</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- ============ 个人榜·今日榜（按 selectedDay 当日排名） ============ -->
+  <block wx:if="{{tab === 'personal' && viewMode === 'list' && subTab === 'today'}}">
+    <view class="list-wrap">
+      <block wx:if="{{todayList.length > 0}}">
+        <view class="rank-row" wx:for="{{todayList}}" wx:key="user_id">
+          <view class="rank-no">{{item.rank}}</view>
+          <view class="avatar">{{item.nickname ? item.nickname[0] : '?'}}</view>
+          <view class="info">
+            <view class="name">{{item.nickname || '匿名'}}</view>
+            <view class="dept">{{item.dept_name || '未分组'}}</view>
+          </view>
+          <view class="steps">{{item.total_steps}} 步</view>
+        </view>
+        <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+        <view class="load-more" wx:if="{{!todayHasMore && todayList.length > 0}}">没有更多了</view>
+      </block>
+
+      <!-- 空态 -->
+      <view class="empty" wx:if="{{!loading && todayList.length === 0}}">
+        <view class="empty-icon">🏆</view>
+        <view class="empty-text">该日暂无排行数据</view>
       </view>
       <!-- 加载占位 -->
       <view class="empty" wx:if="{{loading}}">
@@ -121,11 +150,19 @@
   </block>
 
   <!-- ============ 我的排名条（固定底部，仅个人榜） ============ -->
-  <view class="my-rank-bar {{subTab === 'today' ? 'with-picker' : ''}}" wx:if="{{tab === 'personal' && viewMode === 'list' && myRank}}">
+  <!-- 累计榜排名条 -->
+  <view class="my-rank-bar" wx:if="{{tab === 'personal' && viewMode === 'list' && subTab === 'total' && myRank}}">
     <view class="my-rank-left">
       <view class="my-rank-no">第 {{myRank.rank}} 名</view>
     </view>
     <view class="my-rank-steps">{{myRank.total_steps}} 步</view>
+  </view>
+  <!-- 今日榜排名条（当日无数据=todayMyRank 空 → 不渲染=隐藏，符合产品口径；with-picker 让位日期选择器） -->
+  <view class="my-rank-bar with-picker" wx:if="{{tab === 'personal' && viewMode === 'list' && subTab === 'today' && todayMyRank}}">
+    <view class="my-rank-left">
+      <view class="my-rank-no">今日第 {{todayMyRank.rank}} 名</view>
+    </view>
+    <view class="my-rank-steps">{{todayMyRank.total_steps}} 步</view>
   </view>
 
   <!-- ============ 今日榜日期选择器（固定底部，个人榜·今日榜模式 = 参考图红框位置） ============ -->
@@ -161,7 +198,7 @@
     <view class="my-rank-steps">人均 {{myDeptRank.avg_steps}} 步</view>
   </view>
 
-  <!-- 更新时间 -->
-  <view class="updated-at" wx:if="{{updatedAt}}">数据更新于 {{updatedAt}}</view>
+  <!-- 更新时间（今日榜用 todayUpdatedAt） -->
+  <view class="updated-at" wx:if="{{tab === 'personal' && subTab === 'today' ? todayUpdatedAt : updatedAt}}">数据更新于 {{tab === 'personal' && subTab === 'today' ? todayUpdatedAt : updatedAt}}</view>
 
 </view>

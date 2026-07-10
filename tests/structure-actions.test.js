@@ -424,6 +424,25 @@ describe('rank action 挂载与 requireUser（G1）', () => {
     expect(src).not.toMatch(/_openid\s*:/);
     expect(src).not.toMatch(/sync_count\s*:/);
   });
+
+  it('rank/index.js 挂载 personalDaily（今日榜按日）+ require rankDaily + requireUser', () => {
+    const src = readSource('cloudfunctions/rank/index.js');
+    expect(src).toMatch(/\bpersonalDaily\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/rankDaily['"]\)/);
+    expect(src).toMatch(/personalDaily:\s*true/);
+  });
+
+  it('rankDaily.js 纯函数模块存在且不调真实云 API + 投影脱敏', () => {
+    expect(fs.existsSync(path.join(ROOT, 'cloudfunctions/rank/rankDaily.js')), '缺少 rankDaily.js').toBe(true);
+    const src = readSource('cloudfunctions/rank/rankDaily.js');
+    expect(src).toMatch(/readPersonalDaily/);
+    expect(src).toMatch(/projectPersonalDaily/);
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(src).not.toMatch(/cloud\.database\(\)/);
+    // 投影函数体不下发敏感字段
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
 });
 
 describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {

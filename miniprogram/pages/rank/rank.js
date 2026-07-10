@@ -36,6 +36,13 @@ Page({
     dayList: [], // [{key:'YYYY-MM-DD', label:'M.D', ts, isToday}]
     selectedDay: '', // 选中日期 key（默认今天）
     dayScrollInto: '', // 日期选择器 scroll-into-view 目标 id
+    // 今日榜按日榜单（仅 subTab==='today'，独立于累计 personalList，互不污染）
+    todayList: [],
+    todayPage: 1,
+    todayPageSize: DEFAULT_PAGE_SIZE,
+    todayHasMore: true,
+    todayMyRank: null, // {rank, total_steps, ...} | null（当天未同步 → null → 隐藏排名条）
+    todayUpdatedAt: '',
     // 部门榜
     deptList: [],
     deptPage: 1,
@@ -60,8 +67,11 @@ Page({
   onShow() {
     // 进入 tab 首次加载对应榜；切换 tab 时由 switchTab 触发加载。
     if (this.data.tab === 'personal') {
-      this.loadPersonal(true);
-      this.ensureDayList(); // 今日榜日期列表（累计榜模式也预取，切「今日榜」即用）
+      this.ensureDayList(); // 今日榜日期列表（累计榜模式也预取，切「今日榜」即用）；
+      //   日期就绪后由 applyDayList 按 subTab 触发今日榜加载（承接异步时序）。
+      if (this.data.subTab !== 'today') {
+        this.loadPersonal(true);
+      }
     } else {
       this.loadDept(true);
     }
@@ -70,6 +80,8 @@ Page({
   onPullDownRefresh() {
     if (this.data.viewMode === 'members') {
       this.loadDeptMembers(true);
+    } else if (this.data.tab === 'personal' && this.data.subTab === 'today') {
+      this.loadTodayRank(true);
     } else if (this.data.tab === 'personal') {
       this.loadPersonal(true);
     } else {
@@ -85,7 +97,10 @@ Page({
     if (tab === this.data.tab) return;
     this.setData({ tab, viewMode: 'list' });
     if (tab === 'personal') {
-      this.loadPersonal(true);
+      this.ensureDayList(); // 今日榜日期预取（today 模式由 applyDayList 触发加载，与 onShow 同口径）
+      if (this.data.subTab !== 'today') {
+        this.loadPersonal(true);
+      }
     } else {
       this.loadDept(true);
     }
@@ -98,20 +113,20 @@ Page({
     if (sub === this.data.subTab) return;
     this.setData({ subTab: sub });
     if (sub === 'today') {
-      // 进入今日榜：日期列表未就绪则补拉；已就绪则把选中项滚进视口。
-      if (this.data.dayList.length === 0) {
+      // 进入今日榜：日期/选中日未就绪则补拉（applyDayList 完成后会触发当日加载）；
+      //   已就绪则直接加载当日榜单 + 把选中项滚进视口。
+      if (this.data.dayList.length === 0 || !this.data.selectedDay) {
         this.ensureDayList();
       } else {
         this.setData({
           dayScrollInto: this.scrollIdForKey(this.data.dayList, this.data.selectedDay)
         });
+        this.loadTodayRank(true);
       }
     }
-    // 今日榜「按日榜单」数据后写：UI 外壳阶段复用累计 personalList 占位渲染，
-    // 切二级 Tab / 切日期均不重新拉取列表，仅切换选中态。
   },
 
-  /** 点日期：切换选中（UI 外壳；按日榜单数据后写）。 */
+  /** 点日期：切换选中日 → 重新加载该日榜单（仅今日榜模式渲染日期选择器）。 */
   onDayPick(e) {
     const key = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.key;
     if (!key || key === this.data.selectedDay) return;
@@ -119,6 +134,7 @@ Page({
       selectedDay: key,
       dayScrollInto: this.scrollIdForKey(this.data.dayList, key)
     });
+    this.loadTodayRank(true);
   },
 
   /**
@@ -165,6 +181,10 @@ Page({
       selectedDay: key,
       dayScrollInto: this.scrollIdForKey(list, key)
     });
+    // 日期就绪后若已在今日榜模式，触发当日榜单加载（承接 ensureDayList 异步完成 / 首次进 today 的时序）。
+    if (key && this.data.subTab === 'today') {
+      this.loadTodayRank(true);
+    }
   },
 
   /** 日期项 scroll-into-view 目标 id（'day-<index>'；未命中 → ''）。 */
@@ -182,8 +202,13 @@ Page({
       return;
     }
     if (this.data.tab === 'personal') {
-      if (!this.data.personalHasMore || this.data.loadingMore) return;
-      this.loadPersonal(false);
+      if (this.data.subTab === 'today') {
+        if (!this.data.todayHasMore || this.data.loadingMore) return;
+        this.loadTodayRank(false);
+      } else {
+        if (!this.data.personalHasMore || this.data.loadingMore) return;
+        this.loadPersonal(false);
+      }
     } else {
       if (!this.data.deptHasMore || this.data.loadingMore) return;
       this.loadDept(false);
@@ -276,6 +301,68 @@ Page({
           personalHasMore: false,
           myRank: reset ? null : this.data.myRank,
           updatedAt: ''
+        });
+      });
+  },
+
+  /** 加载今日榜（按 selectedDay 当日排名）。reset=true 重新加载第 1 页。 */
+  loadTodayRank(reset) {
+    const app = getApp();
+    const api = app && app.api;
+    const date = this.data.selectedDay;
+    if (!date) {
+      // 日期未就绪（活动期未取到）→ 空态占位，不崩。
+      this.setData({ todayList: [], todayHasMore: false, errorMsg: '' });
+      return;
+    }
+    if (!api || typeof api.call !== 'function') {
+      this.setData({ todayList: [], todayHasMore: false, errorMsg: '' });
+      return;
+    }
+    const page = reset ? 1 : this.data.todayPage;
+    if (reset) {
+      this.setData({ loading: true, errorMsg: '' });
+    } else {
+      this.setData({ loadingMore: true });
+    }
+    api
+      .call(
+        'rank',
+        {
+          action: 'personalDaily',
+          activity_id: app.getActivityId(),
+          date,
+          page,
+          page_size: this.data.todayPageSize
+        },
+        { loading: false, silent: true }
+      )
+      .then((data) => {
+        const d = data || {};
+        const list = Array.isArray(d.list) ? d.list : [];
+        const merged = reset ? list : this.data.todayList.concat(list);
+        this.setData({
+          todayList: merged,
+          todayPage: page + 1,
+          todayHasMore: hasMore(list.length, this.data.todayPageSize),
+          todayMyRank: d.myRank || null,
+          todayUpdatedAt: formatUpdatedAt(d.updatedAt),
+          loading: false,
+          loadingMore: false,
+          errorMsg: ''
+        });
+      })
+      .catch((err) => {
+        // 1002 未登录 → 守卫引导登录（rank.* 需登录态）。
+        if (handleNotLoggedIn(err)) return;
+        // 本地轨：云函数未部署 → 空态占位，不弹错误（照 loadPersonal 模式）。
+        this.setData({
+          loading: false,
+          loadingMore: false,
+          todayList: reset ? [] : this.data.todayList,
+          todayHasMore: false,
+          todayMyRank: reset ? null : this.data.todayMyRank,
+          todayUpdatedAt: ''
         });
       });
   },

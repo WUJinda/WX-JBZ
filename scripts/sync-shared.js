@@ -99,11 +99,13 @@ const SHARED_MANIFEST = {
   ],
   rank: [
     'common/errors',
+    'common/mask', // rankDaily 脱敏 maskNickname
     'common/authMiddleware',
     'common/response',
     'common/db',
     'activity/activityResolver',
-    'activity/activityStatus'
+    'activity/activityStatus',
+    'steps/stepsSync' // rankDaily 引入（传递依赖 activityStatus + common/errors 已在列）
   ],
   admin: [
     'common/errors',
