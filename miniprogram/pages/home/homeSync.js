@@ -130,4 +130,26 @@ function isSyncFresh(lastSyncTs, nowTs, freshMs) {
   return last > 0 && now > 0 && now - last < ms;
 }
 
-module.exports = { STATES, transition, shouldThrottle, isSyncFresh };
+/**
+ * 判定微信运动（scope.werun）授权三态（对齐 wx.getSetting 返回的 authSetting）。
+ *
+ * 官方授权流程要求调 getWeRunData 前先 getSetting 查 scope.werun，据状态分流：
+ *   - granted      已授权 → 直接 getWeRunData，不弹任何窗（已授权用户点同步不再被打扰）
+ *   - undetermined 从未询问（authSetting 无此 key）→ getWeRunData 首次调用自动弹授权窗
+ *   - denied       曾拒绝 → getWeRunData 会静默 fail，须 openSetting 引导重新授权
+ *
+ * 背景：此前 callWeRunData 直接盲调 getWeRunData，fail 回调不读 errMsg 一律当「拒绝授权」，
+ *   导致已授权用户因隐私协议/网络等非授权原因 fail 时，被误判并反复引导去设置页「开通授权」
+ *   （设置里本就开着 → 死循环）。先 getSetting 预检 + 三态分流可消除该误判。
+ *
+ * @param {object} authSetting wx.getSetting 返回的 res.authSetting（可能为空/缺 key）
+ * @returns {'granted'|'denied'|'undetermined'}
+ */
+function classifyWerunAuth(authSetting) {
+  const v = authSetting && authSetting['scope.werun'];
+  if (v === true) return 'granted';
+  if (v === false) return 'denied';
+  return 'undetermined';
+}
+
+module.exports = { STATES, transition, shouldThrottle, isSyncFresh, classifyWerunAuth };
