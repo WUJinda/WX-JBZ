@@ -11,9 +11,9 @@
       <view class="module-icon">⚙️</view>
       <view class="module-name">活动配置</view>
     </view>
-    <view class="module-card" data-mod="whitelist" bindtap="onModuleTap">
-      <view class="module-icon">📋</view>
-      <view class="module-name">白名单导入</view>
+    <view class="module-card" data-mod="inviteCode" bindtap="onModuleTap">
+      <view class="module-icon">🎟️</view>
+      <view class="module-name">邀请码管理</view>
     </view>
     <view class="module-card" data-mod="users" bindtap="onModuleTap">
       <view class="module-icon">👥</view>
@@ -26,6 +26,10 @@
     <view class="module-card" data-mod="dept" bindtap="onModuleTap">
       <view class="module-icon">🏢</view>
       <view class="module-name">部门管理</view>
+    </view>
+    <view class="module-card" data-mod="points" bindtap="onModuleTap">
+      <view class="module-icon">🏆</view>
+      <view class="module-name">积分台账</view>
     </view>
   </view>
 
@@ -44,15 +48,15 @@
 
   <!-- 看板指标 + 趋势 + 部门榜 -->
   <block wx:if="{{!loading && !empty}}">
-    <!-- 6 指标卡（参与人数 / 白名单总数 / 参与率 / 累计步数 / 人均 / 有效参与） -->
+    <!-- 6 指标卡（参与人数 / 已发码数 / 参与率 / 累计步数 / 人均 / 有效参与） -->
     <view class="metric-grid">
       <view class="metric-card">
         <text class="metric-label">参与人数</text>
         <text class="metric-value">{{participated}}</text>
       </view>
       <view class="metric-card">
-        <text class="metric-label">白名单总数</text>
-        <text class="metric-value">{{whitelistTotal}}</text>
+        <text class="metric-label">已发码数</text>
+        <text class="metric-value">{{inviteCodesTotal}}</text>
       </view>
       <view class="metric-card">
         <text class="metric-label">参与率</text>

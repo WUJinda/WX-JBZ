@@ -1,9 +1,9 @@
 // pages/admin/dashboard/dashboard.js
 // 后台首页：模块导航 + 数据看板（对齐 PRD F8 R8.5，开发计划阶段 H2）。
 //
-// 看板对接 admin.dashboard（buildDashboard 输出：participated/whitelistTotal/rate/
+// 看板对接 admin.dashboard（buildDashboard 输出：participated/inviteCodesTotal/rate/
 // totalSteps/avgSteps/validParticipants/dailyActive/deptRank）。
-// 5 个模块导航：activity / whitelist（H2 已实现）/ users / abnormal / dept（H3 填充，导航先就位）。
+// 6 个模块导航：activity / inviteCode（邀请码管理）/ users / abnormal / dept / points。
 //
 // 红线：
 //   - 本页只渲染后端下发的非敏感字段（deptRank 等），绝不渲染 _openid/完整 phone/sync_count。
@@ -17,7 +17,7 @@ Page({
     pageLabel: '数据看板',
     // 6 指标（F8 §420–428）
     participated: 0,
-    whitelistTotal: 0,
+    inviteCodesTotal: 0,
     rateText: '0%',
     totalSteps: 0,
     avgSteps: 0,
@@ -65,7 +65,7 @@ Page({
         const d = data || {};
         const metrics = {
           participated: d.participated,
-          whitelistTotal: d.whitelistTotal,
+          inviteCodesTotal: d.inviteCodesTotal,
           totalSteps: d.totalSteps,
           validParticipants: d.validParticipants,
           deptRank: d.deptRank
@@ -75,7 +75,7 @@ Page({
           loading: false,
           errorMsg: '',
           participated: Number(d.participated) || 0,
-          whitelistTotal: Number(d.whitelistTotal) || 0,
+          inviteCodesTotal: Number(d.inviteCodesTotal) || 0,
           rateText: formatRate(d.rate),
           totalSteps: Number(d.totalSteps) || 0,
           avgSteps: Math.round(Number(d.avgSteps) || 0),
@@ -92,7 +92,7 @@ Page({
           loading: false,
           errorMsg: '',
           participated: 0,
-          whitelistTotal: 0,
+          inviteCodesTotal: 0,
           rateText: '0%',
           totalSteps: 0,
           avgSteps: 0,
@@ -149,10 +149,11 @@ Page({
     if (typeof wx === 'undefined' || !wx.navigateTo) return;
     const urlMap = {
       activity: '/pages/admin/activity/list',
-      whitelist: '/pages/admin/whitelist/whitelist',
+      inviteCode: '/pages/admin/inviteCode/inviteCode',
       users: '/pages/admin/users/users',
       abnormal: '/pages/admin/abnormal/abnormal',
-      dept: '/pages/admin/dept/dept'
+      dept: '/pages/admin/dept/dept',
+      points: '/pages/admin/points/points'
     };
     const url = urlMap[mod];
     if (!url) return;

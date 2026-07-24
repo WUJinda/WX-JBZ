@@ -20,7 +20,7 @@
  * 本地轨：records/activity/now/config 注入式，纯函数可单测；不调真实微信云 API。
  */
 
-const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, activityEndDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
 
 /**
  * 取该用户该活动的全部 StepRecord（按 date 升序）。
@@ -35,10 +35,11 @@ function sortRecords(records) {
 }
 
 /**
- * 统计某 activity 的活动期天数：start_date ~ today（含两端），不足 0 → 0。
+ * 统计某 activity 的活动期天数：start_date ~ min(end_date, today)（含两端），不足 0 → 0。
  * activity 缺失 / start_time 缺失 / 未开始 → 0。
+ * 若有 end_time，右界取 min(end_date, today)（活动结束后天数不再增加）。
  *
- * @param {object} activity { start_time }
+ * @param {object} activity { start_time, end_time }
  * @param {string} today YYYY-MM-DD（北京日）
  * @param {number} offsetMinutes 时区偏移
  * @returns {number}
@@ -51,12 +52,15 @@ function calcTotalDays(activity, today, offsetMinutes) {
   const startDate = dateFromTimestamp(Math.floor(startMs / 1000), offsetMinutes);
   if (!startDate || !today) return 0;
   if (today < startDate) return 0; // 未开始
-  // 含两端的天数：(today - start) / 天 + 1。
-  const todayMs = Date.parse(today + 'T00:00:00+08:00');
+  // 右界：若有 end_time，取 min(end_date, today)；无 end_time 则取 today。
+  const endDate = activityEndDate(a, offsetMinutes);
+  const upperDay = endDate && endDate < today ? endDate : today;
+  // 含两端的天数：(upperDay - start) / 天 + 1。
+  const upperMs = Date.parse(upperDay + 'T00:00:00+08:00');
   const sMs = Date.parse(startDate + 'T00:00:00+08:00');
-  if (!Number.isFinite(todayMs) || !Number.isFinite(sMs)) return 0;
+  if (!Number.isFinite(upperMs) || !Number.isFinite(sMs)) return 0;
   const dayMs = 24 * 60 * 60 * 1000;
-  return Math.floor((todayMs - sMs) / dayMs) + 1;
+  return Math.floor((upperMs - sMs) / dayMs) + 1;
 }
 
 /**
@@ -81,12 +85,13 @@ function buildStats(params) {
 
   const recs = sortRecords(p.records);
 
-  // 活动期起点：累计/参与天数仅算活动期内（start_date ~ today），过滤早期 sync bug 回灌的
-  // 活动期外脏记录（locked=true 但 date<start_date）。activity 缺失 → '' → 不强加过滤（兜底）。
+  // 活动期起点/终点：累计/参与天数仅算活动期内（start_date ~ end_date），过滤活动期外脏记录。
+  // activity 缺失 → '' → 不强加过滤（兜底）。
   const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(p.activity, cfg.timezoneOffsetMinutes);
 
   // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
-  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate));
+  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate, endDate));
 
   // today_steps：当日有效步数。
   const todayRec = valid.find((r) => r.date === today);

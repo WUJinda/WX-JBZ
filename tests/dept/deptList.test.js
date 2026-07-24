@@ -23,16 +23,17 @@ describe('dept.list 纯函数（D1）', () => {
   });
 
   describe('projectDept 投影', () => {
-    it('输出 dept_id/name/member_count，不带敏感字段', () => {
+    it('输出 dept_id/name/member_count/size，不带敏感字段', () => {
       const out = projectDept({
         dept_id: 'd_01',
         name: '研发部',
         member_count: 12,
+        size: 9,
         activity_id: 'a_01',
         _id: 'xxx',
         created_at: '2026-06-26'
       });
-      expect(out).toEqual({ dept_id: 'd_01', name: '研发部', member_count: 12 });
+      expect(out).toEqual({ dept_id: 'd_01', name: '研发部', member_count: 12, size: 9 });
       expect(out).not.toHaveProperty('_id');
       expect(out).not.toHaveProperty('activity_id');
     });
@@ -41,6 +42,13 @@ describe('dept.list 纯函数（D1）', () => {
       expect(projectDept({ dept_id: 'd', name: 'n' }).member_count).toBe(0);
       expect(projectDept({ dept_id: 'd', name: 'n', member_count: '12.9' }).member_count).toBe(12);
       expect(projectDept({ dept_id: 'd', name: 'n', member_count: -1 }).member_count).toBe(0);
+    });
+
+    it('size 缺失/非法兜底 0，数字字符串向下取整', () => {
+      expect(projectDept({ dept_id: 'd', name: 'n' }).size).toBe(0);
+      expect(projectDept({ dept_id: 'd', name: 'n', size: '9.9' }).size).toBe(9);
+      expect(projectDept({ dept_id: 'd', name: 'n', size: -3 }).size).toBe(0);
+      expect(projectDept({ dept_id: 'd', name: 'n', size: 'abc' }).size).toBe(0);
     });
   });
 
@@ -65,24 +73,24 @@ describe('dept.list 纯函数（D1）', () => {
 
     it('注入 source 时返回注入源的投影', async () => {
       const { list } = await listDepartments({
-        source: [{ dept_id: 'x1', name: 'X1', member_count: 3 }]
+        source: [{ dept_id: 'x1', name: 'X1', member_count: 3, size: 5 }]
       });
-      expect(list).toEqual([{ dept_id: 'x1', name: 'X1', member_count: 3 }]);
+      expect(list).toEqual([{ dept_id: 'x1', name: 'X1', member_count: 3, size: 5 }]);
     });
 
-    it('注入 counts 时用聚合人数覆盖 member_count（云轨实时聚合）', async () => {
+    it('注入 counts 时用聚合人数覆盖 member_count（云轨实时聚合），size 不受影响', async () => {
       const { list } = await listDepartments({
         source: [
-          { dept_id: 'd1', name: '一部', member_count: 0 },
-          { dept_id: 'd2', name: '二部', member_count: 0 },
+          { dept_id: 'd1', name: '一部', member_count: 0, size: 10 },
+          { dept_id: 'd2', name: '二部', member_count: 0, size: 5 },
           { dept_id: 'd3', name: '三部', member_count: 0 }
         ],
         counts: { d1: 3, d2: 0 } // d3 不在 counts → 回退 doc.member_count(0)
       });
       expect(list).toEqual([
-        { dept_id: 'd1', name: '一部', member_count: 3 },
-        { dept_id: 'd2', name: '二部', member_count: 0 },
-        { dept_id: 'd3', name: '三部', member_count: 0 }
+        { dept_id: 'd1', name: '一部', member_count: 3, size: 10 },
+        { dept_id: 'd2', name: '二部', member_count: 0, size: 5 },
+        { dept_id: 'd3', name: '三部', member_count: 0, size: 0 }
       ]);
     });
   });

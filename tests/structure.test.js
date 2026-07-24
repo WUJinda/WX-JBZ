@@ -26,7 +26,7 @@ describe('结构校验', () => {
       'pages/profile/profile',
       'pages/admin/dashboard/dashboard',
       'pages/admin/activity/activity',
-      'pages/admin/whitelist/whitelist',
+      'pages/admin/inviteCode/inviteCode',
       'pages/admin/users/users',
       'pages/admin/abnormal/abnormal',
       'pages/admin/dept/dept'
@@ -122,8 +122,8 @@ describe('结构校验', () => {
   it('auth-guard 路由判定（顺带验证 utils 可被 require）', () => {
     const { nextRoute, canEnterAdmin, PAGES } = require('../miniprogram/utils/auth-guard');
     expect(nextRoute({})).toBe(PAGES.LOGIN);
-    expect(nextRoute({ loggedIn: true, phoneVerified: true })).toBe(PAGES.DEPT);
-    expect(nextRoute({ loggedIn: true, phoneVerified: true, joined: true })).toBe(PAGES.HOME);
+    expect(nextRoute({ loggedIn: true, registered: true })).toBe(PAGES.DEPT);
+    expect(nextRoute({ loggedIn: true, registered: true, joined: true })).toBe(PAGES.HOME);
     expect(canEnterAdmin('/pages/admin/users/users', { loggedIn: true, isAdmin: true })).toBe(true);
     expect(canEnterAdmin('/pages/admin/users/users', { loggedIn: true, isAdmin: false })).toBe(false);
   });

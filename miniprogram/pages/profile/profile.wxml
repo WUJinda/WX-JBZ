@@ -17,24 +17,10 @@
       <view class="nickname">{{nickname || '未设置昵称'}}</view>
     </view>
 
-    <!-- 邀请码：微信 getPhoneNumber 组件暂停启用，点击整行走手填改绑（onManualPhone → user.setPhone）。
-         手机号→邀请码 UI 改造；原 button open-type=getPhoneNumber 注释保留在下方，可恢复。 -->
-    <view class="row" bindtap="onManualPhone">
+    <!-- 邀请码（注册时一次性消费，只读展示） -->
+    <view class="row">
       <text class="label">邀请码</text>
-      <view class="phone-btn">
-        <text class="value {{phoneMasked ? '' : 'unverified'}}">{{phoneMasked || '未设置'}}</text>
-        <text class="phone-arrow">›</text>
-      </view>
-    </view>
-    <!-- 原 getPhoneNumber 微信授权按钮（已暂停，保留可恢复）：
-    <button class="phone-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
-      <text class="value {{phoneMasked ? '' : 'unverified'}}">{{phoneMasked || '未验证'}}</text>
-      <text class="phone-arrow">›</text>
-    </button>
-    -->
-    <!-- 邀请码手填入口（已设置→修改；未设置→填写） -->
-    <view class="phone-fallback" bindtap="onManualPhone">
-      <text class="phone-fallback-text">{{phoneMasked ? '邀请码有误？点此修改' : '点此填写邀请码'}}</text>
+      <text class="value {{inviteCode ? '' : 'unverified'}}">{{inviteCode || '未设置'}}</text>
     </view>
 
     <!-- 部门 -->
@@ -49,7 +35,7 @@
       <text class="value">{{joinStatus === 'joined' ? '已报名' : '未报名'}}</text>
     </view>
 
-    <!-- 累计步数（占位，真实聚合留后续阶段） -->
+    <!-- 累计步数 -->
     <view class="row">
       <text class="label">累计步数</text>
       <text class="value">{{totalSteps}}</text>

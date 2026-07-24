@@ -8,16 +8,16 @@ function readSource(rel) {
 }
 
 describe('云函数 action 挂载结构校验（完成标准 6）', () => {
-  it('auth/index.js 的 handlers 表挂载 login / register（phone 微信解密路径已暂停）', () => {
+  it('auth/index.js 的 handlers 表挂载 login / register（手机号机制已移除，改邀请码准入）', () => {
     const src = readSource('cloudfunctions/auth/index.js');
     // handlers 表中以键形式挂载了 login / register
     expect(src).toMatch(/\blogin\s*:\s*async/);
     expect(src).toMatch(/\bregister\s*:\s*async/);
-    // phone handler 已注释暂停（手机号→邀请码改造，微信 getPhoneNumber 接口不再使用），不再断言。
-    // 纯函数模块被 require（authPhone 仍 require，verifyPhone 暂留便于恢复微信链路）
+    // 纯函数模块被 require（authLogin/authRegister 同域 require）
     expect(src).toMatch(/require\(['"]\.\/authLogin['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/authRegister['"]\)/);
-    expect(src).toMatch(/require\(['"]\.\/authPhone['"]\)/);
+    // 手机号机制已彻底移除：不再 require authPhone
+    expect(src).not.toMatch(/require\(['"]\.\/authPhone['"]\)/);
   });
 
   it('user/index.js 的 handlers 表挂载 profile（不再 not implemented）', () => {
@@ -26,11 +26,11 @@ describe('云函数 action 挂载结构校验（完成标准 6）', () => {
     expect(src).toMatch(/require\(['"]\.\/userProfile['"]\)/);
   });
 
-  it('login / register / phone / profile 的纯函数模块文件存在', () => {
+  it('login / register / profile 的纯函数模块文件存在（含邀请码 inviteCode）', () => {
     const files = [
       'cloudfunctions/auth/authLogin.js',
       'cloudfunctions/auth/authRegister.js',
-      'cloudfunctions/auth/authPhone.js',
+      'cloudfunctions/auth/inviteCode.js',
       'cloudfunctions/user/userProfile.js'
     ];
     for (const rel of files) {
@@ -38,30 +38,24 @@ describe('云函数 action 挂载结构校验（完成标准 6）', () => {
     }
   });
 
-  it('login / profile 页面含授权 / 手机号验证 / 资料展示对应元素', () => {
+  it('login / profile 页面含授权 / 邀请码填写 / 资料展示对应元素', () => {
     const loginWxml = readSource('miniprogram/pages/login/login.wxml');
     // 登录授权按钮
     expect(loginWxml).toMatch(/onLoginTap/);
-    // 手机号手动填写（不再用 getPhoneNumber 微信组件）
-    expect(loginWxml).toMatch(/onPhoneInput/);
-    expect(loginWxml).toMatch(/onSubmitPhone/);
+    // 邀请码手动填写（手机号机制已移除）
+    expect(loginWxml).toMatch(/onInviteInput/);
+    expect(loginWxml).toMatch(/onSubmitInviteCode/);
     // 拒绝后 openSetting 重授权引导
     expect(loginWxml).toMatch(/open-type=["']openSetting["']/);
     expect(loginWxml).toMatch(/onOpenSetting/);
 
     const profileWxml = readSource('miniprogram/pages/profile/profile.wxml');
-    // 资料展示：脱敏手机号 / 部门 / 累计步数
-    expect(profileWxml).toMatch(/phoneMasked/);
+    // 资料展示：邀请码 / 部门 / 累计步数
+    expect(profileWxml).toMatch(/inviteCode/);
     expect(profileWxml).toMatch(/部门/);
     expect(profileWxml).toMatch(/totalSteps|累计步数/);
   });
 
-  it('login 页面授权状态机纯函数模块存在', () => {
-    expect(
-      fs.existsSync(path.join(ROOT, 'miniprogram/pages/login/authFlow.js')),
-      '缺少 authFlow.js'
-    ).toBe(true);
-  });
 });
 
 describe('activity action 挂载与页面结构校验（C1+C2）', () => {
@@ -424,6 +418,25 @@ describe('rank action 挂载与 requireUser（G1）', () => {
     expect(src).not.toMatch(/_openid\s*:/);
     expect(src).not.toMatch(/sync_count\s*:/);
   });
+
+  it('rank/index.js 挂载 personalDaily（今日榜按日）+ require rankDaily + requireUser', () => {
+    const src = readSource('cloudfunctions/rank/index.js');
+    expect(src).toMatch(/\bpersonalDaily\s*:\s*async/);
+    expect(src).toMatch(/require\(['"]\.\/rankDaily['"]\)/);
+    expect(src).toMatch(/personalDaily:\s*true/);
+  });
+
+  it('rankDaily.js 纯函数模块存在且不调真实云 API + 投影脱敏', () => {
+    expect(fs.existsSync(path.join(ROOT, 'cloudfunctions/rank/rankDaily.js')), '缺少 rankDaily.js').toBe(true);
+    const src = readSource('cloudfunctions/rank/rankDaily.js');
+    expect(src).toMatch(/readPersonalDaily/);
+    expect(src).toMatch(/projectPersonalDaily/);
+    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(src).not.toMatch(/cloud\.database\(\)/);
+    // 投影函数体不下发敏感字段
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
 });
 
 describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
@@ -431,9 +444,11 @@ describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
     const src = readSource('cloudfunctions/tasks/index.js');
     expect(src).toMatch(/\brankAggregate\s*:\s*async/);
     expect(src).toMatch(/\bdailyLock\s*:\s*async/);
+    expect(src).toMatch(/\bpointSettle\s*:\s*async/);
     // 纯函数模块被 require
     expect(src).toMatch(/require\(['"]\.\/rankAggregate['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/dailyLock['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/pointSettle['"]\)/);
   });
 
   it('tasks.rankAggregate/dailyLock 为系统级：入口不调 authMiddleware / 不 requireUser', () => {
@@ -444,7 +459,7 @@ describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
     expect(src).not.toMatch(/REQUIRE_USER_ACTIONS/);
   });
 
-  it('rankAggregate.js / dailyLock.js 纯函数模块存在', () => {
+  it('rankAggregate.js / dailyLock.js / pointSettle.js 纯函数模块存在', () => {
     expect(
       fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/rankAggregate.js')),
       '缺少 rankAggregate.js'
@@ -453,18 +468,26 @@ describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
       fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/dailyLock.js')),
       '缺少 dailyLock.js'
     ).toBe(true);
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/pointSettle.js')),
+      '缺少 pointSettle.js'
+    ).toBe(true);
   });
 
   it('tasks 纯函数不调真实云 API（grep 实证：无 wx-server-sdk/cloud.callFunction/database 副作用）', () => {
     const aggSrc = readSource('cloudfunctions/tasks/rankAggregate.js');
     const lockSrc = readSource('cloudfunctions/tasks/dailyLock.js');
+    const settleSrc = readSource('cloudfunctions/tasks/pointSettle.js');
     expect(aggSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
     expect(lockSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(settleSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
     expect(aggSrc).not.toMatch(/cloud\.callFunction/);
     expect(lockSrc).not.toMatch(/cloud\.callFunction/);
+    expect(settleSrc).not.toMatch(/cloud\.callFunction/);
     // 不直接调 cloud.database()（与 handler 解耦）
     expect(aggSrc).not.toMatch(/cloud\.database\(\)/);
     expect(lockSrc).not.toMatch(/cloud\.database\(\)/);
+    expect(settleSrc).not.toMatch(/cloud\.database\(\)/);
   });
 });
 
@@ -481,9 +504,12 @@ describe('mask.js 脱敏纯函数挂载（G1）', () => {
 });
 
 describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
-  it('admin/index.js 的 handlers 表挂载 9 个 action（不再 not implemented）', () => {
+  it('admin/index.js 的 handlers 表挂载 inviteCode + 其余 action（不再 not implemented）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
-    expect(src).toMatch(/\bwhitelistImport\s*:\s*async/);
+    // 邀请码管理（替代白名单导入）
+    expect(src).toMatch(/['"]inviteCode\.generate['"]\s*:\s*async/);
+    expect(src).toMatch(/['"]inviteCode\.list['"]\s*:\s*async/);
+    expect(src).toMatch(/['"]inviteCode\.disable['"]\s*:\s*async/);
     expect(src).toMatch(/\busers\s*:\s*async/);
     expect(src).toMatch(/\bchangeDept\s*:\s*async/);
     expect(src).toMatch(/\babnormalList\s*:\s*async/);
@@ -492,13 +518,17 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/\bdeptManage\s*:\s*async/);
     expect(src).toMatch(/\bsetAdmin\s*:\s*async/);
     expect(src).toMatch(/\brefreshRank\s*:\s*async/);
+    expect(src).toMatch(/\bpoints\s*:\s*async/);
+    expect(src).toMatch(/\badjustPoints\s*:\s*async/);
+    expect(src).toMatch(/\bsettlePoints\s*:\s*async/);
+    // 白名单导入已移除
+    expect(src).not.toMatch(/\bwhitelistImport\s*:\s*async/);
   });
 
   it('admin/index.js require 全部纯函数模块', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     expect(src).toMatch(/require\(['"]\.\/adminGuard['"]\)/);
-    expect(src).toMatch(/require\(['"]\.\/whitelistParse['"]\)/);
-    expect(src).toMatch(/require\(['"]\.\/whitelistImport['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/inviteCode['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/userList['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/changeDept['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/abnormalList['"]\)/);
@@ -506,33 +536,37 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/require\(['"]\.\/deptManage['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/dashboard['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/adminRole['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/pointList['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/pointAdjust['"]\)/);
   });
 
-  it('admin/index.js 全部 10 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
+  it('admin/index.js 全部 15 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     // 语义说明：每个管理员 handler 必须在入口调用 assertAdmin 做管理员守卫，
     // 漏一个 handler 会导致非管理员可绕过鉴权调用该 action。
-    // admin 共 10 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage/setAdmin/refreshRank/ensureSchema），
-    // 故 assertAdmin 语句调用必须精确出现 10 次（每个 handler 内 1 次）。
+    // admin 共 15 个 action（inviteCode.generate/list/disable + users/changeDept/abnormalList/verdict/
+    // dashboard/deptManage/setAdmin/refreshRank/points/adjustPoints/settlePoints/ensureSchema），
+    // 故 assertAdmin 语句调用必须精确出现 15 次（每个 handler 内 1 次）。
     const actions = [
-      'whitelistImport', 'users', 'changeDept',
-      'abnormalList', 'verdict', 'dashboard', 'deptManage', 'setAdmin',
-      'refreshRank', 'ensureSchema'
+      'inviteCode.generate', 'inviteCode.list', 'inviteCode.disable',
+      'users', 'changeDept', 'abnormalList', 'verdict', 'dashboard',
+      'deptManage', 'setAdmin', 'refreshRank', 'points', 'adjustPoints',
+      'settlePoints', 'ensureSchema'
     ];
     // 结构化断言：每个 handler 块内都含 assertAdmin（按 handler 名切分源码块）。
     for (const act of actions) {
-      // 定位 handler 块（action: async (event, context) => { ... } 区间，至下一个 handler 或文件尾）。
-      const startIdx = src.indexOf(act + ':');
+      // inviteCode.* 的 handler key 带引号（'inviteCode.generate'），其余为裸标识符（users:）。
+      const needle = act.indexOf('.') >= 0 ? `'${act}'` : `${act}:`;
+      const startIdx = src.indexOf(needle);
       expect(startIdx, `admin handler ${act} 未找到`).toBeGreaterThan(-1);
-      // 取该 handler 到下一个 ', <name>:' 或 loadCollection 之间的片段（保守截取 800 字符足够覆盖单 handler）。
-      const slice = src.slice(startIdx, startIdx + 800);
+      // 取该 handler 起始后的片段（保守截取 900 字符足够覆盖单 handler）。
+      const slice = src.slice(startIdx, startIdx + 900);
       expect(
         slice.includes('assertAdmin('),
         `admin handler "${act}" 块内未调用 assertAdmin（守卫缺失）`
       ).toBe(true);
     }
     // 精确计数兜底：只数「语句调用」（行首缩进 + assertAdmin(store，排除注释/require 解构）。
-    // 注释里也可能出现 assertAdmin( 文本，故用行首缩进式调用形态锁定真实调用。
     const callCount = (src.match(/^\s+assertAdmin\(store/gm) || []).length;
     expect(callCount).toBe(actions.length);
   });
@@ -550,30 +584,31 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     }
   });
 
-  it('assertAdmin 全仓调用总数 = 15（admin 10 + activity 5），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 20（admin 15 + activity 5），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
     const activitySrc = readSource('cloudfunctions/activity/index.js');
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(adminCount).toBe(10);
+    expect(adminCount).toBe(15);
     expect(activityCount).toBe(5);
-    expect(adminCount + activityCount).toBe(15);
+    expect(adminCount + activityCount).toBe(20);
   });
 
-  it('admin 纯函数模块文件存在（9 个）', () => {
+  it('admin 纯函数模块文件存在（11 个）', () => {
     const files = [
       'cloudfunctions/admin/adminGuard.js',
-      'cloudfunctions/admin/whitelistParse.js',
-      'cloudfunctions/admin/whitelistImport.js',
+      'cloudfunctions/admin/inviteCode.js',
       'cloudfunctions/admin/userList.js',
       'cloudfunctions/admin/changeDept.js',
       'cloudfunctions/admin/abnormalList.js',
       'cloudfunctions/admin/verdict.js',
       'cloudfunctions/admin/deptManage.js',
       'cloudfunctions/admin/dashboard.js',
-      'cloudfunctions/admin/adminRole.js'
+      'cloudfunctions/admin/adminRole.js',
+      'cloudfunctions/admin/pointList.js',
+      'cloudfunctions/admin/pointAdjust.js'
     ];
     for (const rel of files) {
       expect(fs.existsSync(path.join(ROOT, rel)), `缺少纯函数模块: ${rel}`).toBe(true);
@@ -583,15 +618,16 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
   it('admin 纯函数不调真实云 API（grep 实证：无 wx-server-sdk/cloud 副作用）', () => {
     const modules = [
       'cloudfunctions/admin/adminGuard.js',
-      'cloudfunctions/admin/whitelistParse.js',
-      'cloudfunctions/admin/whitelistImport.js',
+      'cloudfunctions/admin/inviteCode.js',
       'cloudfunctions/admin/userList.js',
       'cloudfunctions/admin/changeDept.js',
       'cloudfunctions/admin/abnormalList.js',
       'cloudfunctions/admin/verdict.js',
       'cloudfunctions/admin/deptManage.js',
       'cloudfunctions/admin/dashboard.js',
-      'cloudfunctions/admin/adminRole.js'
+      'cloudfunctions/admin/adminRole.js',
+      'cloudfunctions/admin/pointList.js',
+      'cloudfunctions/admin/pointAdjust.js'
     ];
     for (const rel of modules) {
       const src = readSource(rel);
@@ -615,27 +651,36 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).not.toMatch(/_openid\s*:/);
     expect(src).not.toMatch(/sync_count\s*:/);
   });
+
+  it('projectPointUser 投影函数体不下发敏感字段（grep 实证）', () => {
+    const src = readSource('cloudfunctions/admin/pointList.js');
+    expect(src).toMatch(/projectPointUser/);
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/\bphone\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
 });
 
 describe('admin 后台前端页面结构与红线（H2：dashboard / activity / whitelist + profile 入口）', () => {
   const H2_WXML = [
     'miniprogram/pages/admin/dashboard/dashboard.wxml',
     'miniprogram/pages/admin/activity/activity.wxml',
-    'miniprogram/pages/admin/whitelist/whitelist.wxml'
+    'miniprogram/pages/admin/inviteCode/inviteCode.wxml'
   ];
 
   it('dashboard 页含 5 模块导航卡片 + 6 指标卡 + 日活趋势柱状 + 部门榜', () => {
     const wxml = readSource('miniprogram/pages/admin/dashboard/dashboard.wxml');
-    // 5 模块导航（data-mod 标识）
+    // 模块导航（data-mod 标识；含邀请码管理）
     expect(wxml).toMatch(/data-mod="activity"/);
-    expect(wxml).toMatch(/data-mod="whitelist"/);
+    expect(wxml).toMatch(/data-mod="inviteCode"/);
     expect(wxml).toMatch(/data-mod="users"/);
     expect(wxml).toMatch(/data-mod="abnormal"/);
     expect(wxml).toMatch(/data-mod="dept"/);
+    expect(wxml).toMatch(/data-mod="points"/);
     expect(wxml).toMatch(/onModuleTap/);
-    // 6 指标卡（参与人数 / 白名单总数 / 参与率 / 累计步数 / 人均 / 有效参与）
+    // 6 指标卡（参与人数 / 已发码数 / 参与率 / 累计步数 / 人均 / 有效参与）
     expect(wxml).toMatch(/participated/);
-    expect(wxml).toMatch(/whitelistTotal/);
+    expect(wxml).toMatch(/inviteCodesTotal/);
     expect(wxml).toMatch(/rateText/);
     expect(wxml).toMatch(/totalSteps/);
     expect(wxml).toMatch(/avgSteps/);
@@ -708,44 +753,36 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     expect(src).toMatch(/function formatPublishState/);
   });
 
-  it('whitelist 页含 textarea + 预览数量 + 样本 + 导入按钮', () => {
-    const wxml = readSource('miniprogram/pages/admin/whitelist/whitelist.wxml');
-    expect(wxml).toMatch(/onTextChange/);
-    expect(wxml).toMatch(/previewCount/);
-    expect(wxml).toMatch(/previewSample/);
-    expect(wxml).toMatch(/onImport/);
+  it('inviteCode 页含批量生成（数量 input + 生成按钮）+ 列表 + 状态徽章 + 禁用 + 复制', () => {
+    const wxml = readSource('miniprogram/pages/admin/inviteCode/inviteCode.wxml');
+    expect(wxml).toMatch(/onCountInput/);
+    expect(wxml).toMatch(/onGenerate/);
+    expect(wxml).toMatch(/code-list|code-row/);
+    expect(wxml).toMatch(/onCopy/);
+    expect(wxml).toMatch(/onDisable/);
+    expect(wxml).toMatch(/data-code/);
   });
 
-  it('whitelist.js 调 admin / action:whitelistImport，入参 raw_text，且 api.call 接 .catch', () => {
-    const js = readSource('miniprogram/pages/admin/whitelist/whitelist.js');
+  it('inviteCode.js 调 admin.inviteCode.generate/list/disable，且 api.call 接 .catch', () => {
+    const js = readSource('miniprogram/pages/admin/inviteCode/inviteCode.js');
     expect(js).toMatch(/\.call\(\s*['"]admin['"]/);
-    expect(js).toMatch(/action:\s*['"]whitelistImport['"]/);
-    expect(js).toMatch(/raw_text/);
+    expect(js).toMatch(/action:\s*['"]inviteCode\.generate['"]/);
+    expect(js).toMatch(/action:\s*['"]inviteCode\.list['"]/);
+    expect(js).toMatch(/action:\s*['"]inviteCode\.disable['"]/);
     expect(js).toMatch(/\.catch\s*\(/);
-    // 引用 whitelistCalc
-    expect(js).toMatch(/require\(['"]\.\/whitelistCalc['"]\)/);
-    // 本地轨守卫
+    // 引用 inviteCodeCalc + 本地轨守卫
+    expect(js).toMatch(/require\(['"]\.\/inviteCodeCalc['"]\)/);
     expect(js).toMatch(/getApp\(\)/);
   });
 
-  it('whitelistCalc.js 纯函数模块存在（previewPhones/formatImportResult），正则与后端一致', () => {
+  it('inviteCodeCalc.js 纯函数模块存在（formatStatus/validateCount）', () => {
     expect(
-      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/whitelist/whitelistCalc.js')),
-      '缺少 whitelistCalc.js'
+      fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/inviteCode/inviteCodeCalc.js')),
+      '缺少 inviteCodeCalc.js'
     ).toBe(true);
-    const src = readSource('miniprogram/pages/admin/whitelist/whitelistCalc.js');
-    expect(src).toMatch(/function previewPhones/);
-    expect(src).toMatch(/function formatImportResult/);
-    // 与后端 whitelistParse.js 同款正则 1[3-9]\d{9}
-    expect(src).toMatch(/1\[3-9\]\\d\{9\}/);
-  });
-
-  it('whitelist 前端预览正则与后端 whitelistParse 严格一致（同源校验）', () => {
-    const wlSrc = readSource('miniprogram/pages/admin/whitelist/whitelistCalc.js');
-    const parseSrc = readSource('cloudfunctions/admin/whitelistParse.js');
-    // 两处都定义 1[3-9]\d{9} 正则
-    expect(wlSrc).toMatch(/1\[3-9\]\\d\{9\}/);
-    expect(parseSrc).toMatch(/1\[3-9\]\\d\{9\}/);
+    const src = readSource('miniprogram/pages/admin/inviteCode/inviteCodeCalc.js');
+    expect(src).toMatch(/function formatStatus/);
+    expect(src).toMatch(/function validateCount/);
   });
 
   it('profile 后台入口 wx:if adminVisible + onAdminEntry navigateTo dashboard', () => {
@@ -1147,15 +1184,17 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
     expect(src).not.toMatch(/cloud\.database\(\)/);
   });
 
-  it('authPhone.js 白名单开关：导出 PHONE_WHITELIST_REQUIRED 常量且默认 false（放开注册）', () => {
-    const src = readSource('cloudfunctions/auth/authPhone.js');
-    expect(src).toMatch(/const PHONE_WHITELIST_REQUIRED = false/);
-    expect(src).toMatch(/PHONE_WHITELIST_REQUIRED/);
-    // verifyPhone 支持测试用 requireWhitelist 覆盖（handler 不传，安全）
-    expect(src).toMatch(/requireWhitelist/);
+  it('errors.js 新增邀请码错误码 BIZ_INVITE_CODE_INVALID/USED/DISABLED（2011/2012/2013），手机号错误码已移除', () => {
+    const src = readSource('cloudfunctions/common/errors.js');
+    expect(src).toMatch(/BIZ_INVITE_CODE_INVALID:\s*2011/);
+    expect(src).toMatch(/BIZ_INVITE_CODE_USED:\s*2012/);
+    expect(src).toMatch(/BIZ_INVITE_CODE_DISABLED:\s*2013/);
+    // 手机号/白名单错误码已移除
+    expect(src).not.toMatch(/BIZ_PHONE_TAKEN/);
+    expect(src).not.toMatch(/BIZ_NOT_IN_WHITELIST/);
   });
 
-  it('login.wxml 注册向导：保留一键登录/openSetting/chooseAvatar/nickname input；手机号改手动输入', () => {
+  it('login.wxml 注册向导：保留一键登录/openSetting/chooseAvatar/nickname input；邀请码手动输入', () => {
     const wxml = readSource('miniprogram/pages/login/login.wxml');
     // 保留（既有断言元素不破坏）
     expect(wxml).toMatch(/onLoginTap/);
@@ -1167,18 +1206,18 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
     expect(wxml).toMatch(/type=["']nickname["']/);
     expect(wxml).toMatch(/onNicknameBlur/);
     expect(wxml).toMatch(/onSubmitProfile/);
-    // 手机号手动填写（不再依赖 getPhoneNumber 微信组件）
-    expect(wxml).toMatch(/bindinput=["']onPhoneInput["']/);
-    expect(wxml).toMatch(/bindtap=["']onSubmitPhone["']/);
+    // 邀请码手动填写（手机号机制已移除）
+    expect(wxml).toMatch(/bindinput=["']onInviteInput["']/);
+    expect(wxml).toMatch(/bindtap=["']onSubmitInviteCode["']/);
     expect(wxml).not.toMatch(/getPhoneNumber/);
   });
 
-  it('login.js 注册向导：按 join_status/registered/is_new 分流；一次性提交调 auth.register；手机号后跳 dept', () => {
+  it('login.js 注册向导：按 join_status/registered/is_new 分流；一次性提交调 auth.register；邀请码后跳 dept', () => {
     const js = readSource('miniprogram/pages/login/login.js');
     expect(js).toMatch(/join_status === 'joined'/);
     expect(js).toMatch(/data && data\.registered/);
     expect(js).toMatch(/data && data\.is_new/);
-    // 一次性建号走 auth.register（昵称+头像+手机号一起提交），不再分步 user.update / auth.phone
+    // 一次性建号走 auth.register（昵称+头像+邀请码一起提交），不再分步 user.update / auth.phone
     expect(js).toMatch(/action:\s*['"]register['"]/);
     expect(js).not.toMatch(/action:\s*['"]update['"]/);
     expect(js).not.toMatch(/action:\s*['"]phone['"]/);
@@ -1258,65 +1297,7 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
   });
 });
 
-describe('手机号手动填写保底路径（user.setPhone + profile 保底入口）', () => {
-  it('user/index.js 的 handlers 表挂载 setPhone（不再 not implemented）', () => {
-    const src = readSource('cloudfunctions/user/index.js');
-    expect(src).toMatch(/\bsetPhone\s*:\s*async/);
-    expect(src).toMatch(/require\(['"]\.\/userPhone['"]\)/);
-  });
-
-  it('user.setPhone 走 requireUser（需登录态，防游客裸调）', () => {
-    const src = readSource('cloudfunctions/user/index.js');
-    expect(src).toMatch(/setPhone:\s*true/);
-  });
-
-  it('userPhone.js 纯函数模块存在且不调真实云 API', () => {
-    expect(fs.existsSync(path.join(ROOT, 'cloudfunctions/user/userPhone.js'))).toBe(true);
-    const src = readSource('cloudfunctions/user/userPhone.js');
-    expect(src).toMatch(/function setPhone/);
-    expect(src).toMatch(/PHONE_MANUAL_FALLBACK_ENABLED/);
-    expect(src).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
-    expect(src).not.toMatch(/cloud\.database\(\)/);
-  });
-
-  it('安全：userPhone.js 不授予 is_admin（无 grantAdmin / 不读 superAdminPhone，防明文伪造超管提权）', () => {
-    const src = readSource('cloudfunctions/user/userPhone.js');
-    // 无 grantAdmin 逻辑（authPhone.verifyPhone 有，本降级路径不能有）
-    expect(src).not.toMatch(/grantAdmin/);
-    // 不读 superAdminPhone 参数（超管冷启动只走 auth.phone 微信解密）
-    expect(src).not.toMatch(/superAdminPhone/);
-  });
-
-  it('errors.js 新增 BIZ_PHONE_TAKEN:2007（手机号已被他人占用）', () => {
-    const src = readSource('cloudfunctions/common/errors.js');
-    expect(src).toMatch(/BIZ_PHONE_TAKEN:\s*2007/);
-  });
-
-  it('profile.wxml 含保底入口 onManualPhone（与微信验证 button 并列）', () => {
-    const wxml = readSource('miniprogram/pages/profile/profile.wxml');
-    expect(wxml).toMatch(/onManualPhone/);
-    expect(wxml).toMatch(/phone-fallback/);
-  });
-
-  it('profile.js 实现 onManualPhone 调 user.setPhone；前端 11 位校验 + ERR_PHONE_TAKEN 镜像', () => {
-    const js = readSource('miniprogram/pages/profile/profile.js');
-    expect(js).toMatch(/onManualPhone/);
-    expect(js).toMatch(/action:\s*['"]setPhone['"]/);
-    // 前端归一化 + 11 位校验（与后端 isValidPhone 同口径）
-    expect(js).toMatch(/\\d\{11\}/);
-    // 错误码镜像（前端无法 require 云函数 errors.js）
-    expect(js).toMatch(/ERR_PHONE_TAKEN\s*=\s*2007/);
-  });
-
-  it('红线：profile.wxml 保底入口不绑定完整 phone（phoneMasked 不被 \\bphone\\b 误判）', () => {
-    const src = readSource('miniprogram/pages/profile/profile.wxml');
-    const lines = src.split('\n');
-    for (const line of lines) {
-      if (/\{\{[^}]*\bphone\b\s*[\}.]/.test(line)) {
-        throw new Error(`profile.wxml 疑似绑定完整 phone: ${line.trim()}`);
-      }
-    }
-  });
-});
+// 「手机号手动填写保底路径」整套（user.setPhone + profile onManualPhone + userPhone.js +
+// BIZ_PHONE_TAKEN:2007）已随手机号机制彻底移除，对应测试一并删除。准入改走「一人一码邀请码」。
 
 

@@ -13,7 +13,7 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { projectStep, dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('./stepsSync');
+const { projectStep, dateFromTimestamp, activityStartDate, activityEndDate, isValidStepRecord, DEFAULT_CONFIG } = require('./stepsSync');
 
 /**
  * 取某用户某活动的全部 StepRecord（按 date 升序）。
@@ -57,8 +57,9 @@ async function getToday(params) {
   const todayRec = recs.find((r) => r.date === today) || null;
   // 累计：全链路统一有效步数口径 isValidStepRecord（活动期内已同步的非未来日，不依赖 locked）。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(activity, cfg.timezoneOffsetMinutes);
   const total = recs
-    .filter((r) => isValidStepRecord(r, today, startDate))
+    .filter((r) => isValidStepRecord(r, today, startDate, endDate))
     .reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
 
   return {
@@ -101,7 +102,8 @@ async function getHistory(params) {
   const recs = getUserRecords(store, userId, activityId);
   // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
-  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate));
+  const endDate = activityEndDate(activity, cfg.timezoneOffsetMinutes);
+  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate, endDate));
   // 区间过滤。
   const ranged = valid.filter((r) => {
     if (from && r.date < from) return false;

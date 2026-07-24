@@ -1,6 +1,6 @@
 /**
  * admin.buildDashboard 数据看板单测（H1 R8.5）：
- *   - participated / whitelistTotal / rate（含除零）；
+ *   - participated / inviteCodesTotal / rate（含除零）；
  *   - totalSteps（有效步数口径：活动期内已同步即有效，不依赖 locked）；
  *   - validParticipants / avgSteps（含除零）；
  *   - dailyActive（近 trendDays 天，缺日补 0）；
@@ -34,7 +34,7 @@ describe('buildDashboard（数据看板指标）', () => {
   it('participated：join_status===joined 计数', () => {
     const store = {
       User: [u('u1', true), u('u2', true), u('u3', false)],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [],
       RankCache: []
     };
@@ -42,20 +42,20 @@ describe('buildDashboard（数据看板指标）', () => {
     expect(r.participated).toBe(2);
   });
 
-  it('whitelistTotal + rate（participated/whitelistTotal）', () => {
+  it('inviteCodesTotal + rate（participated/inviteCodesTotal）', () => {
     const store = {
       User: [u('u1', true), u('u2', false)], // participated=1
-      Whitelist: [{ phone: 'p1' }, { phone: 'p2' }, { phone: 'p3' }, { phone: 'p4' }], // 4
+      InviteCode: [{ phone: 'p1' }, { phone: 'p2' }, { phone: 'p3' }, { phone: 'p4' }], // 4
       StepRecord: [],
       RankCache: []
     };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
-    expect(r.whitelistTotal).toBe(4);
+    expect(r.inviteCodesTotal).toBe(4);
     expect(r.rate).toBeCloseTo(0.25, 5);
   });
 
   it('rate 除零→0（whitelist 为空）', () => {
-    const store = { User: [u('u1', true)], Whitelist: [], StepRecord: [], RankCache: [] };
+    const store = { User: [u('u1', true)], InviteCode: [], StepRecord: [], RankCache: [] };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
     expect(r.rate).toBe(0);
   });
@@ -63,7 +63,7 @@ describe('buildDashboard（数据看板指标）', () => {
   it('totalSteps：有效步数口径（活动期内已同步即有效，不依赖 locked）求和', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-25', 1000, { locked: true }),
         rec('u2', '2026-06-26', 2000), // today
@@ -75,10 +75,30 @@ describe('buildDashboard（数据看板指标）', () => {
     expect(r.totalSteps).toBe(1000 + 2000 + 9999);
   });
 
+  it('totalSteps/dailyActive 排除活动结束日后的残留记录（endDate 右界）', () => {
+    // activity end_time=06-25 → endDate=2026-06-25；today=06-26 已在结束日之后。
+    const activity = { start_time: '2026-06-20T00:00:00+08:00', end_time: '2026-06-25T23:59:59+08:00' };
+    const store = {
+      User: [],
+      InviteCode: [],
+      StepRecord: [
+        rec('u1', '2026-06-24', 1000), // 活动期内 → 计入
+        rec('u2', '2026-06-25', 2000), // 结束当日 → 计入（date===end 保留）
+        rec('u3', '2026-06-26', 9999) // 结束日后(today) → 剔除
+      ],
+      RankCache: []
+    };
+    const r = buildDashboard({ store, activityId: ACT, activity, now: NOW });
+    expect(r.totalSteps).toBe(1000 + 2000); // 不含 06-26 残留记录
+    // dailyActive：今日(06-26)无活跃（u3 被 endDate 剔除，不进趋势）
+    const todayItem = r.dailyActive.find((x) => x.date === '2026-06-26');
+    expect(todayItem.count).toBe(0);
+  });
+
   it('totalSteps 跨活动不混入（按 activity_id 过滤）', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 2000), // today
         rec('u2', '2026-06-26', 5000, { }) // today
@@ -94,7 +114,7 @@ describe('buildDashboard（数据看板指标）', () => {
   it('validParticipants：至少一条有效 StepRecord 的不同 user_id 数', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 1000), // 有效 today
         rec('u1', '2026-06-25', 1000, { locked: true }), // 同一 u1 有效
@@ -110,7 +130,7 @@ describe('buildDashboard（数据看板指标）', () => {
   it('avgSteps = totalSteps / validParticipants', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 1000), // 有效
         rec('u2', '2026-06-26', 3000) // 有效
@@ -124,7 +144,7 @@ describe('buildDashboard（数据看板指标）', () => {
   });
 
   it('avgSteps 除零→0（无有效参与人）', () => {
-    const store = { User: [], Whitelist: [], StepRecord: [], RankCache: [] };
+    const store = { User: [], InviteCode: [], StepRecord: [], RankCache: [] };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
     expect(r.avgSteps).toBe(0);
   });
@@ -134,7 +154,7 @@ describe('buildDashboard 口径对齐（活动期过滤 / 异常排除 / join_st
   it('totalSteps：活动期外脏记录（locked 但 date<start_date）不计入（与 userStats/rankAggregate 同口径）', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-25', 9999, { locked: true }), // 期外（活动 06-26 开始）→ 剔除
         rec('u1', '2026-06-26', 2000), // today 期内 → 计入
@@ -150,7 +170,7 @@ describe('buildDashboard 口径对齐（活动期过滤 / 异常排除 / join_st
   it('totalSteps：activity 缺失 → 兜底不过滤（向后兼容）', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-25', 1000, { locked: true }), // 无 activity → 不过滤 → 计入
         rec('u1', '2026-06-26', 2000) // today → 计入
@@ -164,7 +184,7 @@ describe('buildDashboard 口径对齐（活动期过滤 / 异常排除 / join_st
   it('abnormal（待裁定异常）不计入 totalSteps / dailyActive', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 1000), // 正常 today
         rec('u2', '2026-06-26', 9999, { abnormal: true }), // 异常 → 不计入
@@ -187,7 +207,7 @@ describe('buildDashboard 口径对齐（活动期过滤 / 异常排除 / join_st
         { _openid: 'u2', join_status: 'pending' }
         // u3 无 User（未注册/已注销）
       ],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 1000), // joined → 计入
         rec('u2', '2026-06-26', 2000), // pending → 不计入
@@ -205,7 +225,7 @@ describe('buildDashboard dailyActive（日活趋势）', () => {
   it('按 date 分组，每日 count distinct user_id；近 trendDays 天升序', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 1000), // today
         rec('u2', '2026-06-26', 1000), // today → 2 人
@@ -225,7 +245,7 @@ describe('buildDashboard dailyActive（日活趋势）', () => {
   });
 
   it('默认近 30 天', () => {
-    const store = { User: [], Whitelist: [], StepRecord: [], RankCache: [] };
+    const store = { User: [], InviteCode: [], StepRecord: [], RankCache: [] };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
     expect(r.dailyActive).toHaveLength(30);
     expect(r.dailyActive[0].count).toBe(0); // 全补 0
@@ -235,7 +255,7 @@ describe('buildDashboard dailyActive（日活趋势）', () => {
   it('同日同用户多记录只计 1（distinct）', () => {
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [
         rec('u1', '2026-06-26', 1000),
         rec('u1', '2026-06-26', 2000), // 同 u1 同日
@@ -256,7 +276,7 @@ describe('buildDashboard deptRank（复用 RankCache，不重算）', () => {
       { type: 'dept', activity_id: ACT, rank: 1, dept_id: 'd_01', total_steps: 10000, avg_steps: 2500, member_count: 4, small_sample: false, dept_name: '一部' },
       { type: 'personal', activity_id: ACT, rank: 1, user_id: 'u1', total_steps: 999 } // personal 不混入
     ];
-    const store = { User: [], Whitelist: [], StepRecord: [], RankCache: rankCache };
+    const store = { User: [], InviteCode: [], StepRecord: [], RankCache: rankCache };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
     expect(r.deptRank).toHaveLength(2);
     expect(r.deptRank[0].dept_id).toBe('d_01'); // rank=1 在前
@@ -275,7 +295,7 @@ describe('buildDashboard deptRank（复用 RankCache，不重算）', () => {
     // StepRecord 实际步数巨大，但 deptRank 仍读 RankCache 的 100（不复算）
     const store = {
       User: [],
-      Whitelist: [],
+      InviteCode: [],
       StepRecord: [rec('u1', '2026-06-26', 999999)],
       RankCache: rankCache
     };
@@ -287,7 +307,7 @@ describe('buildDashboard deptRank（复用 RankCache，不重算）', () => {
     const rankCache = [
       { type: 'dept', activity_id: ACT, rank: 1, dept_id: 'd_01', total_steps: 100, dept_name: '一部' }
     ];
-    const store = { User: [], Whitelist: [], StepRecord: [], RankCache: rankCache };
+    const store = { User: [], InviteCode: [], StepRecord: [], RankCache: rankCache };
     const r = buildDashboard({ store, activityId: ACT, now: NOW });
     for (const item of r.deptRank) {
       expect(item._openid).toBeUndefined();
@@ -320,6 +340,17 @@ describe('isValidRecord 口径与 rankAggregate/stepsQuery/userStats 一致', ()
     expect(isValidRecord({ locked: true, date: '2026-06-25' }, today, start)).toBe(false);
     // date>=start 且 today → 计入
     expect(isValidRecord({ locked: false, date: today }, today, start)).toBe(true);
+  });
+
+  it('活动期右界：有 endDate 且 date>end→剔除；date===end 保留结束当日；endDate 缺失→不过滤', () => {
+    const start = '2026-06-20';
+    const end = '2026-06-25';
+    // date>end → 剔除（活动结束后残留记录）
+    expect(isValidRecord({ date: '2026-06-26' }, today, start, end)).toBe(false);
+    // date===end → 保留（结束当日含两端）
+    expect(isValidRecord({ date: end }, today, start, end)).toBe(true);
+    // endDate 缺失 → 不过滤右界（兜底，与 startDate 同口径）
+    expect(isValidRecord({ date: '2026-06-26' }, today, start)).toBe(true);
   });
 });
 

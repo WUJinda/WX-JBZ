@@ -92,7 +92,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
     expect(
       isEmptyDashboard({
         participated: 0,
-        whitelistTotal: 0,
+        inviteCodesTotal: 0,
         totalSteps: 0,
         validParticipants: 0,
         deptRank: []
@@ -104,7 +104,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
     expect(
       isEmptyDashboard({
         participated: 10,
-        whitelistTotal: 20,
+        inviteCodesTotal: 20,
         totalSteps: 0,
         validParticipants: 0,
         deptRank: []
@@ -116,7 +116,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
     expect(
       isEmptyDashboard({
         participated: 0,
-        whitelistTotal: 0,
+        inviteCodesTotal: 0,
         totalSteps: 0,
         validParticipants: 0,
         deptRank: [{ rank: 1, dept_id: 'd1' }]
@@ -128,7 +128,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
     expect(
       isEmptyDashboard({
         participated: 0,
-        whitelistTotal: 0,
+        inviteCodesTotal: 0,
         totalSteps: 1000,
         validParticipants: 0,
         deptRank: []
@@ -146,7 +146,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
     expect(
       isEmptyDashboard({
         participated: '0',
-        whitelistTotal: '0',
+        inviteCodesTotal: '0',
         totalSteps: '0',
         validParticipants: '0',
         deptRank: null

@@ -10,10 +10,9 @@ function user(_id, extra) {
     {
       _id,
       _openid: 'op_' + _id,
-      phone: '1380000' + _id,
       nickname: '用户' + _id,
       avatar: 'http://x/' + _id,
-      phone_masked: '138****' + _id,
+      invite_code: 'CODE' + _id,
       dept_id: 'd_01',
       join_status: 'joined',
       joined_at: '2026-06-01',
@@ -46,9 +45,9 @@ describe('queryUsers（用户列表筛选+分页+投影）', () => {
     expect(r.totalCount).toBe(2); // Alice + alice2
   });
 
-  it('keyword 模糊匹配 phone_masked', () => {
-    const store = { User: [user('1', { phone_masked: '138****1111' }), user('2', { phone_masked: '139****2222' })] };
-    const r = queryUsers(store, { keyword: '1111' });
+  it('keyword 模糊匹配 invite_code', () => {
+    const store = { User: [user('1', { invite_code: 'AAAA11' }), user('2', { invite_code: 'BBBB22' })] };
+    const r = queryUsers(store, { keyword: 'aa' });
     expect(r.totalCount).toBe(1);
     expect(r.list[0]._id).toBe('1');
   });
@@ -71,25 +70,23 @@ describe('queryUsers（用户列表筛选+分页+投影）', () => {
   });
 });
 
-describe('projectUser 投影红线（绝不下发 _openid / phone）', () => {
-  it('projectUser 输出对象不含 _openid / phone', () => {
-    const u = user('x', { _openid: 'secret_openid', phone: '13800000000' });
+describe('projectUser 投影红线（绝不下发 _openid）', () => {
+  it('projectUser 输出对象不含 _openid', () => {
+    const u = user('x', { _openid: 'secret_openid' });
     const out = projectUser(u);
     expect(out._openid).toBeUndefined();
-    expect(out.phone).toBeUndefined();
     // 白名单字段在
     expect(out.nickname).toBe('用户x');
-    expect(out.phone_masked).toBe('138****x');
+    expect(out.invite_code).toBe('CODEx');
     expect(out.dept_id).toBe('d_01');
     expect(out.join_status).toBe('joined');
   });
 
-  it('queryUsers 返回列表中每一项都不含 _openid / phone', () => {
+  it('queryUsers 返回列表中每一项都不含 _openid', () => {
     const store = { User: [user('1'), user('2')] };
     const r = queryUsers(store, {});
     for (const item of r.list) {
       expect(item._openid).toBeUndefined();
-      expect(item.phone).toBeUndefined();
     }
   });
 

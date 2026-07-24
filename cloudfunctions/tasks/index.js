@@ -1,6 +1,6 @@
 /**
  * tasks 云函数入口：定时任务（对齐技术架构 §4.1 / §6.5）。
- * Action: rankAggregate / dailyLock
+ * Action: rankAggregate / dailyLock / pointSettle
  *
  * 同一逻辑既可被定时触发器调用，也可手动触发，便于本地与回归测试（架构 §6.5）。
  */
@@ -11,13 +11,17 @@ const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { loadByWhere } = require('../common/db');
 const { getActiveActivityId, getActivityById } = require('../activity/activityResolver');
+const { deriveStatus } = require('../activity/activityStatus');
 const { aggregateRanking } = require('./rankAggregate');
 const { lockYesterday, computeYesterdayDate, LOCK_DEFAULT_CONFIG } = require('./dailyLock');
+const { settleActivityPoints } = require('./pointSettle');
 
 // P0-5 字段投影：聚合只需这些字段，投影掉 _openid/phone/sync_count 等敏感字段。
 const STEP_FIELDS_AGG = { _id: 1, user_id: 1, activity_id: 1, date: 1, steps: 1, locked: 1, synced_at: 1 };
 const USER_FIELDS_AGG = { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1 };
-const DEPT_FIELDS_AGG = { _id: 1, dept_id: 1, name: 1, activity_id: 1, member_count: 1 };
+const DEPT_FIELDS_AGG = { _id: 1, dept_id: 1, name: 1, activity_id: 1, member_count: 1, size: 1 };
+// pointSettle 投影：结算需读写 User.points（比聚合 USER_FIELDS_AGG 多 points 字段）。
+const USER_FIELDS_SETTLE = { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1, points: 1 };
 
 const handlers = {
   // G2: 排行榜聚合（每 10 分钟）。系统级，不取调用者 OPENID 做用户鉴权。
@@ -74,6 +78,30 @@ const handlers = {
     // P0-5：批量写回 where(昨日, locked=false).update({locked:true})（幂等，无需逐条 update/事务）。
     await applyLocksToCloud(cloud, result.date);
     return result;
+  },
+
+  // G4: 活动结束积分结算（个人榜 Top3 +5/3/1，部门榜第1名部门参赛人员每人 +2）。
+  // 系统级不鉴权（与 rankAggregate/dailyLock 同）。结算幂等：纯函数判 points_settled + handler CAS 占位防并发重发。
+  pointSettle: async (event) => {
+    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
+    const activity = await getActivityById(cloud, activityId);
+    const now = (event && event.now) ? new Date(event.now) : new Date();
+    const store = {
+      User: await loadByWhere(cloud, 'User', {}, USER_FIELDS_SETTLE),
+      RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId })
+    };
+    const result = await settleActivityPoints({ store, activityId, activity, now });
+    if (!result.settled) return result; // 未结束 / 已结算 / 无 RankCache → 跳过
+    // CAS 占位（防并发重发）：where(points_settled:false).update(true)，updated===0 说明已被其他实例结算 → 不发奖。
+    const upd = await cloud.database().collection('Activity')
+      .where({ activity_id: activityId, points_settled: false })
+      .update({ data: { points_settled: true, points_settled_at: result.settledAt } });
+    if (!(upd && upd.stats && upd.stats.updated)) {
+      return Object.assign({}, result, { settled: false, alreadySettled: true });
+    }
+    // 批量发奖（原子 inc，失败收集不阻断）。
+    const wb = await awardPointsToCloud(cloud, result.awards, result.settledAt);
+    return Object.assign({}, result, { written: wb.written, write_failed: wb.failed });
   }
 };
 
@@ -171,23 +199,98 @@ async function applyLocksToCloud(cloudSdk, date) {
 }
 
 /**
+ * 云轨：批量发奖（按 award 逐条 doc(userId).update inc delta，原子累加；失败收集不阻断）。
+ * 本地轨单测不经此路径。
+ * P1-3：批量收集 {written, failed}（不静默吞），handler 据此上报前端。
+ *
+ * 防重发取舍：占位（Activity.points_settled=true）已在调用前 CAS 完成（见 handlers.pointSettle），
+ *   故此处即使单条发奖失败也只是「漏发」，不会「重发」——漏发由管理员手动 adjustPoints 补，
+ *   绝不重发（积分多发难追回）。
+ *
+ * @param {object} cloudSdk
+ * @param {object[]} awards [{ userId, openid, delta, reason }]（同人叠加会出现多条 → 多次 inc，正确）
+ * @param {string} now ISO
+ * @returns {Promise<{written: number, failed: string[]}>}
+ */
+async function awardPointsToCloud(cloudSdk, awards, now) {
+  const db = cloudSdk.database();
+  const _ = db.command;
+  let written = 0;
+  const failed = [];
+  for (const a of awards || []) {
+    if (!a || !a.userId) continue;
+    try {
+      await db.collection('User').doc(a.userId).update({
+        data: { points: _.inc(a.delta), updated_at: now }
+      });
+      written += 1;
+    } catch (err) {
+      // P1-3：收集失败（不阻断其余发奖），返回 written/failed 供 handler 上报。
+      console.warn('[发奖失败]', 'User(' + a.userId + ')', (err && err.message) || err);
+      failed.push(a.userId);
+    }
+  }
+  return { written, failed };
+}
+
+/**
+ * 定时任务子步骤：遍历所有「已结束且未结算积分」的活动，逐个触发 pointSettle handler。
+ *
+ * 排在 rankAggregate 之后（同周期），保证结算读到本周期刚刷新的最终 RankCache。
+ * 每个活动 try/catch 隔离（单活动失败不影响其他），失败仅 log 不抛（下次定时幂等重跑）。
+ *
+ * 注意：rankAggregate 只处理「当前活动」，而活动结束后不再是当前活动（pickCurrentActivity 选下一个），
+ *   故结算必须遍历所有活动（按 deriveStatus 过滤 ended），不能复用 rankAggregate 的当前活动选择。
+ *
+ * @returns {Promise<object>} { settled: [{activityId, settled, alreadySettled?, skipped?}], errors: number }
+ */
+async function settleEndedActivities() {
+  const now = new Date();
+  const activities = await loadByWhere(cloud, 'Activity');
+  const settled = [];
+  let errors = 0;
+  for (const a of activities) {
+    if (!a || !a.activity_id) continue;
+    // 仅 ended（含 terminated）且未结算的活动才尝试结算（避免对 active/pending 活动拉库）。
+    if (deriveStatus(a, now) !== 'ended') continue;
+    if (a.points_settled === true) continue;
+    try {
+      const r = await handlers.pointSettle({ activity_id: a.activity_id });
+      settled.push({
+        activityId: a.activity_id,
+        settled: !!(r && r.settled),
+        alreadySettled: !!(r && r.alreadySettled),
+        skipped: r && r.skipped,
+        written: r && r.written,
+        write_failed: r && r.write_failed
+      });
+    } catch (err) {
+      errors += 1;
+      console.error('[定时任务] pointSettle 活动 ' + a.activity_id + ' 失败', (err && err.message) || err);
+    }
+  }
+  return { settled, errors };
+}
+
+/**
  * 定时触发（无 action）时的统一入口（§6.5：同一逻辑既被定时触发器调用、也可手动 action 触发）。
  *
  * 微信定时触发器调用云函数时 event 不带 action（也不可靠携带 trigger name），
- * 故 main 在 event.action 缺失时转至此函数。P0-4：单 timer 每 10 分钟触发，两任务均幂等，
+ * 故 main 在 event.action 缺失时转至此函数。P0-4：单 timer 每 10 分钟触发，三任务均幂等，
  * 每次都跑：
  *   1. rankAggregate：覆盖写 RankCache（§6.3，幂等，重复执行无副作用）；
- *   2. dailyLock：锁昨日 StepRecord（§6.4，幂等，已锁跳过、不改 steps）。
+ *   2. dailyLock：锁昨日 StepRecord（§6.4，幂等，已锁跳过、不改 steps）；
+ *   3. pointSettle：遍历结算已结束活动的积分（幂等，已结算跳过，排在 rankAggregate 后读最新榜）。
  *
  * 删除原 beijingHour===12 时刻判断——dailyLockTimer 与 rankAggregateTimer 双 timer 下，
  * 12:00-12:59 间每 10 分钟触发会让 dailyLock 重复跑 6 次；且依赖触发器精确时刻不可靠
  * （延迟则漏锁整天）。改为每次顺带锁，幂等安全。
  *
  * @param {object} event
- * @returns {Promise<object>} { rank, dailyLock }
+ * @returns {Promise<object>} { rank, dailyLock, settle }
  */
 async function runScheduledTasks(event) {
-  // 两任务均幂等，每次都跑；各自 try/catch 隔离，一个失败不影响另一个跑完（A3）。
+  // 三任务均幂等，每次都跑；rank/dailyLock 各自 try/catch 隔离，一个失败不影响另一个跑完（A3）。
   let rank = null;
   let rankError = null;
   try {
@@ -206,18 +309,27 @@ async function runScheduledTasks(event) {
     console.error('[定时任务] dailyLock 失败', (err && err.message) || err);
   }
 
+  // 积分结算：遍历所有 ended && !points_settled 活动（排在 rankAggregate 之后，读最新 RankCache）。
+  // settle 失败不上抛（单活动 try/catch 隔离 + 幂等可重跑），避免积分问题拖垮 rank/dailyLock 的成功上报。
+  let settleResult = null;
+  try {
+    settleResult = await settleEndedActivities();
+  } catch (err) {
+    console.error('[定时任务] pointSettle 失败', (err && err.message) || err);
+  }
+
   // 任一失败上抛（main catch 转 fail，确保失败可见、不静默；已成功任务的副作用已落库保留）。
-  // rankAggregate 是主任务，优先抛；dailyLock 失败次之。
+  // rankAggregate 是主任务，优先抛；dailyLock 失败次之。settle 失败已在上方 catch，不影响此处。
   if (rankError) throw rankError;
   if (dailyLockError) throw dailyLockError;
 
-  return { rank, dailyLock: dailyLockResult };
+  return { rank, dailyLock: dailyLockResult, settle: settleResult };
 }
 
 exports.main = async (event) => {
   const action = event && event.action;
   try {
-    // 显式 action 分发保留（rankAggregate/dailyLock 仍可被手动/测试触发，§6.5）。
+    // 显式 action 分发保留（rankAggregate/dailyLock/pointSettle 仍可被手动/测试触发，§6.5）。
     if (action) {
       const handler = handlers[action];
       if (typeof handler !== 'function') {

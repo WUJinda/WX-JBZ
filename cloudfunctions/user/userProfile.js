@@ -2,8 +2,8 @@
  * user.profile 业务纯函数（对齐技术架构 §5/§8，开发计划 B5，PRD F1 个人资料页）。
  *
  * 红线：
- *   - 不下发原始 phone / openid / unionid（§8 敏感字段）；
- *   - 只下发：脱敏手机号、部门、累计步数、昵称、头像、报名状态、管理员标志 is_admin。
+ *   - 不下发原始 openid / unionid（§8 敏感字段）；
+ *   - 只下发：邀请码、部门、累计步数、昵称、头像、报名状态、管理员标志 is_admin。
  *
  * 累计步数口径：total_steps 由 handler 用 buildStats 从 StepRecord 实时聚合后注入（与
  *   user.stats / home 同源），User 集合无 total_steps 字段、绝不读它（历史 bug：读 User.total_steps
@@ -13,7 +13,6 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { maskPhone } = require('../common/mask');
 
 /**
  * 累计步数投影：对 null / undefined / 非数字统一兜底为 0（向下取整）。
@@ -31,22 +30,21 @@ function projectSteps(raw) {
  * 纯函数：不写库、不下发敏感字段。
  *
  * 入参 user 形态（来自 User 集合读取结果）：
- *   { nickname, avatar, phone, phone_masked?, dept_id, join_status, is_admin?, ... }
+ *   { nickname, avatar, invite_code?, dept_id, join_status, is_admin?, ... }
  *
  * 注：total_steps 读 u.total_steps，但 User 集合无此字段——由 getProfile 用调用方注入的
  *   buildStats 聚合值覆盖该字段（见 getProfile）。projectProfile 本身保持纯投影契约。
  *
  * @param {object} user
- * @returns {object} { nickname, avatar, phone_masked, dept_id, dept_name?, join_status, is_admin, total_steps }
+ * @returns {object} { nickname, avatar, invite_code, dept_id, dept_name?, join_status, is_admin, total_steps }
  */
 function projectProfile(user) {
   const u = user || {};
   return {
     nickname: u.nickname || '',
     avatar: u.avatar || '',
-    // 优先用已存储的 phone_masked；缺失时按完整 phone 兜底脱敏
-    // （绝不直接下发完整 phone）
-    phone_masked: u.phone_masked || (u.phone ? maskPhone(u.phone) : ''),
+    // 注册时使用的邀请码（只读展示，用户可对照自己持有的码）
+    invite_code: u.invite_code || '',
     dept_id: u.dept_id || null,
     dept_name: u.dept_name || '', // 由 getProfile 关联 Department 注入（User 只存 dept_id）
     join_status: u.join_status || 'pending',

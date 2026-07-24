@@ -5,15 +5,15 @@
  * 便于在 Node 下单测，不耦合 wx 运行时。
  *
  * 入参仅消费后端 admin.dashboard 下发的非敏感字段
- *（participated / whitelistTotal / rate / totalSteps / avgSteps /
- *  validParticipants / dailyActive / deptRank），不下发 _openid / phone / sync_count。
+ *（participated / inviteCodesTotal / rate / totalSteps / avgSteps /
+ *  validParticipants / dailyActive / deptRank），不下发 _openid / sync_count。
  *
  * 柱状图渲染为纯 CSS（百分比高度），不引任何图表库（照 homeTrend.normalizeBars 思路）。
  */
 
 /**
- * 格式化参与率为百分比文案（F8：参与人数 / 白名单总数）。
- * 入参 rate 为 0~1 小数（后端 buildDashboard 输出 participated/whitelistTotal）。
+ * 格式化参与率为百分比文案（F8：已报名 / 已发码数）。
+ * 入参 rate 为 0~1 小数（后端 buildDashboard 输出 participated/inviteCodesTotal）。
  * - 非数字 / NaN / Infinity → '0%'
  * - 负数 → '0%'（兜底）
  * - >1 → '100%'（兜底，理论上不应出现）
@@ -52,20 +52,20 @@ function normalizeDailyActive(list) {
 /**
  * 看板空态判定：核心指标全 0 → true（无任何数据时占位）。
  * 用于决定是否展示「暂无数据」占位（与后端返回结构对齐）。
- * @param {object} metrics buildDashboard 输出（participated/whitelistTotal/totalSteps/validParticipants/...）
+ * @param {object} metrics buildDashboard 输出（participated/inviteCodesTotal/totalSteps/validParticipants/...）
  * @returns {boolean}
  */
 function isEmptyDashboard(metrics) {
   const m = metrics || {};
   const participated = Number(m.participated) || 0;
-  const whitelistTotal = Number(m.whitelistTotal) || 0;
+  const inviteCodesTotal = Number(m.inviteCodesTotal) || 0;
   const totalSteps = Number(m.totalSteps) || 0;
   const validParticipants = Number(m.validParticipants) || 0;
   // 部门榜为空也算无数据。
   const deptRankEmpty = !Array.isArray(m.deptRank) || m.deptRank.length === 0;
   return (
     participated === 0 &&
-    whitelistTotal === 0 &&
+    inviteCodesTotal === 0 &&
     totalSteps === 0 &&
     validParticipants === 0 &&
     deptRankEmpty

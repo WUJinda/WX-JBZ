@@ -4,7 +4,7 @@
 // 活动状态感知（homeStatus 纯函数）：按 active/ended/pending/none 切换显示模式——
 //   active 进行中（完整展示）/ ended 战绩归档（最终累计+趋势+排名，禁同步）/
 //   pending 未开始（空态预告）/ none 无活动（空态）。状态来自 globalData.currentActivity。
-const { STATES, transition, shouldThrottle, isSyncFresh } = require('./homeSync');
+const { STATES, transition, shouldThrottle, isSyncFresh, classifyWerunAuth } = require('./homeSync');
 const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
 const { handleNotLoggedIn } = require('../../utils/authGuard');
 const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData } = require('./homeStatus');
@@ -241,12 +241,47 @@ Page({
       return;
     }
     this.apply({ type: 'SYNC_START' });
-    // 关键：wx.login 与 wx.getWeRunData 必须同源——getWeRunData 的 encryptedData 用
-    // 「当前登录态 session_key」加密，云函数靠 login 的 code 经 code2Session 换出同一
-    // session_key 才能解密（decrypt.js AES-128-CBC）。故在此先 login 取 fresh code，
-    // 紧接 getWeRunData；callCloudSync 不再重复 login，否则 code 与 encryptedData 可能
-    // 分属不同登录态（login 触发会话刷新）→ 云端解密必败（STEP_DECRYPT_FAILED 3002）。
-    this.refreshLoginCode(() => this.callWeRunData());
+    // 先 getSetting 预检 scope.werun 三态分流（见 ensureWerunAuth），再决定是否继续：
+    //   granted/undetermined → 继续 login + getWeRunData；denied → 显示 openSetting 引导。
+    //   消除「已授权用户因非授权原因 fail 被误判为拒绝授权」→ 反复引导去设置页的死循环。
+    this.ensureWerunAuth((ok) => {
+      if (!ok) return; // denied：已显示授权引导，不继续
+      // 关键：wx.login 与 wx.getWeRunData 必须同源——getWeRunData 的 encryptedData 用
+      // 「当前登录态 session_key」加密，云函数靠 login 的 code 经 code2Session 换出同一
+      // session_key 才能解密（decrypt.js AES-128-CBC）。故在此先 login 取 fresh code，
+      // 紧接 getWeRunData；callCloudSync 不再重复 login，否则 code 与 encryptedData 可能
+      // 分属不同登录态（login 触发会话刷新）→ 云端解密必败（STEP_DECRYPT_FAILED 3002）。
+      this.refreshLoginCode(() => this.callWeRunData());
+    });
+  },
+
+  /**
+   * getSetting 预检微信运动授权状态，三态分流（对齐官方授权流程）。
+   * - granted / undetermined → cb(true)：继续走 login + getWeRunData
+   *   （granted 已授权直接取数不弹窗；undetermined 由 getWeRunData 首次调用自动弹授权窗）
+   * - denied → cb(false)：置 WERUN_DENIED 显示 openSetting 引导（曾拒绝者 getWeRunData 会静默 fail）
+   * - getSetting 不可用 / fail → 降级 cb(true)：让微信原生处理授权，不阻塞主流程
+   *
+   * @param {(ok:boolean)=>void} cb
+   */
+  ensureWerunAuth(cb) {
+    if (typeof cb !== 'function') return;
+    if (typeof wx === 'undefined' || !wx.getSetting) {
+      cb(true); // 无 getSetting（老基础库）→ 降级直试 getWeRunData
+      return;
+    }
+    wx.getSetting({
+      success: (res) => {
+        const status = classifyWerunAuth(res && res.authSetting);
+        if (status === 'denied') {
+          this.apply({ type: 'WERUN_DENIED' });
+          cb(false);
+        } else {
+          cb(true); // granted / undetermined
+        }
+      },
+      fail: () => cb(true) // getSetting 失败 → 降级直试，不阻塞
+    });
   },
 
   /** 调 wx.getWeRunData（首次需用户授权微信运动）。 */
@@ -263,8 +298,18 @@ Page({
         });
         this.callCloudSync(res.encryptedData, res.iv);
       },
-      fail: () => {
-        this.apply({ type: 'WERUN_DENIED' });
+      fail: (err) => {
+        // 读 errMsg 区分失败原因，避免把「非授权类失败」一律误判为拒绝授权：
+        //   此前 fail 不读 errMsg 直接 WERUN_DENIED → 已授权用户因隐私协议/网络等 fail
+        //   时被反复引导去设置页「开通授权」（设置里本就开着 → 死循环）。
+        const msg = (err && err.errMsg) || '';
+        if (/auth\s*deny|denied|scope/i.test(msg)) {
+          // 真正的授权拒绝（errMsg 含 auth deny / denied / scope）→ 引导 openSetting 重新授权
+          this.apply({ type: 'WERUN_DENIED' });
+        } else {
+          // 隐私协议未同意 / 网络 / 未知 → 提示重试，不误导用户去「开通授权」
+          this.apply({ type: 'CLOUD_FAIL', payload: { message: '获取微信运动数据失败，请重试' } });
+        }
       }
     });
   },
@@ -367,8 +412,8 @@ Page({
     if (typeof wx === 'undefined' || !wx.openSetting) return;
     wx.openSetting({
       success: (res) => {
-        // weRunData / werun 权限授予后重新走同步流程
-        const granted = res.authSetting && (res.authSetting['scope.werun'] || res.authSetting['scope.werunData']);
+        // 官方微信运动 scope 仅 scope.werun（scope.werunData 不存在，旧代码误用已移除）
+        const granted = res.authSetting && res.authSetting['scope.werun'] === true;
         if (granted) {
           this.apply({ type: 'SETTING_GRANTED' });
           this.callWeRunData();

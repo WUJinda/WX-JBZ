@@ -21,6 +21,7 @@
   </view>
 
   <view wx:if="{{loading}}" class="hint">加载中…</view>
+  <view wx:if="{{!loading && !errorMsg && departments.length === 0}}" class="hint">管理员尚未配置部门，请联系管理员</view>
   <view wx:if="{{errorMsg}}" class="error">{{errorMsg}}</view>
 
   <button

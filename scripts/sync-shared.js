@@ -99,11 +99,13 @@ const SHARED_MANIFEST = {
   ],
   rank: [
     'common/errors',
+    'common/mask', // rankDaily 脱敏 maskNickname
     'common/authMiddleware',
     'common/response',
     'common/db',
     'activity/activityResolver',
-    'activity/activityStatus'
+    'activity/activityStatus',
+    'steps/stepsSync' // rankDaily 引入（传递依赖 activityStatus + common/errors 已在列）
   ],
   admin: [
     'common/errors',
@@ -124,7 +126,7 @@ const SHARED_MANIFEST = {
     'common/db',
     'activity/activityResolver', // F1 getActiveActivityId（resolver 依赖 activityStatus，已在列）
     'steps/stepsSync',           // 经 tasks/rankAggregate + tasks/dailyLock 引入
-    'activity/activityStatus'    // steps/stepsSync 的传递依赖
+    'activity/activityStatus'    // tasks/index.js pointSettle(deriveStatus)直接依赖 + steps/stepsSync 传递依赖
   ]
 };
 

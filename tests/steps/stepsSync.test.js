@@ -6,6 +6,8 @@ const {
   aggregateByDate,
   dateFromTimestamp,
   activityStartDate,
+  activityEndDate,
+  isValidStepRecord,
   isAbnormal,
   projectStep,
   DEFAULT_CONFIG
@@ -456,6 +458,42 @@ describe('activityStartDate 活动期起点', () => {
   });
   it('start_time 无效 → ""', () => {
     expect(activityStartDate({ start_time: 'not-a-date' }, 480)).toBe('');
+  });
+});
+
+describe('activityEndDate 活动期终点', () => {
+  it('正常 end_time → 北京时间 YYYY-MM-DD', () => {
+    expect(activityEndDate({ end_time: '2026-07-21T23:59:59+08:00' }, 480)).toBe('2026-07-21');
+  });
+  it('缺 activity → ""（调用方据此跳过右界过滤）', () => {
+    expect(activityEndDate(null, 480)).toBe('');
+  });
+  it('缺 end_time → ""', () => {
+    expect(activityEndDate({}, 480)).toBe('');
+  });
+  it('end_time 无效 → ""', () => {
+    expect(activityEndDate({ end_time: 'not-a-date' }, 480)).toBe('');
+  });
+});
+
+describe('isValidStepRecord endDate 右界（活动结束后步数不计入）', () => {
+  const today = '2026-07-23';
+  const startDate = '2026-07-01';
+  const endDate = '2026-07-21';
+  it('date<=endDate 计入；date===endDate 保留结束当日', () => {
+    expect(isValidStepRecord({ date: '2026-07-15' }, today, startDate, endDate)).toBe(true);
+    expect(isValidStepRecord({ date: endDate }, today, startDate, endDate)).toBe(true); // 结束当日含
+  });
+  it('date>endDate 剔除（活动结束后残留记录不计入）', () => {
+    expect(isValidStepRecord({ date: '2026-07-22' }, today, startDate, endDate)).toBe(false);
+    expect(isValidStepRecord({ date: today }, today, startDate, endDate)).toBe(false); // today 也在结束日之后
+  });
+  it('endDate 缺省（""）→ 不强加右界（兜底，与左界同口径）', () => {
+    expect(isValidStepRecord({ date: today }, today, startDate, '')).toBe(true);
+    expect(isValidStepRecord({ date: today }, today, startDate)).toBe(true); // 不传第 4 参同样兜底
+  });
+  it('未来日仍优先剔除（即便落在 endDate 内）', () => {
+    expect(isValidStepRecord({ date: '2026-08-01' }, today, startDate, endDate)).toBe(false);
   });
 });
 

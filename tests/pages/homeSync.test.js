@@ -1,7 +1,7 @@
 /**
  * 步数同步授权状态机纯函数单测（E4）。
  */
-const { STATES, transition, shouldThrottle, isSyncFresh } = require('../../miniprogram/pages/home/homeSync');
+const { STATES, transition, shouldThrottle, isSyncFresh, classifyWerunAuth } = require('../../miniprogram/pages/home/homeSync');
 
 describe('homeSync 授权状态机 transition', () => {
   it('SYNC_START → authing', () => {
@@ -111,5 +111,31 @@ describe('homeSync isSyncFresh 写后读一致性窗口', () => {
     expect(isSyncFresh(1000000, 1000000 + 60 * 1000, 30 * 1000)).toBe(false);
     // 1min 间隔，阈值 5min → true
     expect(isSyncFresh(1000000, 1000000 + 60 * 1000, 5 * 60 * 1000)).toBe(true);
+  });
+});
+
+describe('homeSync classifyWerunAuth 微信运动授权三态', () => {
+  it('scope.werun=true → granted（已授权，直接取数不弹窗）', () => {
+    expect(classifyWerunAuth({ 'scope.werun': true })).toBe('granted');
+  });
+
+  it('scope.werun=false → denied（曾拒绝，需 openSetting 引导）', () => {
+    expect(classifyWerunAuth({ 'scope.werun': false })).toBe('denied');
+  });
+
+  it('authSetting 无 scope.werun key → undetermined（从未询问，首次自动弹窗）', () => {
+    expect(classifyWerunAuth({ 'scope.userInfo': true })).toBe('undetermined');
+    expect(classifyWerunAuth({})).toBe('undetermined');
+  });
+
+  it('null / undefined 入参兜底 → undetermined（纯函数不崩）', () => {
+    expect(classifyWerunAuth(null)).toBe('undetermined');
+    expect(classifyWerunAuth(undefined)).toBe('undetermined');
+  });
+
+  it('不修改入参（纯函数）', () => {
+    const input = { 'scope.werun': true };
+    classifyWerunAuth(input);
+    expect(input).toEqual({ 'scope.werun': true });
   });
 });

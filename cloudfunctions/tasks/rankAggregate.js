@@ -12,8 +12,12 @@
  *     · 覆盖写 RankCache(personal)。
  *   - 部门榜：
  *     · 按 dept 聚合 total=成员有效步数累加、member_count=有效成员数（R6.2：已报名+至少一次有效同步）、
- *       avg=total/member_count、small_sample=member_count<minMembers。
- *     · 默认按 avg 排（R6.1）；小部门（member_count<minMembers）排主榜之后并标 small_sample=true，但仍展示（§657）。
+ *       avg=total/member_count、small_sample=（2/3 比例 与 绝对下限取严，见下）。
+ *     · small_sample 口径（R6，2026-07-24 调整）：size=Department.size（部门配置规模人数，管理员可调，
+ *       与 member_count 无关）；参与率不足 2/3（activeCount<ceil(size*2/3)）→ smallByRatio；
+ *       或 activeCount<minMembers（默认 3）→ smallByAbs；任一满足即小样本。
+ *       size=0（未配置）→ 仅绝对下限（向后兼容旧「<3」规则）。
+ *     · 默认按 avg 排（R6.1）；小部门（small_sample）排主榜之后并标 small_sample=true，但仍展示（§657）。
  *     · 覆盖写 RankCache(dept)。
  *
  * 红线：
@@ -27,7 +31,7 @@
  * 解耦：本模块不 require wx-server-sdk。
  */
 
-const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, activityEndDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
 const { maskNickname } = require('../common/mask');
 
 /**
@@ -35,7 +39,9 @@ const { maskNickname } = require('../common/mask');
  */
 const RANK_DEFAULT_CONFIG = {
   timezoneOffsetMinutes: DEFAULT_CONFIG.timezoneOffsetMinutes, // 北京时间 UTC+8
-  minMembers: 3 // R6 小部门阈值（§657，默认 3，可配）：有效成员数 < 此值的部门不进人均主排名
+  // R6 小部门绝对下限（§657）：activeCount < minMembers 的部门标样本量小（防 1~2 人部门凭极值占优）。
+  // 与 2/3 比例判定取严：small_sample = (activeCount<minMembers) || (size>0 && activeCount<ceil(size*2/3))。
+  minMembers: 3
 };
 
 /**
@@ -55,10 +61,10 @@ function getActivityRecords(store, activityId) {
  * @param {string} today
  * @returns {boolean}
  */
-function isValidRecord(r, today, startDate) {
+function isValidRecord(r, today, startDate, endDate) {
   // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
-  // 详见 stepsSync.isValidStepRecord 注释。startDate 缺失 → 不强加左界（兜底）。
-  return isValidStepRecord(r, today, startDate);
+  // 详见 stepsSync.isValidStepRecord 注释。startDate/endDate 缺失 → 不强加左/右界（兜底）。
+  return isValidStepRecord(r, today, startDate, endDate);
 }
 
 /**
@@ -103,7 +109,7 @@ function computeFirstReachAt(validRecs, totalSteps) {
  * @param {string} params.today
  * @returns {object[]} RankRow[]（已排序、赋 rank）
  */
-function buildPersonalRanking({ store, activityId, today, startDate }) {
+function buildPersonalRanking({ store, activityId, today, startDate, endDate }) {
   const records = getActivityRecords(store, activityId);
 
   // 用户表：_openid → user（便于关联 dept_id/nickname）。
@@ -119,7 +125,7 @@ function buildPersonalRanking({ store, activityId, today, startDate }) {
   //   聚合侧按日去重兜底，下次聚合即自愈历史重复）。同 (user, date) 取 steps 最大者（步数只增不减）。
   const dedupeMap = new Map(); // `${user_id}__${date}` -> StepRecord（该 (user,date) 最大 steps）
   for (const r of records) {
-    if (!isValidRecord(r, today, startDate)) continue;
+    if (!isValidRecord(r, today, startDate, endDate)) continue;
     const key = r.user_id + '__' + r.date;
     const prev = dedupeMap.get(key);
     if (!prev || (Number(r.steps) || 0) > (Number(prev.steps) || 0)) {
@@ -207,6 +213,27 @@ function lookupDeptName(store, deptId, activityId) {
 }
 
 /**
+ * 查部门配置规模人数（store 注入，Department.size）。
+ *
+ * size 是管理员在部门管理页配置的「部门总人数」（纯配置，与用户报名/同步无关），
+ * 供 buildDeptRanking 算 2/3 样本量阈值。与 member_count（聚合的有步数人数）语义不同、互不影响。
+ * 缺省/非数字/负数 → 0（调用方 size=0 时退化为仅绝对下限，向后兼容旧规则）。
+ *
+ * @param {object} store
+ * @param {string} deptId
+ * @param {string} activityId
+ * @returns {number} 部门配置人数（整数≥0）
+ */
+function lookupDeptSize(store, deptId, activityId) {
+  if (!deptId || !store || !Array.isArray(store.Department)) return 0;
+  const dept = store.Department.find(
+    (d) => d && d.dept_id === deptId && (!d.activity_id || d.activity_id === activityId)
+  );
+  const size = Number(dept && dept.size);
+  return Number.isFinite(size) && size > 0 ? Math.floor(size) : 0;
+}
+
+/**
  * 聚合部门榜（R6）。
  * @param {object} params
  * @param {object} params.store
@@ -234,7 +261,15 @@ function buildDeptRanking({ store, activityId, personalRows, minMembers }) {
   for (const [deptId, entry] of byDept.entries()) {
     const activeCount = entry.activeMembers.length; // 只算非 0 步用户
     const avg = activeCount > 0 ? Math.round(entry.total / activeCount) : 0;
-    const small = activeCount < minMembers;
+    // 样本量小判定（R6，2026-07-24 调整）：2/3 比例 与 绝对下限取严（任一满足即小样本）。
+    // size = Department.size（部门配置规模人数，管理员配，与 member_count 无关）；
+    //   smallByRatio：参与率不足 2/3（activeCount < ceil(size*2/3)）；防大部门少数人凭极值占优。
+    //   smallByAbs：绝对下限 minMembers（默认 3）；防 1~2 人小部门凭极值占优。
+    // size=0（未配置/缺省）→ smallByRatio 恒 false → 退化为仅绝对下限（向后兼容旧「<3」规则）。
+    const size = lookupDeptSize(store, deptId, activityId);
+    const smallByRatio = size > 0 && activeCount < Math.ceil((size * 2) / 3);
+    const smallByAbs = activeCount < minMembers;
+    const small = smallByRatio || smallByAbs;
     rows.push({
       dept_id: deptId,
       total_steps: entry.total,
@@ -322,12 +357,13 @@ async function aggregateRanking(params) {
   const cfg = Object.assign({}, RANK_DEFAULT_CONFIG, p.config || {});
   const nowDate = p.now instanceof Date ? p.now : new Date();
   const today = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), cfg.timezoneOffsetMinutes);
-  // 活动期起点：过滤活动期外脏记录（date<start_date）；activity 缺失 → '' → 兜底不过滤。
+  // 活动期起点/终点：过滤活动期外脏记录（date<start_date 或 date>end_date）；activity 缺失 → '' → 兜底不过滤。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(activity, cfg.timezoneOffsetMinutes);
   const updatedAt = nowDate.toISOString();
 
   // 个人榜。
-  const personalRows = buildPersonalRanking({ store, activityId, today, startDate });
+  const personalRows = buildPersonalRanking({ store, activityId, today, startDate, endDate });
   // 部门榜（基于个人榜聚合）。
   const deptRows = buildDeptRanking({
     store,

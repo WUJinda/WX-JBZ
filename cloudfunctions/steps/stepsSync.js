@@ -67,10 +67,30 @@ function activityStartDate(activity, offsetMinutes) {
 }
 
 /**
+ * 算活动结束日（北京时间 YYYY-MM-DD），供累计步数/排名的活动期右界过滤。
+ *
+ * 与 activityStartDate 对称：活动期有效范围 = [startDate, endDate]。
+ * 排行榜/统计仅计入活动期内的步数，超出结束日的记录（如管理员缩短 end_time 后残留的旧记录）应排除。
+ *
+ * @param {object} activity 活动文档（含 end_time ISO 字符串）；缺失/无效则返回 ''
+ * @param {number} offsetMinutes 时区偏移（分钟）
+ * @returns {string} YYYY-MM-DD 或 ''（返回 '' 时调用方跳过右界过滤，保持兜底）
+ */
+function activityEndDate(activity, offsetMinutes) {
+  const a = activity || {};
+  if (!a.end_time) return '';
+  const ms = Date.parse(a.end_time);
+  if (!Number.isFinite(ms)) return '';
+  return dateFromTimestamp(Math.floor(ms / 1000), offsetMinutes);
+}
+
+/**
  * 有效步数口径（全链路统一，buildStats/rankAggregate/stepsQuery/stepsTrend/syncSteps 共用）。
  *
  * 新口径（2026-07-08 起）：**活动期内已同步的非未来日** = `date >= startDate && date <= today`，
  * **不再依赖 locked**。
+ * 2026-07-23 新增 endDate 右界：`date <= endDate`（活动结束日后记录不计入排名/统计）。
+ *   背景：管理员可能缩短 end_time，旧记录残留在 DB 中，应排除在活动期外。
  *
  * 变更背景：旧口径 `(locked || date===today) && date>=startDate` 要求历史日必须 locked 才算有效；
  * 但 tasks 定时触发器（dailyLock）未部署时历史日永不锁定 → 用户已同步的历史步数被口径过滤
@@ -83,12 +103,14 @@ function activityStartDate(activity, offsetMinutes) {
  * @param {object} r StepRecord（须含 date 字符串）
  * @param {string} today YYYY-MM-DD（北京日）
  * @param {string} [startDate] 活动期起点 YYYY-MM-DD（空串/缺省 → 不强加左界，兜底向后兼容）
+ * @param {string} [endDate] 活动期终点 YYYY-MM-DD（空串/缺省 → 不强加右界，兜底向后兼容）
  * @returns {boolean}
  */
-function isValidStepRecord(r, today, startDate) {
+function isValidStepRecord(r, today, startDate, endDate) {
   if (!r || typeof r.date !== 'string' || !r.date) return false;
   if (r.date > today) return false; // 非未来日
-  if (startDate && r.date < startDate) return false; // 活动期内
+  if (startDate && r.date < startDate) return false; // 活动期左界
+  if (endDate && r.date > endDate) return false; // 活动期右界（结束日后不计入）
   return true;
 }
 
@@ -203,18 +225,23 @@ async function syncSteps(params) {
   // 按日聚合 stepInfoList。
   const byDate = aggregateByDate(stepInfoList, cfg.timezoneOffsetMinutes);
 
-  // 活动期起点（北京时间 YYYY-MM-DD）：写入 upsert 与 total 累计均按此过滤活动期外记录。
-  // 复用 activityStartDate（与 userStats/rankAggregate/stepsQuery 同口径）。
+  // 活动期起点/终点（北京时间 YYYY-MM-DD）：写入 upsert 与 total 累计均按此过滤活动期外记录。
+  // 复用 activityStartDate/activityEndDate（与 userStats/rankAggregate/stepsQuery 同口径）。
   // activity 缺失 → '' → 退化为「仅过滤未来日」（保持原兜底语义）。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(activity, cfg.timezoneOffsetMinutes);
 
   // 逐日 upsert（R3.2 去重）。
   const syncedAtIso = nowDate.toISOString();
   const newCount = todayCount + 1;
   for (const item of byDate) {
-    // 区间过滤：未来日不入库；早于活动开始日不入库。
+    // 区间过滤：未来日不入库；早于活动开始日不入库；晚于活动结束日不入库。
+    // 注：结束日后的记录不入库（直接丢弃）。活动期一经确定不再延长，故不存在「日后延长需回补」
+    //   的数据丢失风险（产品确认）；读侧 isValidStepRecord 同样按 endDate 过滤，写侧不过量存储
+    //   活动期外记录，与 startDate 写入过滤同口径。若未来允许延长活动期，需改为「写全量、读侧过滤」。
     if (item.date > today) continue;
     if (startDate && item.date < startDate) continue;
+    if (endDate && item.date > endDate) continue;
 
     const abnormal = isAbnormal(item.steps, cfg.abnormalThreshold);
 
@@ -272,7 +299,7 @@ async function syncSteps(params) {
   // sync 写入已过滤未来日/活动期外，store 内本就只有合法记录；此处显式用统一口径，与
   // buildStats/getToday 完全一致，消除「sync total（旧宽松）vs stats total（旧严格 locked||today）」
   // 的分叉（曾是「同步后累计正常、刷新后又变小」根因）。
-  const inRangeRecs = userRecs.filter((r) => isValidStepRecord(r, today, startDate));
+  const inRangeRecs = userRecs.filter((r) => isValidStepRecord(r, today, startDate, endDate));
   const total = inRangeRecs.reduce((sum, r) => sum + (Number(r.steps) || 0), 0);
 
   return {
@@ -289,6 +316,7 @@ module.exports = {
   aggregateByDate,
   dateFromTimestamp,
   activityStartDate,
+  activityEndDate,
   isValidStepRecord,
   isAbnormal,
   projectStep,

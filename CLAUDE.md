@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-**JBZ-app** — 企业单期限时「健步走」活动小程序。原生微信小程序前端 + 微信云开发(CloudBase)后端,无独立服务器、无自管 token。员工经微信授权 + 手机号白名单验证参赛,接入微信运动自动同步步数,按个人/部门排名。
+**JBZ-app** — 企业单期限时「健步走」活动小程序。原生微信小程序前端 + 微信云开发(CloudBase)后端,无独立服务器、无自管 token。员工经微信授权 + 一人一码邀请码准入参赛,接入微信运动自动同步步数,按个人/部门排名。
 
 权威需求与设计文档在 `docs/`(任何业务疑问先查这里):
 - `docs/PRD-P0-健步走小程序MVP.md` — 功能需求、业务规则、验收标准(F1~F8)
@@ -32,7 +32,7 @@ npm run verify:dist         # 校验 dist 产物完整性(共享层注入 + requ
 业务逻辑统一写成**纯函数 + 注入式 store**,与云 sdk 解耦:
 
 - **本地轨(纯函数)**:`syncSteps({store, ...})`、`aggregateRanking({store, ...})`、`buildDashboard({store, ...})` 等只接收内存里的 `store`(普通对象数组),返回结果或就地改 store 并打 `_dirty` 标记。**单测直接调纯函数**,注入构造好的 store,不经云函数、不连云库。
-- **云轨(handler 粘合)**:云函数 `index.js` 的 handler 负责「`loadByWhere` 拉相关集合到 store → 鉴权 → 调纯函数 → `...ToCloud` 写回库 → 返回」。写回函数(`persistStepRecordsToCloud` / `overwriteRankCacheToCloud` / `upsertWhitelistToCloud` …)只存在于 handler,单测不触达。
+- **云轨(handler 粘合)**:云函数 `index.js` 的 handler 负责「`loadByWhere` 拉相关集合到 store → 鉴权 → 调纯函数 → `...ToCloud` 写回库 → 返回」。写回函数(`persistStepRecordsToCloud` / `overwriteRankCacheToCloud` / `generateInviteCodesToCloud` …)只存在于 handler,单测不触达。
 
 **改动业务规则时**:改纯函数 + 加/改单测;handler 一般不动。**改动落库/读库方式时**:改 handler 的 `...ToCloud` 函数,纯函数通常不动。
 
@@ -47,12 +47,12 @@ npm run verify:dist         # 校验 dist 产物完整性(共享层注入 + requ
 身份**完全信任** `cloud.getWXContext().OPENID`(微信侧注入、不可伪造),**不下发、不校验自管 token**。分层校验在 `common/authMiddleware.js`:
 - `authMiddleware({getWXContext})` 同步取 OPENID(纯函数可单测);
 - `assertUserExists(db, openid)`、`assertJoined(user)`、`assertAdmin(store, openid)` 在 handler 入口按需显式调用,各自抛对应 `BizError`。
-- 入参里的 `user_id` **不可信**(防越权读写他人数据),用户身份一律用 `context.openid`。敏感字段(`_openid`/`sync_count`/`phone`)用 `loadByWhere` 的 field 投影剔除。
+- 入参里的 `user_id` **不可信**(防越权读写他人数据),用户身份一律用 `context.openid`。敏感字段(`_openid`/`sync_count`)用 `loadByWhere` 的 field 投影剔除。
 
 ### 超管与角色任命(管理员从哪来)
 
-`User.is_admin` 默认 `false`,注册不会让人变管理员——两角色分离本身已就位(`activity.save` + `admin.*` 共 9 个 action 入口都过 `assertAdmin`,普通用户调即 `AUTH_NOT_ADMIN`)。**唯一要解决的是「第一个管理员怎么产生」:**
-- **冷启动**:`auth` 云函数环境变量 `SUPER_ADMIN_PHONE`(纯数字 11 位,**绝不入源码**)。`authPhone.verifyPhone` 验证手机号命中该号时一并写 `is_admin:true`(`handlePhone` 读 env 注入 `superAdminPhone`,纯函数可测)。或直接在云数据库 `User` 把自己的 `is_admin` 改 `true`(等价、最快)。
+`User.is_admin` 默认 `false`,注册不会让人变管理员——两角色分离本身已就位(`activity.save` + `admin.*` 共多个 action 入口都过 `assertAdmin`,普通用户调即 `AUTH_NOT_ADMIN`)。**唯一要解决的是「第一个管理员怎么产生」:**
+- **冷启动**:准入凭证是「一人一码邀请码」(手机号/白名单机制已移除),不再有 `SUPER_ADMIN_PHONE` 超管号。第一个超管**直接在云开发控制台把自己的 `User.is_admin` 改 `true`**(唯一方式、最快)。
 - **任命他人**:管理员在「用户管理」页点开关 → `admin.setAdmin`(`assertAdmin` 守卫)→ `setAdminRole` 纯函数写 `User.is_admin`。**禁止自我降级**(`BIZ_SELF_DEMOTE_FORBIDDEN:2006`,防误操作后无人可管)。
 - 前端入口:管理员在 `profile` 页「后台管理」+ `home` 空态「去创建活动」均可进后台(均 `is_admin` 守卫)。
 
@@ -84,7 +84,7 @@ npm run verify:dist         # 校验 dist 产物完整性(共享层注入 + requ
 
 ## 数据模型(云数据库,文档型)
 
-`User`(`_openid` 唯一、`phone` 唯一)· `Department` · `Whitelist`(`phone` 唯一)· `Activity` · `StepRecord`(`user_id+activity_id+date` 唯一,`locked`/`abnormal`/`synced_at`)· `RankCache`(`type`∈personal/dept,聚合产物)。完整字段见技术架构 §5。索引由 `cloudfunctions/schema/initIndexes.js` 创建,可通过 `admin.ensureSchema` action 一键建(幂等)。
+`User`(`_openid` 唯一、`invite_code`)· `Department` · `InviteCode`(`code` 唯一,一人一码准入券,注册消费后 `status:used`)· `Activity` · `StepRecord`(`user_id+activity_id+date` 唯一,`locked`/`abnormal`/`synced_at`)· `RankCache`(`type`∈personal/dept,聚合产物)。完整字段见技术架构 §5。索引由 `cloudfunctions/schema/initIndexes.js` 创建,可通过 `admin.ensureSchema` action 一键建(幂等)。
 
 ## 关键约定与陷阱
 

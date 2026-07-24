@@ -6,10 +6,10 @@
  *   - cancelAccount：删本人 StepRecord + User（幂等），关联聚合缓存不强删。
  *
  * 本地轨：db 注入式（mockDb 可单测）；不 require wx-server-sdk，不调真实云 API。
- * 身份仅 OPENID；不下发原始 phone / openid / unionid。
+ * 身份仅 OPENID；不下发原始 openid / unionid。
  *
  * 红线：
- *   - 完整手机号不在本模块下发（update 仅改昵称头像，cancel 仅返回删除计数）；
+ *   - 不下发敏感字段（update 仅改昵称头像，cancel 仅返回删除计数）；
  *   - 注销是敏感操作，前端须二次确认；后端按 openid 删本人数据，不越权删他人。
  */
 
@@ -64,7 +64,7 @@ function projectUpdateResult(user) {
  * 更新昵称头像（纯函数 + 注入式 db）。
  *
  * requireUser 由 user/index.js 的 main 统一保证（context.user 已查）；
- * 本函数仍按 _openid 兜底再 update（与 verifyPhone/getProfile 同范式，防裸调）。
+ * 本函数仍按 _openid 兜底再 update（与 getProfile 同范式，防裸调）。
  *
  * @param {object} params
  * @param {string} params.openid 当前用户 openid（handler 从 wxContext 取）
@@ -111,7 +111,7 @@ async function updateProfile(params) {
  *
  * 孤儿数据防护（对齐 admin/deptManage.deleteDept 的注释风格）：
  *   - 不强删 RankCache：聚合缓存，由下次 tasks.rankAggregate 覆盖重建，强删反而引入空窗；
- *   - 不删 Whitelist：手机号维度白名单，与 openid 无关（注销不影响白名单本身）；
+ *   - 无白名单集合（准入改邀请码，见 docs/邀请码机制.md），注销仅清本人数据；
  *   - 不删 Department：member_count 是聚合冗余，下次聚合任务自动校正。
  *
  * 注销后同微信再进入 = 新用户：OPENID 不变但 User 已删，auth.login 重新建号。

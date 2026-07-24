@@ -9,23 +9,41 @@ const ACT = 'a1';
 function makeStore() {
   return {
     Department: [
-      { dept_id: 'd_01', name: '一部', activity_id: ACT, member_count: 0, created_at: 'old' },
-      { dept_id: 'd_02', name: '二部', activity_id: ACT, member_count: 0, created_at: 'old' }
+      { dept_id: 'd_01', name: '一部', activity_id: ACT, member_count: 0, size: 0, created_at: 'old' },
+      { dept_id: 'd_02', name: '二部', activity_id: ACT, member_count: 0, size: 0, created_at: 'old' }
     ]
   };
 }
 
 describe('createDept（创建部门）', () => {
-  it('正常创建：生成 dept_id（d_ 前缀），写入 Department', () => {
+  it('正常创建：生成 dept_id（d_ 前缀），写入 Department（size 缺省 0）', () => {
     const store = makeStore();
     const r = createDept(store, { activityId: ACT, name: '三部', now: 'NEW' });
     expect(r.name).toBe('三部');
     expect(r.deptId).toMatch(/^d_/);
+    expect(r.size).toBe(0);
     expect(store.Department).toHaveLength(3);
     const created = store.Department.find((d) => d.dept_id === r.deptId);
     expect(created.activity_id).toBe(ACT);
     expect(created.created_at).toBe('NEW');
     expect(created.member_count).toBe(0);
+    expect(created.size).toBe(0);
+  });
+
+  it('创建时带 size：规整为整数≥0 写入', () => {
+    const store = makeStore();
+    const r = createDept(store, { activityId: ACT, name: '四部', size: 9, now: 'NEW' });
+    expect(r.size).toBe(9);
+    const created = store.Department.find((d) => d.dept_id === r.deptId);
+    expect(created.size).toBe(9);
+  });
+
+  it('创建时 size 非法（负数/非数字）→ 兜底 0', () => {
+    const store = makeStore();
+    const r1 = createDept(store, { activityId: ACT, name: '五部', size: -3, now: 'NEW' });
+    expect(r1.size).toBe(0);
+    const r2 = createDept(store, { activityId: ACT, name: '六部', size: 'abc', now: 'NEW' });
+    expect(r2.size).toBe(0);
   });
 
   it('名称唯一：同 activity 下重名抛 SYS_DB_ERROR', () => {
@@ -58,11 +76,33 @@ describe('createDept（创建部门）', () => {
 });
 
 describe('updateDept（更新部门名）', () => {
-  it('正常更新', () => {
+  it('正常更新（不传 size → 返回规整 size）', () => {
     const store = makeStore();
     const r = updateDept(store, { deptId: 'd_01', name: '新一部', now: 'NEW' });
-    expect(r).toEqual({ deptId: 'd_01', name: '新一部', updatedAt: 'NEW' });
+    expect(r).toEqual({ deptId: 'd_01', name: '新一部', size: 0, updatedAt: 'NEW' });
     expect(store.Department[0].name).toBe('新一部');
+  });
+
+  it('更新 size：提供时写入并返回', () => {
+    const store = makeStore();
+    const r = updateDept(store, { deptId: 'd_01', name: '一部', size: 9, now: 'NEW' });
+    expect(r.size).toBe(9);
+    expect(store.Department[0].size).toBe(9);
+  });
+
+  it('更新时不传 size → 保留原值', () => {
+    const store = makeStore();
+    store.Department[0].size = 7;
+    const r = updateDept(store, { deptId: 'd_01', name: '一部', now: 'NEW' });
+    expect(r.size).toBe(7);
+    expect(store.Department[0].size).toBe(7);
+  });
+
+  it('更新 size 非法 → 兜底 0', () => {
+    const store = makeStore();
+    const r = updateDept(store, { deptId: 'd_01', name: '一部', size: -5, now: 'NEW' });
+    expect(r.size).toBe(0);
+    expect(store.Department[0].size).toBe(0);
   });
 
   it('deptId 不存在抛 BIZ_DEPT_NOT_FOUND', () => {

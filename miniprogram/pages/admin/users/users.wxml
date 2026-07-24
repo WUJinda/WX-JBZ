@@ -1,6 +1,6 @@
 <!-- pages/admin/users/users.wxml
   后台用户管理：筛选栏 + 用户列表 + 分页 + 改部门弹窗（F8 R8.3）。
-  红线：只渲染后端下发的脱敏字段 phone_masked（非完整 phone），不渲染 _openid / sync_count。
+  红线：只渲染后端下发的字段 invite_code（非 _openid），不渲染 _openid / sync_count。
 -->
 <view class="admin-page">
   <view class="page-title">{{pageLabel}}</view>
@@ -48,7 +48,7 @@
           <text class="admin-badge" wx:if="{{item.is_admin}}">管理员</text>
         </view>
         <view class="meta">
-          <text class="phone">{{item.phone_masked}}</text>
+          <text class="phone">{{item.invite_code}}</text>
           <text class="dot">·</text>
           <text>{{item.dept_name || item.dept_id}}</text>
         </view>

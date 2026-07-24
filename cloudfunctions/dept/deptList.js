@@ -28,17 +28,21 @@ const MOCK_DEPARTMENTS = [
  * 部门下发投影：从 Department 文档摘出可下发前端字段。
  * 纯函数：不写库。
  * @param {object} dept
- * @returns {{dept_id: string, name: string, member_count: number}}
+ * @returns {{dept_id: string, name: string, member_count: number, size: number}}
  */
 function projectDept(dept) {
   const d = dept || {};
   const mc = typeof d.member_count === 'number'
     ? d.member_count
     : Number(d.member_count);
+  const sz = typeof d.size === 'number' ? d.size : Number(d.size);
   return {
     dept_id: d.dept_id || '',
     name: d.name || '',
-    member_count: Number.isFinite(mc) && mc >= 0 ? Math.floor(mc) : 0
+    member_count: Number.isFinite(mc) && mc >= 0 ? Math.floor(mc) : 0,
+    // size：部门配置规模人数（管理员填，样本量2/3判定分母）。下发供后台部门管理页编辑回显；
+    // 员工端 dept 选择页收到无害（size 非敏感，不渲染）。缺省/非法 → 0（退化为仅绝对下限）。
+    size: Number.isFinite(sz) && sz >= 0 ? Math.floor(sz) : 0
   };
 }
 
