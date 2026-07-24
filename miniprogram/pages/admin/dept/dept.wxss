@@ -26,12 +26,12 @@
 .dept-meta { font-size: 24rpx; color: #888; margin-top: 6rpx; }
 .dept-actions { display: flex; flex: 0 0 auto; }
 .action-btn {
-  font-size: 24rpx;
+  font-size: 26rpx;
   color: #07c160;
   border: 1rpx solid #07c160;
-  border-radius: 24rpx;
-  padding: 8rpx 20rpx;
-  margin-left: 12rpx;
+  border-radius: 32rpx;
+  padding: 14rpx 28rpx;
+  margin-left: 16rpx;
 }
 .action-btn.danger {
   color: #fa5151;
@@ -81,12 +81,16 @@
 }
 .form-input {
   width: 100%;
-  font-size: 28rpx;
+  font-size: 30rpx;
   color: #333;
-  padding: 16rpx 20rpx;
+  padding: 24rpx;
   background: #f7f8fa;
-  border-radius: 12rpx;
+  border-radius: 16rpx;
   box-sizing: border-box;
+  margin-bottom: 20rpx;
+}
+.form-input:last-of-type {
+  margin-bottom: 0;
 }
 .form-error {
   font-size: 24rpx;
