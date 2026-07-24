@@ -86,7 +86,7 @@ describe('settleActivityPoints 个人榜 Top3 (+5/+3/+1)', () => {
 });
 
 describe('settleActivityPoints 部门榜第1名部门成员 +2', () => {
-  it('部门第1名所有参赛人员（joined 含0步）每人 +2', async () => {
+  it('部门第1名（非小样本）所有参赛人员（joined 含0步）每人 +2', async () => {
     const store = {
       User: [
         user('u1', 'op1', 'd_win', 'joined'),
@@ -95,7 +95,7 @@ describe('settleActivityPoints 部门榜第1名部门成员 +2', () => {
       ],
       RankCache: [
         personalDoc([]),
-        deptDoc([{ rank: 1, dept_id: 'd_win', total_steps: 999, member_count: 2 }])
+        deptDoc([{ rank: 1, dept_id: 'd_win', total_steps: 999, member_count: 2, small_sample: false }])
       ]
     };
     const r = await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: activity(), now: NOW });
@@ -105,10 +105,44 @@ describe('settleActivityPoints 部门榜第1名部门成员 +2', () => {
     expect(store.User[2].points).toBe(0); // 非冠军部门
   });
 
+  it('小样本部门排第1时不获得部门奖（跳过小样本取第一个主榜部门）', async () => {
+    const store = {
+      User: [
+        user('u1', 'op1', 'd_small', 'joined'),
+        user('u2', 'op2', 'd_main', 'joined')
+      ],
+      RankCache: [
+        personalDoc([]),
+        deptDoc([
+          { rank: 1, dept_id: 'd_small', total_steps: 500, member_count: 1, avg_steps: 500, small_sample: true },
+          { rank: 2, dept_id: 'd_main', total_steps: 900, member_count: 3, avg_steps: 300, small_sample: false }
+        ])
+      ]
+    };
+    const r = await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: activity(), now: NOW });
+    expect(r.settled).toBe(true);
+    expect(store.User[0].points).toBe(0); // 小样本部门成员不获奖
+    expect(store.User[1].points).toBe(2); // 第一个非小样本部门获奖
+  });
+
+  it('所有部门均为小样本 → 跳过部门奖', async () => {
+    const store = {
+      User: [user('u1', 'op1', 'd_small1', 'joined')],
+      RankCache: [
+        personalDoc([]),
+        deptDoc([{ rank: 1, dept_id: 'd_small1', total_steps: 500, member_count: 1, avg_steps: 500, small_sample: true }])
+      ]
+    };
+    const r = await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: activity(), now: NOW });
+    expect(r.settled).toBe(true);
+    expect(store.User[0].points).toBe(0); // 全小样本 → 无部门奖
+    expect(r.awards).toHaveLength(0); // 无任何发奖
+  });
+
   it('未报名（pending）成员不发部门奖', async () => {
     const store = {
       User: [user('u1', 'op1', 'd_win', 'pending')],
-      RankCache: [personalDoc([]), deptDoc([{ rank: 1, dept_id: 'd_win' }])]
+      RankCache: [personalDoc([]), deptDoc([{ rank: 1, dept_id: 'd_win', small_sample: false }])]
     };
     await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: activity(), now: NOW });
     expect(store.User[0].points).toBe(0);
@@ -116,12 +150,12 @@ describe('settleActivityPoints 部门榜第1名部门成员 +2', () => {
 });
 
 describe('settleActivityPoints 个人+部门叠加', () => {
-  it('个人第1名且在部门冠军部门 → +5+2=7', async () => {
+  it('个人第1名且在部门冠军（非小样本）部门 → +5+2=7', async () => {
     const store = {
       User: [user('u1', 'op1', 'd_win')],
       RankCache: [
         personalDoc([{ rank: 1, user_id: 'op1', total_steps: 500 }]),
-        deptDoc([{ rank: 1, dept_id: 'd_win' }])
+        deptDoc([{ rank: 1, dept_id: 'd_win', small_sample: false }])
       ]
     };
     const r = await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: activity(), now: NOW });

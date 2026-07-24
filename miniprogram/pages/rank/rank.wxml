@@ -78,12 +78,6 @@
 
   <!-- ============ 部门榜 ============ -->
   <block wx:if="{{tab === 'dept' && viewMode === 'list'}}">
-    <!-- metric 切换 -->
-    <view class="metric-bar">
-      <view class="metric-item {{metric === 'avg' ? 'metric-active' : ''}}" data-metric="avg" bindtap="onMetricSwitch">人均步数</view>
-      <view class="metric-item {{metric === 'total' ? 'metric-active' : ''}}" data-metric="total" bindtap="onMetricSwitch">总步数</view>
-    </view>
-
     <view class="list-wrap">
       <block wx:if="{{deptList.length > 0}}">
         <view class="dept-row" wx:for="{{deptList}}" wx:key="dept_id" data-dept-id="{{item.dept_id}}" data-dept-name="{{item.dept_name}}" bindtap="onDeptTap">

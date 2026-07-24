@@ -10,7 +10,6 @@
  */
 
 const DEFAULT_PAGE_SIZE = 50; // F5：个人榜分页默认 50/页
-const VALID_METRICS = ['avg', 'total'];
 
 /**
  * 分页切片：按 (page-1)*pageSize 起算切片，page<1 或 pageSize<1 兜底。
@@ -70,17 +69,6 @@ function contribution(mySteps, deptTotal) {
 }
 
 /**
- * 校正 metric：仅接受 'avg' / 'total'，其余按默认 'avg' 兜底（F6：默认人均排名）。
- * @param {*} metric
- * @param {string} [def='avg']
- * @returns {'avg'|'total'}
- */
-function switchMetric(metric, def) {
-  if (metric === 'avg' || metric === 'total') return metric;
-  return def === 'total' ? 'total' : 'avg';
-}
-
-/**
  * 空态判定：list 为空 → true（F5/F6 无数据时占位，参照 R4.3 风格）。
  * @param {Array} list
  * @returns {boolean}
@@ -122,11 +110,9 @@ function formatUpdatedAt(ts, now) {
 
 module.exports = {
   DEFAULT_PAGE_SIZE,
-  VALID_METRICS,
   paginate,
   pickNeighbors,
   contribution,
-  switchMetric,
   isEmptyRank,
   formatUpdatedAt
 };

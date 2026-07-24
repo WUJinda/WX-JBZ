@@ -3,8 +3,9 @@
  *
  * 职责：活动结束后，按【最终累计榜单】一次性结算积分：
  *   - 个人榜第 1/2/3 名分别 +5/+3/+1；
- *   - 部门榜第 1 名，该部门所有参赛人员（join_status==='joined'）每人 +2；
+ *   - 部门榜第 1 名（非小样本部门），该部门所有参赛人员（join_status==='joined'）每人 +2；
  *   - 个人奖与部门奖叠加（同人既是个人 Top3 又在部门第1名部门 → 两笔相加）。
+ *   - 部门奖排除 small_sample 部门：若所有部门均为小样本则跳过部门奖（防 1~2 人部门凭极值获奖）。
  *
  * 结算数据来源：读 store.RankCache（已被 tasks.rankAggregate 聚合的最终榜），不重算。
  *   end_time 后 steps.sync 被拒（STEP_ACTIVITY_CLOSED），步数固化，RankCache 即最终值；
@@ -14,6 +15,7 @@
  *   handler 层另用 CAS where(points_settled:false).update(true) 做 DB 级并发兜底（见 tasks/index.js）。
  *
  * 口径说明：
+ *   - 部门奖排除 small_sample 部门（取第一个非小样本部门作为冠军；全小样本则跳过）。
  *   - 部门第1名「参赛人员」= join_status==='joined' 全口径（含 0 步成员），
  *     与部门榜 member_count 只算 >0 步成员不同——有意为之（全员奖励），注释固化防误改。
  *   - RankCache personal rows 的 user_id 存的是 openid，匹配 User 用 _openid；
@@ -108,8 +110,10 @@ async function settleActivityPoints(params) {
     awards.push({ userId: user._id, openid, delta, reason: 'personal-rank-' + (i + 1) });
   });
 
-  // 部门奖：第 1 名部门的所有参赛人员（joined 全口径，含 0 步成员）。
-  const deptWinner = deptRows[0];
+  // 部门奖：第 1 名（非小样本）部门的所有参赛人员（joined 全口径，含 0 步成员）。
+  // 排除 small_sample 部门（§657）：小样本部门不进入人均主排名，自然也不应获得部门奖。
+  //   deptRows 排序时小样本排后 → find 跳过小样本取第一个主榜部门；全是小样本 → undefined → 跳过部门奖。
+  const deptWinner = deptRows.find((r) => r && !r.small_sample);
   const deptId = deptWinner && deptWinner.dept_id;
   if (deptId) {
     store.User.forEach((u) => {

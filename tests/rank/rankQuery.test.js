@@ -193,7 +193,7 @@ describe('getCacheRows 多文档兜底（取 updated_at 最新）', () => {
   });
 });
 
-describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）', () => {
+describe('readDept 部门榜（按人均步数排名 + 我的部门排名）', () => {
   // 构造：d1 avg=300 total=900(3人)，d2 avg=200 total=1000(5人)，d3(小部门) avg=500 total=500(1人)
   const store = { RankCache: dCache([
     dRow(1, 'd1', 900, 3, 300, false, '一组'),
@@ -201,19 +201,12 @@ describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）',
     dRow(3, 'd3', 500, 1, 500, true, '三组') // 小部门
   ]) };
 
-  it('默认 metric=avg：主榜按 avg desc，小部门排后', async () => {
+  it('按 avg desc 排序，小部门排后', async () => {
     const result = await readDept({ store, activityId: ACTIVITY_ID });
     // 主榜：d1(avg300) > d2(avg200)；小部门 d3 排后
     expect(result.list.map((r) => r.dept_id)).toEqual(['d1', 'd2', 'd3']);
     expect(result.list.map((r) => r.rank)).toEqual([1, 2, 3]);
     expect(result.list[2].small_sample).toBe(true);
-  });
-
-  it('metric=total：重排按 total desc，小部门仍排后', async () => {
-    const result = await readDept({ store, activityId: ACTIVITY_ID, metric: 'total' });
-    // 主榜按 total：d2(1000) > d1(900)；小部门 d3 排后
-    expect(result.list.map((r) => r.dept_id)).toEqual(['d2', 'd1', 'd3']);
-    expect(result.list.map((r) => r.rank)).toEqual([1, 2, 3]);
   });
 
   it('myDeptRank：按 deptIdOfUser 定位', async () => {
@@ -225,26 +218,18 @@ describe('readDept 部门榜（metric avg/total 切换 + 我的部门排名）',
     expect(result.myDeptRank.avg_steps).toBe(300);
   });
 
-  it('myDeptRank：metric=total 时 rank 随重排变化', async () => {
-    // metric=avg 时 d1 是 rank1；metric=total 时 d1 是 rank2
-    const rAvg = await readDept({ store, activityId: ACTIVITY_ID, deptIdOfUser: 'd1', metric: 'avg' });
-    const rTotal = await readDept({ store, activityId: ACTIVITY_ID, deptIdOfUser: 'd1', metric: 'total' });
-    expect(rAvg.myDeptRank.rank).toBe(1);
-    expect(rTotal.myDeptRank.rank).toBe(2);
-  });
-
-  it('metric=total 不破坏小部门排后规则（§657）', async () => {
-    const result = await readDept({ store, activityId: ACTIVITY_ID, metric: 'total' });
+  it('重排不破坏小部门排后规则（§657）', async () => {
+    const result = await readDept({ store, activityId: ACTIVITY_ID });
     const smallIdx = result.list.findIndex((r) => r.small_sample);
     const mainIdx = result.list.findIndex((r) => !r.small_sample);
     expect(smallIdx).toBeGreaterThan(mainIdx); // 小部门在主榜之后
   });
 
-  it('metric 重排不污染源 RankCache 文档的 rows（P1-8 深拷贝）', async () => {
-    // 同一 store 连续用 avg 和 total 两次读：源文档 rows 的 rank 不应被重排污染。
-    await readDept({ store, activityId: ACTIVITY_ID, metric: 'total' }); // 会重排赋 rank
+  it('重排不污染源 RankCache 文档的 rows（P1-8 深拷贝）', async () => {
+    // 同一 store 连续用两次读：源文档 rows 的 rank 不应被重排污染。
+    await readDept({ store, activityId: ACTIVITY_ID }); // 会重排赋 rank
     const doc = store.RankCache[0];
-    // 源 rows 仍按原始 rank（d1=1,d2=2,d3=3），未被 total 重排改写。
+    // 源 rows 仍按原始 rank（d1=1,d2=2,d3=3），未被重排改写。
     expect(doc.rows.map((r) => r.rank)).toEqual([1, 2, 3]);
   });
 

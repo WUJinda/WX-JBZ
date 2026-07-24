@@ -6,7 +6,7 @@
  *
  * 调整方式 = 增减 delta（管理员输入变动值如 +3/-5），与「仅余额字段、无流水」自洽。
  * delta 必须整数（可负）；缺失/非整数抛 BIZ_PARAM_MISSING。允许 0（幂等成功）。
- * 结果 points 允许为负（不强制 ≥0，保持简单）。
+ * 结果 points 不允许为负（扣减后不足 0 则兜底为 0）。
  *
  * 本地轨：store 注入式，纯函数可单测；不调真实云 API。
  * 解耦：本模块不 require wx-server-sdk。鉴权由 handler 经 assertAdmin 承担（纯函数不做）。
@@ -46,7 +46,7 @@ function adjustPoints(store, params) {
     throw BizError(CODE.AUTH_USER_NOT_FOUND, 'adjustPoints: user not found');
   }
 
-  user.points = (Number(user.points) || 0) + deltaNum;
+  user.points = Math.max(0, (Number(user.points) || 0) + deltaNum);
   user.updated_at = now;
 
   return { userId, points: user.points, delta: deltaNum, updatedAt: now };

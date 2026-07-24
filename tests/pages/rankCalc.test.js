@@ -7,11 +7,9 @@ const {
   paginate,
   pickNeighbors,
   contribution,
-  switchMetric,
   isEmptyRank,
   formatUpdatedAt,
-  DEFAULT_PAGE_SIZE,
-  VALID_METRICS
+  DEFAULT_PAGE_SIZE
 } = require('../../miniprogram/pages/rank/rankCalc');
 
 describe('paginate 分页切片', () => {
@@ -170,31 +168,6 @@ describe('contribution 贡献占比（除零保护）', () => {
   it('非数字兜底 0', () => {
     expect(contribution('abc', 5000)).toBe(0);
     expect(contribution(1000, 'x')).toBe(0);
-  });
-});
-
-describe('switchMetric 排序口径校正', () => {
-  it('仅接受 avg/total', () => {
-    expect(VALID_METRICS).toEqual(['avg', 'total']);
-    expect(switchMetric('avg')).toBe('avg');
-    expect(switchMetric('total')).toBe('total');
-  });
-
-  it('非法值按默认 avg 兜底', () => {
-    expect(switchMetric('sum')).toBe('avg');
-    expect(switchMetric('')).toBe('avg');
-    expect(switchMetric(null)).toBe('avg');
-    expect(switchMetric(undefined)).toBe('avg');
-    expect(switchMetric(123)).toBe('avg');
-  });
-
-  it('自定义默认 total', () => {
-    expect(switchMetric('xxx', 'total')).toBe('total');
-  });
-
-  it('合法值不受 def 影响', () => {
-    expect(switchMetric('avg', 'total')).toBe('avg');
-    expect(switchMetric('total', 'avg')).toBe('total');
   });
 });
 

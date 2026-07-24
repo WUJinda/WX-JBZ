@@ -4,7 +4,7 @@
  * 职责（读 RankCache，分页 + 我的排名）：
  *   - readPersonal：个人榜分页（默认 50/页），按 rank 升序；返回 list + myRank（ref_id 定位，未进榜 null）
  *     + totalCount + updatedAt。
- *   - readDept：部门榜分页，metric avg/total 可切重排 rank；返回 list + myDeptRank + updatedAt。
+ *   - readDept：部门榜分页（按 avg_steps desc，小部门排后）；返回 list + myDeptRank + updatedAt。
  *   - readDeptMembers：按 dept_id 过滤部门内成员（读 personal RankCache 重排），本人标记 is_me。
  *
  * 红线：
@@ -148,13 +148,12 @@ async function readPersonal(params) {
 }
 
 /**
- * readDept：部门榜分页（metric avg/total 可切重排）。
+ * readDept：部门榜分页（按 avg_steps desc，小部门排后）。
  *
  * @param {object} params
  * @param {object} params.store
  * @param {string} params.activityId
  * @param {string} [params.deptIdOfUser] 当前用户所在 dept_id（用于定位 myDeptRank）
- * @param {string} [params.metric='avg'] 排序口径：'avg'（人均，默认）/ 'total'（总步数）
  * @param {number} [params.page=1]
  * @param {number} [params.pageSize=50]
  * @returns {Promise<object>} { list, myDeptRank, totalCount, updatedAt }
@@ -162,23 +161,19 @@ async function readPersonal(params) {
 async function readDept(params) {
   const p = params || {};
   const { store, activityId } = p;
-  const metric = p.metric === 'total' ? 'total' : 'avg'; // 默认 avg（R6.1）
   const page = Math.max(1, Number(p.page) || 1);
   const pageSize = Math.max(1, Number(p.pageSize) || DEFAULT_PAGE_SIZE);
 
-  let rows = getCacheRows(store, 'dept', activityId);
+  const rows = getCacheRows(store, 'dept', activityId);
 
-  // metric 切换重排：avg → avg_steps desc（小部门仍排后，§657）；total → total_steps desc（小部门仍排后）。
-  // 重排后重新赋 rank。
+  // 按 avg_steps desc 排序（小部门排后，§657）。
   rows.sort((a, b) => {
-    // 小部门排主榜之后（§657，两种 metric 都遵循）。
     if (!!a.small_sample !== !!b.small_sample) {
       return a.small_sample ? 1 : -1;
     }
-    const av = metric === 'total' ? a.total_steps : a.avg_steps;
-    const bv = metric === 'total' ? b.total_steps : b.avg_steps;
-    if (bv !== av) return bv - av;
-    // 兜底稳定排序。
+    if (b.avg_steps !== a.avg_steps) return b.avg_steps - a.avg_steps;
+    // 兜底稳定排序：同 avg 按 total_steps desc，再 dept_id。
+    if (b.total_steps !== a.total_steps) return b.total_steps - a.total_steps;
     const da = a.dept_id || '';
     const db = b.dept_id || '';
     if (da < db) return -1;

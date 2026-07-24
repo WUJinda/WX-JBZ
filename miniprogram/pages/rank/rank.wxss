@@ -40,27 +40,6 @@
   border-bottom: 4rpx solid #1aad19;
 }
 
-/* metric 切换 */
-.metric-bar {
-  display: flex;
-  background: #ffffff;
-  padding: 16rpx 24rpx;
-  gap: 16rpx;
-}
-.metric-item {
-  flex: 1;
-  text-align: center;
-  padding: 14rpx 0;
-  font-size: 26rpx;
-  color: #666;
-  background: #f5f5f5;
-  border-radius: 8rpx;
-}
-.metric-active {
-  color: #ffffff;
-  background: #1aad19;
-}
-
 /* 列表 */
 .list-wrap {
   padding: 16rpx 24rpx;

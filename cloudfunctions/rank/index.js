@@ -33,11 +33,10 @@ const handlers = {
     return readPersonal({ store, activityId, userId, page, pageSize });
   },
 
-  // G5: 部门榜（metric avg/total 可切，读 RankCache）。需登录态。
+  // G5: 部门榜（按人均步数排名，读 RankCache）。需登录态。
   dept: async (event, context) => {
     const openid = context && context.openid;
     const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
-    const metric = event && event.metric;
     const page = event && event.page;
     const pageSize = event && event.page_size;
     // 当前用户所在 dept_id：优先 event.dept_id，否则按 openid 查 User。
@@ -54,7 +53,7 @@ const handlers = {
     }
     // P0-5：按 activity_id 精确拉取该活动 RankCache（单文档形态，每活动 personal/dept 各一个）。
     const store = { RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId }) };
-    return readDept({ store, activityId, deptIdOfUser, metric, page, pageSize });
+    return readDept({ store, activityId, deptIdOfUser, page, pageSize });
   },
 
   // G5: 部门内成员排名（按 dept_id 过滤 personal RankCache，本人 is_me）。需登录态。

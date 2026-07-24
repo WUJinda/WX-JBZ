@@ -27,9 +27,16 @@ describe('adjustPoints（管理员手动调整积分）', () => {
     expect(store.User[0].updated_at).toBe('NEW');
   });
 
-  it('正常扣分（负 delta）', () => {
+  it('正常扣分（负 delta），结果不低于 0', () => {
     const store = makeStore();
-    const r = adjustPoints(store, { userId: 'u1', delta: -5, now: 'NEW' });
+    const r = adjustPoints(store, { userId: 'u1', delta: -3, now: 'NEW' });
+    expect(r.points).toBe(2);
+    expect(store.User[0].points).toBe(2);
+  });
+
+  it('扣分超过余额 → 兜底为 0（积分不允许为负）', () => {
+    const store = makeStore();
+    const r = adjustPoints(store, { userId: 'u1', delta: -100, now: 'NEW' });
     expect(r.points).toBe(0);
     expect(store.User[0].points).toBe(0);
   });

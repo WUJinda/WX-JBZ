@@ -1,7 +1,7 @@
 // pages/rank/rank.js
 // 排行榜页（对齐 PRD F5/F6，开发计划阶段 G2）。
 // F5 个人榜：Tab 切换、Top 列表、分页上拉、我的排名条固定底部、更新时间、空态。
-// F6 部门榜：部门列表、metric avg/total 切换、small_sample 标注、我的部门卡（排名+贡献占比）。
+// F6 部门榜：部门列表（按人均步数排名）、small_sample 标注、我的部门卡（排名+贡献占比）。
 // F6 部门明细：点部门切同页 members 视图，本人 is_me 高亮。
 //
 // 红线：
@@ -10,7 +10,6 @@
 //   - rank 页是 tabBar 页（app.json tabBar.list），不使用 navigateTo 进入。
 const {
   contribution,
-  switchMetric,
   formatUpdatedAt,
   DEFAULT_PAGE_SIZE
 } = require('./rankCalc');
@@ -48,7 +47,6 @@ Page({
     deptPage: 1,
     deptPageSize: DEFAULT_PAGE_SIZE,
     deptHasMore: true,
-    metric: 'avg', // avg | total
     myDeptRank: null, // {rank, dept_id, total_steps, avg_steps, member_count, ...} | null
     myDeptContribution: 0, // 我的贡献占比 %
     // 部门明细
@@ -213,15 +211,6 @@ Page({
       if (!this.data.deptHasMore || this.data.loadingMore) return;
       this.loadDept(false);
     }
-  },
-
-  /** 切换 metric：avg / total（仅部门榜）。 */
-  onMetricSwitch(e) {
-    const m = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.metric;
-    const metric = switchMetric(m);
-    if (metric === this.data.metric) return;
-    this.setData({ metric });
-    this.loadDept(true);
   },
 
   /** 点部门 → 切到明细视图并加载成员。 */
@@ -403,7 +392,6 @@ Page({
         {
           action: 'dept',
           activity_id: app.getActivityId(),
-          metric: this.data.metric,
           page,
           page_size: this.data.deptPageSize
         },
