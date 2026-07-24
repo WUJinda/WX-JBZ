@@ -27,6 +27,10 @@
       <view class="module-icon">🏢</view>
       <view class="module-name">部门管理</view>
     </view>
+    <view class="module-card" data-mod="points" bindtap="onModuleTap">
+      <view class="module-icon">🏆</view>
+      <view class="module-name">积分台账</view>
+    </view>
   </view>
 
   <!-- 运维：一键刷新排行榜（管理员手动触发 tasks.rankAggregate，覆盖写 RankCache） -->

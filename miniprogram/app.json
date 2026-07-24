@@ -13,7 +13,8 @@
     "pages/admin/whitelist/whitelist",
     "pages/admin/users/users",
     "pages/admin/abnormal/abnormal",
-    "pages/admin/dept/dept"
+    "pages/admin/dept/dept",
+    "pages/admin/points/points"
   ],
   "window": {
     "backgroundTextStyle": "light",

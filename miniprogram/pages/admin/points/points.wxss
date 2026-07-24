@@ -1,0 +1,156 @@
+/* pages/admin/points/points.wxss
+  后台积分台账样式：规则区 + 筛选栏 + 列表 + 调整弹窗（参考 users.wxss）。
+*/
+.admin-page { padding: 32rpx; }
+.page-title { font-size: 36rpx; font-weight: 600; margin-bottom: 24rpx; }
+.state-tip { text-align: center; font-size: 26rpx; color: #999; padding: 60rpx 0; }
+
+/* 积分规则说明区 */
+.rule-block {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.rule-title { font-size: 28rpx; font-weight: 600; color: #1a1a1a; margin-bottom: 12rpx; }
+.rule-line { font-size: 26rpx; color: #333; line-height: 1.8; }
+.rule-tip { font-size: 22rpx; color: #999; margin-top: 12rpx; }
+.settle-btn {
+  margin-top: 16rpx;
+  font-size: 26rpx;
+  color: #fff;
+  background: #07c160;
+  border-radius: 24rpx;
+}
+
+/* 筛选栏 */
+.filter-bar {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-bottom: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.filter-search {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+.search-input {
+  flex: 1;
+  font-size: 28rpx;
+  color: #333;
+  padding: 12rpx 20rpx;
+  background: #f7f8fa;
+  border-radius: 32rpx;
+}
+.search-btn {
+  margin-left: 16rpx;
+  font-size: 28rpx;
+  color: #07c160;
+  padding: 8rpx 12rpx;
+}
+.filter-dept { margin-top: 4rpx; }
+.picker-value {
+  font-size: 26rpx;
+  color: #333;
+  padding: 12rpx 0;
+}
+
+/* 列表统计 */
+.list-meta {
+  font-size: 24rpx;
+  color: #888;
+  margin-bottom: 12rpx;
+}
+
+/* 积分列表 */
+.point-list {
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.point-row {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.point-row:last-child { border-bottom: none; }
+.info {
+  flex: 1;
+  min-width: 0;
+}
+.nickname {
+  font-size: 30rpx;
+  color: #1a1a1a;
+  font-weight: 500;
+}
+.meta {
+  font-size: 24rpx;
+  color: #888;
+  margin-top: 8rpx;
+}
+.meta .dot { margin: 0 8rpx; }
+.points {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #07c160;
+  margin: 0 20rpx;
+}
+.points-danger { color: #e64c45; }
+.adjust-btn {
+  font-size: 24rpx;
+  color: #07c160;
+  border: 1rpx solid #07c160;
+  border-radius: 24rpx;
+  padding: 8rpx 20rpx;
+}
+
+/* 分页加载 */
+.load-more {
+  text-align: center;
+  font-size: 24rpx;
+  color: #999;
+  padding: 24rpx 0;
+}
+
+/* 调整积分弹窗 */
+.picker-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 10;
+}
+.picker-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  border-radius: 24rpx 24rpx 0 0;
+  padding: 24rpx;
+  z-index: 11;
+}
+.picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+.picker-cancel { font-size: 28rpx; color: #888; }
+.picker-title { font-size: 30rpx; font-weight: 600; color: #1a1a1a; }
+.picker-confirm { font-size: 28rpx; color: #07c160; }
+.adjust-target { font-size: 26rpx; color: #333; margin-bottom: 16rpx; }
+.delta-input {
+  font-size: 32rpx;
+  padding: 20rpx;
+  background: #f7f8fa;
+  border-radius: 12rpx;
+}
+.adjust-tip { font-size: 22rpx; color: #999; margin-top: 12rpx; }

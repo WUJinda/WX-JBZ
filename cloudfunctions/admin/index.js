@@ -1,6 +1,6 @@
 /**
  * admin 云函数入口：后台管理（对齐技术架构 §4.1/§122/§152，PRD F8）。
- * Action: whitelistImport / users / changeDept / abnormalList / verdict / dashboard / deptManage
+ * Action: whitelistImport / users / changeDept / abnormalList / verdict / dashboard / deptManage / points / adjustPoints / settlePoints
  *
  * 所有 action 均为管理员类：handler 内先 loadByWhere 拉相关集合到 store →
  * assertAdmin(store, callerOpenid) → 调对应纯函数 → 写回库 → 返回。
@@ -30,6 +30,8 @@ const { applyVerdict } = require('./verdict');
 const { createDept, updateDept, deleteDept } = require('./deptManage');
 const { buildDashboard } = require('./dashboard');
 const { handleRefreshRank } = require('./refreshRank');
+const { queryPoints } = require('./pointList');
+const { adjustPoints } = require('./pointAdjust');
 const { ensureSchema } = require('../schema/initIndexes');
 
 const handlers = {
@@ -204,7 +206,6 @@ const handlers = {
       result = createDept(store, {
         activityId: event && event.activity_id,
         name: event && event.name,
-        size: event && event.size,
         now
       });
       await writeDeptToCloud(cloud, store.Department, result.deptId);
@@ -212,10 +213,9 @@ const handlers = {
       result = updateDept(store, {
         deptId: event && event.dept_id,
         name: event && event.name,
-        size: event && event.size,
         now
       });
-      await updateDeptToCloud(cloud, result.deptId, { name: result.name, size: result.size });
+      await updateDeptToCloud(cloud, result.deptId, result.name);
     } else if (op === 'delete') {
       result = deleteDept(store, { deptId: event && event.dept_id });
       await removeDeptToCloud(cloud, result.deptId);
@@ -233,6 +233,61 @@ const handlers = {
     const store = { User: await loadByWhere(cloud, 'User') };
     assertAdmin(store, context.openid);
     return handleRefreshRank({ cloud, event });
+  },
+
+  // 积分台账列表（筛选 + 分页 + join dept_name/total_steps，只读）。
+  points: async (event, context) => {
+    const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
+    const store = {
+      // 投影须含 is_admin：assertAdmin 依 user.is_admin===true 判定（adminGuard.js:32），
+      //   漏投影则字段 undefined→!==true→必抛 AUTH_NOT_ADMIN(1003)，积分台账列表任何管理员调都失败。
+      User: await loadByWhere(cloud, 'User', {}, { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1, points: 1, is_admin: 1 }),
+      Department: await loadByWhere(cloud, 'Department'),
+      RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId })
+    };
+    assertAdmin(store, context.openid);
+    return queryPoints(store, {
+      activityId,
+      deptId: event && event.dept_id,
+      keyword: event && event.keyword,
+      page: event && event.page,
+      pageSize: event && event.page_size
+    });
+  },
+
+  // 手动调整用户积分（增减 delta）。仅余额字段、无流水；写回 User.points（幂等覆盖最终值）。
+  adjustPoints: async (event, context) => {
+    const store = { User: await loadByWhere(cloud, 'User') };
+    assertAdmin(store, context.openid);
+    const now = (event && event.now) || new Date().toISOString();
+    const result = adjustPoints(store, {
+      userId: event && event.user_id,
+      delta: event && event.delta,
+      now
+    });
+    await updateUserPointsToCloud(cloud, result.userId, result.points, result.updatedAt);
+    return result;
+  },
+
+  // 手动触发积分结算（转发 tasks.pointSettle，过 assertAdmin）。场景：活动刚结束想立即结算不等定时任务。
+  settlePoints: async (event, context) => {
+    const store = { User: await loadByWhere(cloud, 'User') };
+    assertAdmin(store, context.openid);
+    const res = await cloud.callFunction({
+      name: 'tasks',
+      data: { action: 'pointSettle', activity_id: event && event.activity_id }
+    });
+    // callFunction 返回 { result: { code, message, data } }；透传 data（含 settled/awards 等）。
+    const result = (res && res.result) || {};
+    if (result.code !== 0) {
+      throw BizError(result.code || CODE.SYS_DB_ERROR, result.message || 'pointSettle 失败');
+    }
+    const data = result.data === undefined ? null : result.data;
+    // 剥离 awards 中的 openid（_openid 是 onlyServer 字段，绝不下发前端；awardPointsToCloud 内部只用 userId，openid 系冗余）。
+    if (data && Array.isArray(data.awards)) {
+      data.awards = data.awards.map((a) => (a ? { userId: a.userId, delta: a.delta, reason: a.reason } : a));
+    }
+    return data;
   },
 
   // 运维：一键建集合 + 索引（幂等可重跑）。
@@ -330,6 +385,21 @@ async function updateAdminRoleToCloud(cloudSdk, userId, isAdmin, updatedAt) {
 }
 
 /**
+ * 云轨：写回 User.points（手动调整，幂等覆盖为最终值）。
+ */
+async function updateUserPointsToCloud(cloudSdk, userId, points, updatedAt) {
+  const db = cloudSdk.database();
+  try {
+    await db.collection('User').doc(userId).update({
+      data: { points: points, updated_at: updatedAt }
+    });
+  } catch (err) {
+    // P1-3：写库失败上抛（不再静默吞致前端假成功）。
+    throw BizError(CODE.SYS_DB_ERROR, 'User.points 写回失败(' + userId + '): ' + ((err && err.message) || err));
+  }
+}
+
+/**
  * 云轨：写回 StepRecord 裁定结果（幂等）。
  */
 async function applyVerdictToCloud(cloudSdk, recordId, action, now) {
@@ -367,13 +437,12 @@ async function writeDeptToCloud(cloudSdk, department, deptId) {
 }
 
 /**
- * 云轨：更新部门写回（name + size）。
- * payload 由 handler 构造（{name, size}）；size 缺省时 result.size 为 0（未配置语义），写入无害。
+ * 云轨：更新部门名写回。
  */
-async function updateDeptToCloud(cloudSdk, deptId, payload) {
+async function updateDeptToCloud(cloudSdk, deptId, name) {
   const db = cloudSdk.database();
   try {
-    await db.collection('Department').where({ dept_id: deptId }).update({ data: payload });
+    await db.collection('Department').where({ dept_id: deptId }).update({ data: { name } });
   } catch (err) {
     // P1-3：写库失败上抛（不再静默吞致前端假成功）。
     throw BizError(CODE.SYS_DB_ERROR, 'Department.update 写回失败(' + deptId + '): ' + ((err && err.message) || err));

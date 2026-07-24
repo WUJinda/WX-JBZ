@@ -450,9 +450,11 @@ describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
     const src = readSource('cloudfunctions/tasks/index.js');
     expect(src).toMatch(/\brankAggregate\s*:\s*async/);
     expect(src).toMatch(/\bdailyLock\s*:\s*async/);
+    expect(src).toMatch(/\bpointSettle\s*:\s*async/);
     // 纯函数模块被 require
     expect(src).toMatch(/require\(['"]\.\/rankAggregate['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/dailyLock['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/pointSettle['"]\)/);
   });
 
   it('tasks.rankAggregate/dailyLock 为系统级：入口不调 authMiddleware / 不 requireUser', () => {
@@ -463,7 +465,7 @@ describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
     expect(src).not.toMatch(/REQUIRE_USER_ACTIONS/);
   });
 
-  it('rankAggregate.js / dailyLock.js 纯函数模块存在', () => {
+  it('rankAggregate.js / dailyLock.js / pointSettle.js 纯函数模块存在', () => {
     expect(
       fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/rankAggregate.js')),
       '缺少 rankAggregate.js'
@@ -472,18 +474,26 @@ describe('tasks action 挂载与系统级（不 requireUser）（G1）', () => {
       fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/dailyLock.js')),
       '缺少 dailyLock.js'
     ).toBe(true);
+    expect(
+      fs.existsSync(path.join(ROOT, 'cloudfunctions/tasks/pointSettle.js')),
+      '缺少 pointSettle.js'
+    ).toBe(true);
   });
 
   it('tasks 纯函数不调真实云 API（grep 实证：无 wx-server-sdk/cloud.callFunction/database 副作用）', () => {
     const aggSrc = readSource('cloudfunctions/tasks/rankAggregate.js');
     const lockSrc = readSource('cloudfunctions/tasks/dailyLock.js');
+    const settleSrc = readSource('cloudfunctions/tasks/pointSettle.js');
     expect(aggSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
     expect(lockSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
+    expect(settleSrc).not.toMatch(/require\(['"]wx-server-sdk['"]\)/);
     expect(aggSrc).not.toMatch(/cloud\.callFunction/);
     expect(lockSrc).not.toMatch(/cloud\.callFunction/);
+    expect(settleSrc).not.toMatch(/cloud\.callFunction/);
     // 不直接调 cloud.database()（与 handler 解耦）
     expect(aggSrc).not.toMatch(/cloud\.database\(\)/);
     expect(lockSrc).not.toMatch(/cloud\.database\(\)/);
+    expect(settleSrc).not.toMatch(/cloud\.database\(\)/);
   });
 });
 
@@ -500,7 +510,7 @@ describe('mask.js 脱敏纯函数挂载（G1）', () => {
 });
 
 describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
-  it('admin/index.js 的 handlers 表挂载 9 个 action（不再 not implemented）', () => {
+  it('admin/index.js 的 handlers 表挂载 12 个 action（不再 not implemented）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     expect(src).toMatch(/\bwhitelistImport\s*:\s*async/);
     expect(src).toMatch(/\busers\s*:\s*async/);
@@ -511,6 +521,9 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/\bdeptManage\s*:\s*async/);
     expect(src).toMatch(/\bsetAdmin\s*:\s*async/);
     expect(src).toMatch(/\brefreshRank\s*:\s*async/);
+    expect(src).toMatch(/\bpoints\s*:\s*async/);
+    expect(src).toMatch(/\badjustPoints\s*:\s*async/);
+    expect(src).toMatch(/\bsettlePoints\s*:\s*async/);
   });
 
   it('admin/index.js require 全部纯函数模块', () => {
@@ -525,18 +538,20 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/require\(['"]\.\/deptManage['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/dashboard['"]\)/);
     expect(src).toMatch(/require\(['"]\.\/adminRole['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/pointList['"]\)/);
+    expect(src).toMatch(/require\(['"]\.\/pointAdjust['"]\)/);
   });
 
-  it('admin/index.js 全部 10 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
+  it('admin/index.js 全部 13 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     // 语义说明：每个管理员 handler 必须在入口调用 assertAdmin 做管理员守卫，
     // 漏一个 handler 会导致非管理员可绕过鉴权调用该 action。
-    // admin 共 10 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage/setAdmin/refreshRank/ensureSchema），
-    // 故 assertAdmin 语句调用必须精确出现 10 次（每个 handler 内 1 次）。
+    // admin 共 13 个 action（whitelistImport/users/changeDept/abnormalList/verdict/dashboard/deptManage/setAdmin/refreshRank/points/adjustPoints/settlePoints/ensureSchema），
+    // 故 assertAdmin 语句调用必须精确出现 13 次（每个 handler 内 1 次）。
     const actions = [
       'whitelistImport', 'users', 'changeDept',
       'abnormalList', 'verdict', 'dashboard', 'deptManage', 'setAdmin',
-      'refreshRank', 'ensureSchema'
+      'refreshRank', 'points', 'adjustPoints', 'settlePoints', 'ensureSchema'
     ];
     // 结构化断言：每个 handler 块内都含 assertAdmin（按 handler 名切分源码块）。
     for (const act of actions) {
@@ -569,19 +584,19 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     }
   });
 
-  it('assertAdmin 全仓调用总数 = 15（admin 10 + activity 5），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 18（admin 13 + activity 5），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
     const activitySrc = readSource('cloudfunctions/activity/index.js');
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(adminCount).toBe(10);
+    expect(adminCount).toBe(13);
     expect(activityCount).toBe(5);
-    expect(adminCount + activityCount).toBe(15);
+    expect(adminCount + activityCount).toBe(18);
   });
 
-  it('admin 纯函数模块文件存在（9 个）', () => {
+  it('admin 纯函数模块文件存在（12 个）', () => {
     const files = [
       'cloudfunctions/admin/adminGuard.js',
       'cloudfunctions/admin/whitelistParse.js',
@@ -592,7 +607,9 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
       'cloudfunctions/admin/verdict.js',
       'cloudfunctions/admin/deptManage.js',
       'cloudfunctions/admin/dashboard.js',
-      'cloudfunctions/admin/adminRole.js'
+      'cloudfunctions/admin/adminRole.js',
+      'cloudfunctions/admin/pointList.js',
+      'cloudfunctions/admin/pointAdjust.js'
     ];
     for (const rel of files) {
       expect(fs.existsSync(path.join(ROOT, rel)), `缺少纯函数模块: ${rel}`).toBe(true);
@@ -610,7 +627,9 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
       'cloudfunctions/admin/verdict.js',
       'cloudfunctions/admin/deptManage.js',
       'cloudfunctions/admin/dashboard.js',
-      'cloudfunctions/admin/adminRole.js'
+      'cloudfunctions/admin/adminRole.js',
+      'cloudfunctions/admin/pointList.js',
+      'cloudfunctions/admin/pointAdjust.js'
     ];
     for (const rel of modules) {
       const src = readSource(rel);
@@ -634,6 +653,14 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).not.toMatch(/_openid\s*:/);
     expect(src).not.toMatch(/sync_count\s*:/);
   });
+
+  it('projectPointUser 投影函数体不下发敏感字段（grep 实证）', () => {
+    const src = readSource('cloudfunctions/admin/pointList.js');
+    expect(src).toMatch(/projectPointUser/);
+    expect(src).not.toMatch(/_openid\s*:/);
+    expect(src).not.toMatch(/\bphone\s*:/);
+    expect(src).not.toMatch(/sync_count\s*:/);
+  });
 });
 
 describe('admin 后台前端页面结构与红线（H2：dashboard / activity / whitelist + profile 入口）', () => {
@@ -651,6 +678,7 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     expect(wxml).toMatch(/data-mod="users"/);
     expect(wxml).toMatch(/data-mod="abnormal"/);
     expect(wxml).toMatch(/data-mod="dept"/);
+    expect(wxml).toMatch(/data-mod="points"/);
     expect(wxml).toMatch(/onModuleTap/);
     // 6 指标卡（参与人数 / 白名单总数 / 参与率 / 累计步数 / 人均 / 有效参与）
     expect(wxml).toMatch(/participated/);

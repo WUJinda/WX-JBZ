@@ -152,7 +152,8 @@ Page({
       whitelist: '/pages/admin/whitelist/whitelist',
       users: '/pages/admin/users/users',
       abnormal: '/pages/admin/abnormal/abnormal',
-      dept: '/pages/admin/dept/dept'
+      dept: '/pages/admin/dept/dept',
+      points: '/pages/admin/points/points'
     };
     const url = urlMap[mod];
     if (!url) return;

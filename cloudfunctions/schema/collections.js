@@ -40,6 +40,7 @@ const COLLECTIONS = {
       },
       joined_at: { type: 'date', optional: true, desc: '报名时间' },
       is_admin: { type: 'boolean', default: false, desc: '是否管理员' },
+      points: { type: 'int', default: 0, desc: '积分余额（活动结算 + 管理员手动调整累加，可为负）' },
       created_at: { type: 'date', desc: '创建时间' },
       updated_at: { type: 'date', desc: '更新时间' }
     }
@@ -114,6 +115,8 @@ const COLLECTIONS = {
         desc: '是否已手动终止（管理员提前结束，不可恢复；deriveStatus 优先判此字段，命中即 ended）'
       },
       terminated_at: { type: 'date', optional: true, desc: '手动终止时间（terminated=true 时写入）' },
+      points_settled: { type: 'boolean', default: false, desc: '积分是否已结算（活动结束后一次性结算标记，幂等防重发）' },
+      points_settled_at: { type: 'date', optional: true, desc: '积分结算时间（points_settled=true 时写入）' },
       rules: { type: 'string', desc: '规则说明（richtext）' },
       total_steps: {
         type: 'int',
