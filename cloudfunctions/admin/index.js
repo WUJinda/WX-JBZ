@@ -358,6 +358,15 @@ const handlers = {
  */
 async function generateInviteCodesToCloud(cloudSdk, docs) {
   const db = cloudSdk.database();
+
+  // 确保集合存在（幂等）。云开发数据库集合不会自动创建，
+  // 未建时 add 报 -502005 致全部写入失败（loadByWhere 静默吞此错误，handler 不会提前感知）。
+  try {
+    await db.createCollection('InviteCode');
+  } catch (e) {
+    // 已存在或其他非致命错误：忽略，继续逐条写入（真正的写入错误由下方 try/catch 收集）。
+  }
+
   let written = 0;
   const failed = [];
   for (const d of docs) {
