@@ -57,10 +57,5 @@
   },
   "sitemapLocation": "sitemap.json",
   "style": "v2",
-  "__usePrivacyCheck__": true,
-  "permission": {
-    "scope.werun": {
-      "desc": "用于读取你的微信运动步数，参与企业健步走活动"
-    }
-  }
+  "__usePrivacyCheck__": true
 }

@@ -54,7 +54,7 @@ Page({
   /** 表单输入：部门名。 */
   onFormNameInput(e) {
     this.setData({ formName: (e && e.detail && e.detail.value) || '', formError: '' });
-  }
+  },
 
   /** 表单输入：部门人数（可选）。 */
   onFormSizeInput(e) {
