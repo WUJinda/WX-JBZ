@@ -27,7 +27,7 @@
  * 解耦：本模块不 require wx-server-sdk。
  */
 
-const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, activityEndDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
 const { maskNickname } = require('../common/mask');
 
 /**
@@ -55,10 +55,10 @@ function getActivityRecords(store, activityId) {
  * @param {string} today
  * @returns {boolean}
  */
-function isValidRecord(r, today, startDate) {
+function isValidRecord(r, today, startDate, endDate) {
   // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
-  // 详见 stepsSync.isValidStepRecord 注释。startDate 缺失 → 不强加左界（兜底）。
-  return isValidStepRecord(r, today, startDate);
+  // 详见 stepsSync.isValidStepRecord 注释。startDate/endDate 缺失 → 不强加左/右界（兜底）。
+  return isValidStepRecord(r, today, startDate, endDate);
 }
 
 /**
@@ -103,7 +103,7 @@ function computeFirstReachAt(validRecs, totalSteps) {
  * @param {string} params.today
  * @returns {object[]} RankRow[]（已排序、赋 rank）
  */
-function buildPersonalRanking({ store, activityId, today, startDate }) {
+function buildPersonalRanking({ store, activityId, today, startDate, endDate }) {
   const records = getActivityRecords(store, activityId);
 
   // 用户表：_openid → user（便于关联 dept_id/nickname）。
@@ -119,7 +119,7 @@ function buildPersonalRanking({ store, activityId, today, startDate }) {
   //   聚合侧按日去重兜底，下次聚合即自愈历史重复）。同 (user, date) 取 steps 最大者（步数只增不减）。
   const dedupeMap = new Map(); // `${user_id}__${date}` -> StepRecord（该 (user,date) 最大 steps）
   for (const r of records) {
-    if (!isValidRecord(r, today, startDate)) continue;
+    if (!isValidRecord(r, today, startDate, endDate)) continue;
     const key = r.user_id + '__' + r.date;
     const prev = dedupeMap.get(key);
     if (!prev || (Number(r.steps) || 0) > (Number(prev.steps) || 0)) {
@@ -322,12 +322,13 @@ async function aggregateRanking(params) {
   const cfg = Object.assign({}, RANK_DEFAULT_CONFIG, p.config || {});
   const nowDate = p.now instanceof Date ? p.now : new Date();
   const today = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), cfg.timezoneOffsetMinutes);
-  // 活动期起点：过滤活动期外脏记录（date<start_date）；activity 缺失 → '' → 兜底不过滤。
+  // 活动期起点/终点：过滤活动期外脏记录（date<start_date 或 date>end_date）；activity 缺失 → '' → 兜底不过滤。
   const startDate = activityStartDate(activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(activity, cfg.timezoneOffsetMinutes);
   const updatedAt = nowDate.toISOString();
 
   // 个人榜。
-  const personalRows = buildPersonalRanking({ store, activityId, today, startDate });
+  const personalRows = buildPersonalRanking({ store, activityId, today, startDate, endDate });
   // 部门榜（基于个人榜聚合）。
   const deptRows = buildDeptRanking({
     store,

@@ -26,7 +26,7 @@
  * 解耦：本模块不 require wx-server-sdk。
  */
 
-const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, activityEndDate, isValidStepRecord, DEFAULT_CONFIG } = require('../steps/stepsSync');
 const { maskNickname } = require('../common/mask');
 const { CODE, BizError } = require('../common/errors');
 
@@ -98,10 +98,11 @@ async function readPersonalDaily(params) {
   const nowDate = p.now instanceof Date ? p.now : new Date();
   const today = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), cfg.timezoneOffsetMinutes);
   const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(p.activity, cfg.timezoneOffsetMinutes);
 
   // 当天记录：activity_id + date 匹配且有效（活动期内已同步的非未来日，口径同 isValidStepRecord）。
   const records = (store && Array.isArray(store.StepRecord) ? store.StepRecord : []).filter(
-    (r) => r && r.activity_id === activityId && r.date === date && isValidStepRecord(r, today, startDate)
+    (r) => r && r.activity_id === activityId && r.date === date && isValidStepRecord(r, today, startDate, endDate)
   );
 
   // 按 user_id 去重取最大 steps（生产无唯一索引，写侧偶发重复 StepRecord 会翻倍；聚合侧按 user 去重兜底，

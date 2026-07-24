@@ -22,26 +22,28 @@
  * 解耦：本模块不 require wx-server-sdk。
  */
 
-const { dateFromTimestamp, activityStartDate, DEFAULT_CONFIG } = require('../steps/stepsSync');
+const { dateFromTimestamp, activityStartDate, activityEndDate, DEFAULT_CONFIG } = require('../steps/stepsSync');
 
 const DEFAULT_TREND_DAYS = 30;
 
 /**
  * 有效步数口径（与 stepsSync.isValidStepRecord 同源 + dashboard 额外排除 abnormal）：
- *   活动期内已同步的非未来日（date>=startDate && date<=today，**不依赖 locked**），且非异常。
+ *   活动期内已同步的非未来日（date>=startDate && date<=today && date<=endDate，**不依赖 locked**），且非异常。
  * - 排除 abnormal：待裁定异常不计入看板（裁定 ignore/zero 后 abnormal 必为 false，已认可/清零的仍参与）。
- * - 活动期过滤：剔除早期 sync bug 回灌的活动期外脏记录；startDate 缺失 → 兜底不过滤。
- * - 不 require stepsSync.isValidStepRecord（避免 admin→steps 跨域 require 致 sync-shared manifest 复杂化），
- *   此处同步实现并标明同源；口径变更时与 isValidStepRecord 一起改。
+ * - 活动期过滤：剔除活动期外脏记录（date<startDate 或 date>endDate）；startDate/endDate 缺失 → 兜底不过滤对应界。
+ * - 本地实现而非直接复用 isValidStepRecord：dashboard 须额外排除 abnormal（isValidStepRecord 不排除）。
+ *   其余口径（活动期/未来日）与 isValidStepRecord 完全同源；口径变更时（如本次新增 endDate 右界）须与本函数一起改。
  * @param {object} r StepRecord
  * @param {string} today YYYY-MM-DD
- * @param {string} [startDate] 活动期起点 YYYY-MM-DD（缺失→不过滤）
+ * @param {string} [startDate] 活动期起点 YYYY-MM-DD（缺失→不过滤左界）
+ * @param {string} [endDate] 活动期终点 YYYY-MM-DD（缺失→不过滤右界）
  * @returns {boolean}
  */
-function isValidRecord(r, today, startDate) {
+function isValidRecord(r, today, startDate, endDate) {
   if (!r || typeof r.date !== 'string' || !r.date) return false;
   if (r.date > today) return false;
   if (startDate && r.date < startDate) return false;
+  if (endDate && r.date > endDate) return false;
   if (r.abnormal) return false;
   return true;
 }
@@ -87,9 +89,10 @@ function buildDashboard(params) {
   );
   const nowDate = p.now instanceof Date ? p.now : new Date();
   const today = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), cfg.timezoneOffsetMinutes);
-  // 活动期起点：过滤活动期外脏记录（与 userStats/rankAggregate 同口径）。
-  // activity 缺失（handler 未命中活动文档）→ '' → 兜底不过滤（保持原语义）。
+  // 活动期起点/终点：过滤活动期外脏记录（与 userStats/rankAggregate 同口径）。
+  // activity 缺失（handler 未命中活动文档）→ '' → 兜底不过滤对应界（保持原语义）。
   const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
+  const endDate = activityEndDate(p.activity, cfg.timezoneOffsetMinutes);
 
   const users = Array.isArray(store.User) ? store.User : [];
   const whitelist = Array.isArray(store.Whitelist) ? store.Whitelist : [];
@@ -109,7 +112,7 @@ function buildDashboard(params) {
   const activityRecords = records.filter(
     (r) => r && (activityId == null || r.activity_id === activityId)
   );
-  const validRecords = activityRecords.filter((r) => isValidRecord(r, today, startDate));
+  const validRecords = activityRecords.filter((r) => isValidRecord(r, today, startDate, endDate));
 
   // join_status 过滤：有有效 User 集合（非空）时，只保留 joined 用户的有效记录（对齐 rankAggregate
   // 个人榜口径；统一过滤保证 totalSteps 与 validParticipants 同口径，避免分子/分母错配致 avgSteps 失真）。
@@ -149,7 +152,8 @@ function buildDashboard(params) {
     if (!r || !r.date || !r.user_id) continue;
     if (r.abnormal) continue; // 排除待裁定异常
     if (r.date > today) continue; // 未来日不入趋势
-    if (startDate && r.date < startDate) continue; // 活动期外脏记录
+    if (startDate && r.date < startDate) continue; // 活动期外脏记录（早于开始日）
+    if (endDate && r.date > endDate) continue; // 活动期外脏记录（晚于结束日）
     if (!dailyMap.has(r.date)) dailyMap.set(r.date, new Set());
     dailyMap.get(r.date).add(r.user_id);
   }

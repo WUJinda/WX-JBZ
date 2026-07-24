@@ -15,7 +15,7 @@
  * 本地轨：records/now/config 注入式，纯函数可单测；不调真实微信云 API。
  */
 
-const { dateFromTimestamp, activityStartDate, isValidStepRecord, DEFAULT_CONFIG } = require('./stepsSync');
+const { dateFromTimestamp, activityStartDate, activityEndDate, isValidStepRecord, DEFAULT_CONFIG } = require('./stepsSync');
 
 /**
  * 取某用户某活动的全部 StepRecord（按 date 升序）。
@@ -95,7 +95,8 @@ function buildTrend(params) {
   // 有效步数口径（全链路统一 isValidStepRecord）：活动期内已同步的非未来日，不依赖 locked。
   // activity 缺失 → startDate='' → 不强加左界（兜底，与 today/history 同口径）。
   const startDate = activityStartDate(p.activity, cfg.timezoneOffsetMinutes);
-  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate));
+  const endDate = activityEndDate(p.activity, cfg.timezoneOffsetMinutes);
+  const valid = recs.filter((r) => isValidStepRecord(r, today, startDate, endDate));
 
   // 按 date 聚合：同日多条求和（理论上 (user,date) 唯一，聚合稳健）。
   const map = new Map();

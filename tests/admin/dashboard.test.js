@@ -75,6 +75,26 @@ describe('buildDashboard（数据看板指标）', () => {
     expect(r.totalSteps).toBe(1000 + 2000 + 9999);
   });
 
+  it('totalSteps/dailyActive 排除活动结束日后的残留记录（endDate 右界）', () => {
+    // activity end_time=06-25 → endDate=2026-06-25；today=06-26 已在结束日之后。
+    const activity = { start_time: '2026-06-20T00:00:00+08:00', end_time: '2026-06-25T23:59:59+08:00' };
+    const store = {
+      User: [],
+      Whitelist: [],
+      StepRecord: [
+        rec('u1', '2026-06-24', 1000), // 活动期内 → 计入
+        rec('u2', '2026-06-25', 2000), // 结束当日 → 计入（date===end 保留）
+        rec('u3', '2026-06-26', 9999) // 结束日后(today) → 剔除
+      ],
+      RankCache: []
+    };
+    const r = buildDashboard({ store, activityId: ACT, activity, now: NOW });
+    expect(r.totalSteps).toBe(1000 + 2000); // 不含 06-26 残留记录
+    // dailyActive：今日(06-26)无活跃（u3 被 endDate 剔除，不进趋势）
+    const todayItem = r.dailyActive.find((x) => x.date === '2026-06-26');
+    expect(todayItem.count).toBe(0);
+  });
+
   it('totalSteps 跨活动不混入（按 activity_id 过滤）', () => {
     const store = {
       User: [],
@@ -320,6 +340,17 @@ describe('isValidRecord 口径与 rankAggregate/stepsQuery/userStats 一致', ()
     expect(isValidRecord({ locked: true, date: '2026-06-25' }, today, start)).toBe(false);
     // date>=start 且 today → 计入
     expect(isValidRecord({ locked: false, date: today }, today, start)).toBe(true);
+  });
+
+  it('活动期右界：有 endDate 且 date>end→剔除；date===end 保留结束当日；endDate 缺失→不过滤', () => {
+    const start = '2026-06-20';
+    const end = '2026-06-25';
+    // date>end → 剔除（活动结束后残留记录）
+    expect(isValidRecord({ date: '2026-06-26' }, today, start, end)).toBe(false);
+    // date===end → 保留（结束当日含两端）
+    expect(isValidRecord({ date: end }, today, start, end)).toBe(true);
+    // endDate 缺失 → 不过滤右界（兜底，与 startDate 同口径）
+    expect(isValidRecord({ date: '2026-06-26' }, today, start)).toBe(true);
   });
 });
 
