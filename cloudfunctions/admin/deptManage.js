@@ -30,6 +30,17 @@ function genDeptId() {
 }
 
 /**
+ * 规整部门规模人数（Department.size）：整数≥0，缺省/非数字/负数 → 0。
+ * size 是管理员配置的可选字段（纯配置，非 number 也兜底为 0，宽松不抛错）。
+ * @param {*} v
+ * @returns {number}
+ */
+function normalizeSize(v) {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+/**
  * 创建部门。
  * @param {object} store mock db（{ Department: object[] }）
  * @param {object} params
@@ -42,6 +53,7 @@ function createDept(store, params) {
   const p = params || {};
   ensureDepartmentArray(store);
   const { activityId, name, now } = p;
+  const size = normalizeSize(p.size);
 
   if (!activityId) {
     throw BizError(CODE.SYS_DB_ERROR, 'createDept: activityId required');
@@ -64,10 +76,11 @@ function createDept(store, params) {
     name,
     activity_id: activityId,
     member_count: 0,
+    size,
     created_at: now
   });
 
-  return { deptId, name };
+  return { deptId, name, size };
 }
 
 /**
@@ -105,9 +118,13 @@ function updateDept(store, params) {
   }
 
   dept.name = name;
+  // size 可选更新：显式提供（非 undefined/null/''）时规整为整数≥0 写入；否则保留原值并规整返回。
+  const sizeProvided = p.size !== undefined && p.size !== null && p.size !== '';
+  const size = sizeProvided ? normalizeSize(p.size) : normalizeSize(dept.size);
+  if (sizeProvided) dept.size = size;
   const updatedAt = now;
   // Department schema 无 updated_at 字段（仅 created_at），但仍返回裁定时间便于追溯。
-  return { deptId, name, updatedAt };
+  return { deptId, name, size, updatedAt };
 }
 
 /**

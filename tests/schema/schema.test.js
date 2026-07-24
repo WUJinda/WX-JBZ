@@ -59,8 +59,8 @@ describe('集合 schema 定义（B1）', () => {
     const d = COLLECTIONS.Department;
     expect(d).toBeDefined();
     expect(Array.isArray(d.indexes)).toBe(true);
-    // 字段齐全（PRD F2：dept_id / dept_name(name) / member_count）
-    for (const f of ['_id', 'dept_id', 'name', 'activity_id', 'member_count', 'created_at']) {
+    // 字段齐全（PRD F2：dept_id / dept_name(name) / member_count / size）
+    for (const f of ['_id', 'dept_id', 'name', 'activity_id', 'member_count', 'size', 'created_at']) {
       expect(d.fields[f], `Department 缺少字段: ${f}`).toBeDefined();
     }
     // 索引：activity_id（技术架构 §5.2）

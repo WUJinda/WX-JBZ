@@ -42,11 +42,35 @@ function formatDept(dept) {
   const d = (dept && typeof dept === 'object') ? dept : {};
   const mc = Number(d.member_count);
   const cnt = Number.isFinite(mc) && mc >= 0 ? Math.floor(mc) : 0;
+  const sz = Number(d.size);
+  const size = Number.isFinite(sz) && sz >= 0 ? Math.floor(sz) : 0;
   return {
     dept_id: d.dept_id || '',
     name: d.name || '',
+    size, // 部门配置规模人数（透传供编辑回显；memberCountText 仍只展示已报名人数）
     memberCountText: cnt + ' 人'
   };
 }
 
-module.exports = { validateDeptName, formatDept, MAX_DEPT_NAME_LEN };
+/**
+ * 校验部门规模人数（Department.size，可选配置）。
+ * 空（不填）= 未配置，合法 → value=0（样本量退化为仅绝对下限）；
+ * 数字≥0 → value 向下取整；负数/非数字 → 不合法。
+ * @param {*} value 表单输入
+ * @returns {{valid:boolean, error:string, value:number}}
+ */
+function validateDeptSize(value) {
+  if (value === null || value === undefined || value === '') {
+    return { valid: true, error: '', value: 0 };
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return { valid: false, error: '部门人数需为数字' };
+  }
+  if (n < 0) {
+    return { valid: false, error: '部门人数不能为负数' };
+  }
+  return { valid: true, error: '', value: Math.floor(n) };
+}
+
+module.exports = { validateDeptName, validateDeptSize, formatDept, MAX_DEPT_NAME_LEN };

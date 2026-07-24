@@ -17,7 +17,7 @@ const { lockYesterday, computeYesterdayDate, LOCK_DEFAULT_CONFIG } = require('./
 // P0-5 字段投影：聚合只需这些字段，投影掉 _openid/phone/sync_count 等敏感字段。
 const STEP_FIELDS_AGG = { _id: 1, user_id: 1, activity_id: 1, date: 1, steps: 1, locked: 1, synced_at: 1 };
 const USER_FIELDS_AGG = { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1 };
-const DEPT_FIELDS_AGG = { _id: 1, dept_id: 1, name: 1, activity_id: 1, member_count: 1 };
+const DEPT_FIELDS_AGG = { _id: 1, dept_id: 1, name: 1, activity_id: 1, member_count: 1, size: 1 };
 
 const handlers = {
   // G2: 排行榜聚合（每 10 分钟）。系统级，不取调用者 OPENID 做用户鉴权。

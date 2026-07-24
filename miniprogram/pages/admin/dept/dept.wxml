@@ -23,6 +23,7 @@
           class="action-btn"
           data-dept-id="{{item.dept_id}}"
           data-name="{{item.name}}"
+          data-size="{{item.size}}"
           bindtap="onEdit"
         >编辑</view>
         <view
@@ -47,6 +48,13 @@
       bindinput="onFormNameInput"
       placeholder="部门名称"
       maxlength="30"
+    />
+    <input
+      class="form-input"
+      value="{{formSize}}"
+      bindinput="onFormSizeInput"
+      type="number"
+      placeholder="部门人数（样本量判定用，不填=未配置）"
     />
     <view class="form-error" wx:if="{{formError}}">{{formError}}</view>
     <view class="form-actions">

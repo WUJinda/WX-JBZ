@@ -8,19 +8,20 @@
 //   - 本页只展示部门字段（dept_id/name/member_count），无敏感字段，绝不渲染 _openid / phone。
 //   - 本地轨：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → .catch 静默占位，不白屏不崩。
 //   - admin 页是 navigateTo 进入（非 tabBar）。
-const { validateDeptName, formatDept } = require('./deptCalc');
+const { validateDeptName, validateDeptSize, formatDept } = require('./deptCalc');
 const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
   data: {
     pageLabel: '部门管理',
     // 列表
-    list: [], // [{dept_id,name,memberCountText}]
+    list: [], // [{dept_id,name,size,memberCountText}]
     loading: true,
     // 弹窗态
     showForm: false,
     editingDept: '', // 空=新建；有值=编辑该 dept_id
     formName: '',
+    formSize: '', // 部门配置人数（空=未配置；编辑回显，>0 才显示）
     formError: ''
   },
 
@@ -36,25 +37,33 @@ Page({
 
   /** 打开新建弹窗。 */
   onCreate() {
-    this.setData({ showForm: true, editingDept: '', formName: '', formError: '' });
+    this.setData({ showForm: true, editingDept: '', formName: '', formSize: '', formError: '' });
   },
 
   /** 打开编辑弹窗。 */
   onEdit(e) {
-    const deptId = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.deptId;
-    const name = e && e.currentTarget && e.currentTarget.dataset && e.currentTarget.dataset.name;
+    const ds = (e && e.currentTarget && e.currentTarget.dataset) || {};
+    const deptId = ds.deptId;
+    const name = ds.name;
     if (!deptId) return;
-    this.setData({ showForm: true, editingDept: deptId, formName: name || '', formError: '' });
+    const sizeNum = Number(ds.size);
+    const sizeStr = Number.isFinite(sizeNum) && sizeNum > 0 ? String(sizeNum) : '';
+    this.setData({ showForm: true, editingDept: deptId, formName: name || '', formSize: sizeStr, formError: '' });
   },
 
-  /** 表单输入。 */
+  /** 表单输入：部门名。 */
   onFormNameInput(e) {
     this.setData({ formName: (e && e.detail && e.detail.value) || '', formError: '' });
+  }
+
+  /** 表单输入：部门人数（可选）。 */
+  onFormSizeInput(e) {
+    this.setData({ formSize: (e && e.detail && e.detail.value) || '', formError: '' });
   },
 
   /** 取消表单。 */
   onFormCancel() {
-    this.setData({ showForm: false, editingDept: '', formName: '', formError: '' });
+    this.setData({ showForm: false, editingDept: '', formName: '', formSize: '', formError: '' });
   },
 
   /** 确认提交：新建或编辑 → admin.deptManage。 */
@@ -63,6 +72,11 @@ Page({
     const { valid, error } = validateDeptName(this.data.formName);
     if (!valid) {
       this.setData({ formError: error });
+      return;
+    }
+    const sizeCheck = validateDeptSize(this.data.formSize);
+    if (!sizeCheck.valid) {
+      this.setData({ formError: sizeCheck.error });
       return;
     }
 
@@ -78,7 +92,7 @@ Page({
       return;
     }
 
-    const params = { action: 'deptManage', op, activity_id: getApp().getActivityId(), name: this.data.formName };
+    const params = { action: 'deptManage', op, activity_id: getApp().getActivityId(), name: this.data.formName, size: sizeCheck.value };
     if (editingDept) params.dept_id = editingDept;
 
     this._savingDept = true; // P2 防重锁（避免快速双击重复 create/update）
@@ -86,7 +100,7 @@ Page({
       .call('admin', params, { loading: '保存中' })
       .then(() => {
         this._savingDept = false;
-        this.setData({ showForm: false, editingDept: '', formName: '', formError: '' });
+        this.setData({ showForm: false, editingDept: '', formName: '', formSize: '', formError: '' });
         wx.showToast({ title: '已保存', icon: 'success' });
         this.loadDeptList();
       })

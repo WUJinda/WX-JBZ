@@ -31,12 +31,13 @@ function user(openid, nickname, deptId, joinStatus) {
   };
 }
 
-function dept(deptId, name, memberCount) {
+function dept(deptId, name, memberCount, size) {
   return {
     dept_id: deptId,
     name: name || deptId,
     activity_id: ACTIVITY_ID,
-    member_count: memberCount || 0
+    member_count: memberCount || 0,
+    size: size || 0
   };
 }
 
@@ -299,8 +300,9 @@ describe('aggregateRanking 部门榜（total/avg/member_count + 小部门）', (
     expect(result.dept[0].rank).toBe(1);
   });
 
-  it('小部门（member_count<minMembers，默认3）不进人均主排名、排后、标 small_sample=true，但仍展示（§657）', async () => {
-    // d1: 1 人（小部门）avg=500；d2: 3 人 avg=100
+  it('小部门（未配置size→退化为绝对下限activeCount<3）不进人均主排名、排后、标small_sample，但仍展示（§657）', async () => {
+    // d1: 1 人（小部门）avg=500；d2: 3 人 avg=100。两部门均未配置 size→size=0
+    //   → 仅绝对下限 activeCount<minMembers(3)：d1(1<3)=small，d2(3<3)=正常
     // 小部门应排在 d2 之后
     const store = makeStore({
       StepRecord: [
@@ -337,6 +339,58 @@ describe('aggregateRanking 部门榜（total/avg/member_count + 小部门）', (
     });
     expect(result.dept[0].small_sample).toBe(false);
     expect(result.dept[0].member_count).toBe(2);
+  });
+
+  it('配置 size 后按 2/3 比例判样本量小（size=9：参与<6→small，≥6→正常）', async () => {
+    // d1: size=9，5 人同步 → ceil(9*2/3)=6，5<6 → smallByRatio 触发
+    // d2: size=9，6 人同步 → 6<6=false → 不 small
+    const users = [];
+    const recs = [];
+    const depts = [dept('d1', '一组', 0, 9), dept('d2', '二组', 0, 9)];
+    let uid = 0;
+    for (let i = 0; i < 5; i++) { uid++; users.push(user('u' + uid, 'n' + uid, 'd1')); recs.push(rec('u' + uid, '2026-07-01', 100, { locked: true })); }
+    for (let i = 0; i < 6; i++) { uid++; users.push(user('u' + uid, 'n' + uid, 'd2')); recs.push(rec('u' + uid, '2026-07-01', 100, { locked: true })); }
+    const store = makeStore({ StepRecord: recs, User: users, Department: depts });
+    const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
+    const d1 = result.dept.find((r) => r.dept_id === 'd1');
+    const d2 = result.dept.find((r) => r.dept_id === 'd2');
+    expect(d1.small_sample).toBe(true);  // 5<6 比例触发
+    expect(d2.small_sample).toBe(false); // 6 达标
+  });
+
+  it('size=0 未配置 → 仅绝对下限（向后兼容旧 <3 规则）', async () => {
+    // d1: 2 人（size 未配置）→ ratio 不触发，但 2<3 绝对下限 → small
+    // d2: 3 人（size 未配置）→ 3<3=false → 不 small
+    const store = makeStore({
+      StepRecord: [
+        rec('u1', '2026-07-01', 100, { locked: true }),
+        rec('u2', '2026-07-01', 100, { locked: true }),
+        rec('u3', '2026-07-01', 100, { locked: true }),
+        rec('u4', '2026-07-01', 100, { locked: true }),
+        rec('u5', '2026-07-01', 100, { locked: true })
+      ],
+      User: [user('u1', 'a', 'd1'), user('u2', 'b', 'd1'), user('u3', 'c', 'd2'), user('u4', 'd', 'd2'), user('u5', 'e', 'd2')],
+      Department: [dept('d1', '一组'), dept('d2', '二组')]
+    });
+    const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
+    const d1 = result.dept.find((r) => r.dept_id === 'd1');
+    const d2 = result.dept.find((r) => r.dept_id === 'd2');
+    expect(d1.small_sample).toBe(true);  // 2<3
+    expect(d2.small_sample).toBe(false); // 3 达标
+  });
+
+  it('比例与绝对下限取严（size=2 全员同步：ratio 不触发但 abs<3 → 仍 small）', async () => {
+    // d1: size=2，2 人同步 → ceil(2*2/3)=2，2<2=false（ratio 不触发）；但 2<3 绝对下限 → small
+    const store = makeStore({
+      StepRecord: [
+        rec('u1', '2026-07-01', 100, { locked: true }),
+        rec('u2', '2026-07-01', 100, { locked: true })
+      ],
+      User: [user('u1', 'a', 'd1'), user('u2', 'b', 'd1')],
+      Department: [dept('d1', '一组', 0, 2)]
+    });
+    const result = await aggregateRanking({ store, activityId: ACTIVITY_ID, now: NOW });
+    expect(result.dept[0].small_sample).toBe(true);
   });
 
   it('未同步的部门成员不计入 member_count 分母（R6.2）', async () => {

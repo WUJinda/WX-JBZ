@@ -74,6 +74,11 @@ const COLLECTIONS = {
         default: 0,
         desc: '部门已报名人数（展示用，聚合写回；真实聚合留阶段 G）'
       },
+      size: {
+        type: 'int',
+        default: 0,
+        desc: '部门配置规模人数（管理员在部门管理页填写，纯配置与用户报名/同步无关）；样本量2/3判定分母（rankAggregate.smallByRatio），与 member_count 互不影响'
+      },
       created_at: { type: 'date', desc: '创建时间' }
     }
   },

@@ -204,6 +204,7 @@ const handlers = {
       result = createDept(store, {
         activityId: event && event.activity_id,
         name: event && event.name,
+        size: event && event.size,
         now
       });
       await writeDeptToCloud(cloud, store.Department, result.deptId);
@@ -211,9 +212,10 @@ const handlers = {
       result = updateDept(store, {
         deptId: event && event.dept_id,
         name: event && event.name,
+        size: event && event.size,
         now
       });
-      await updateDeptToCloud(cloud, result.deptId, result.name);
+      await updateDeptToCloud(cloud, result.deptId, { name: result.name, size: result.size });
     } else if (op === 'delete') {
       result = deleteDept(store, { deptId: event && event.dept_id });
       await removeDeptToCloud(cloud, result.deptId);
@@ -365,12 +367,13 @@ async function writeDeptToCloud(cloudSdk, department, deptId) {
 }
 
 /**
- * 云轨：更新部门名写回。
+ * 云轨：更新部门写回（name + size）。
+ * payload 由 handler 构造（{name, size}）；size 缺省时 result.size 为 0（未配置语义），写入无害。
  */
-async function updateDeptToCloud(cloudSdk, deptId, name) {
+async function updateDeptToCloud(cloudSdk, deptId, payload) {
   const db = cloudSdk.database();
   try {
-    await db.collection('Department').where({ dept_id: deptId }).update({ data: { name } });
+    await db.collection('Department').where({ dept_id: deptId }).update({ data: payload });
   } catch (err) {
     // P1-3：写库失败上抛（不再静默吞致前端假成功）。
     throw BizError(CODE.SYS_DB_ERROR, 'Department.update 写回失败(' + deptId + '): ' + ((err && err.message) || err));

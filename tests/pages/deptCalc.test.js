@@ -7,6 +7,7 @@
  */
 const {
   validateDeptName,
+  validateDeptSize,
   formatDept,
   MAX_DEPT_NAME_LEN
 } = require('../../miniprogram/pages/admin/dept/deptCalc');
@@ -53,10 +54,11 @@ describe('validateDeptName 部门名校验', () => {
 });
 
 describe('formatDept 部门展示格式化', () => {
-  it('dept.list 下发结构 → 摘 dept_id/name + 成员数文案', () => {
-    expect(formatDept({ dept_id: 'd_01', name: '研发部', member_count: 12 })).toEqual({
+  it('dept.list 下发结构 → 摘 dept_id/name + size + 成员数文案', () => {
+    expect(formatDept({ dept_id: 'd_01', name: '研发部', member_count: 12, size: 9 })).toEqual({
       dept_id: 'd_01',
       name: '研发部',
+      size: 9,
       memberCountText: '12 人'
     });
   });
@@ -93,8 +95,37 @@ describe('formatDept 部门展示格式化', () => {
   });
 
   it('null / undefined / 非对象 → 兜底空对象', () => {
-    expect(formatDept(null)).toEqual({ dept_id: '', name: '', memberCountText: '0 人' });
-    expect(formatDept(undefined)).toEqual({ dept_id: '', name: '', memberCountText: '0 人' });
-    expect(formatDept('xxx')).toEqual({ dept_id: '', name: '', memberCountText: '0 人' });
+    expect(formatDept(null)).toEqual({ dept_id: '', name: '', size: 0, memberCountText: '0 人' });
+    expect(formatDept(undefined)).toEqual({ dept_id: '', name: '', size: 0, memberCountText: '0 人' });
+    expect(formatDept('xxx')).toEqual({ dept_id: '', name: '', size: 0, memberCountText: '0 人' });
+  });
+});
+
+describe('validateDeptSize 部门人数校验', () => {
+  it('空值（不填）= 未配置，合法 → value=0', () => {
+    expect(validateDeptSize('')).toEqual({ valid: true, error: '', value: 0 });
+    expect(validateDeptSize(null)).toEqual({ valid: true, error: '', value: 0 });
+    expect(validateDeptSize(undefined)).toEqual({ valid: true, error: '', value: 0 });
+  });
+
+  it('合法整数 → value 取整', () => {
+    expect(validateDeptSize('9')).toEqual({ valid: true, error: '', value: 9 });
+    expect(validateDeptSize(10)).toEqual({ valid: true, error: '', value: 10 });
+  });
+
+  it('小数 → 向下取整合法', () => {
+    expect(validateDeptSize('9.9')).toEqual({ valid: true, error: '', value: 9 });
+  });
+
+  it('负数 → 不合法', () => {
+    const r = validateDeptSize('-1');
+    expect(r.valid).toBe(false);
+    expect(r.error).toBeTruthy();
+  });
+
+  it('非数字 → 不合法', () => {
+    const r = validateDeptSize('abc');
+    expect(r.valid).toBe(false);
+    expect(r.error).toBeTruthy();
   });
 });
