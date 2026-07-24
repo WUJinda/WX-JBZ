@@ -3,8 +3,8 @@
  *
  * 指标（PRD F8 数据看板指标定义 §420–428）：
  *   - participated：store.User 中 join_status==='joined' 计数。
- *   - whitelistTotal：store.Whitelist 计数。
- *   - rate：participated / whitelistTotal，除零→0。
+ *   - inviteCodesTotal：store.InviteCode 计数（已发邀请码总数，含未用/已用/禁用）。
+ *   - rate：participated / inviteCodesTotal（已报名 / 已发码），除零→0。
  *   - totalSteps：store.StepRecord 有效步数（活动期内已同步的非未来日，非异常）steps 求和。
  *   - validParticipants：至少有一条有效 StepRecord 且 join_status==='joined' 的不同 user_id 数。
  *   - avgSteps：totalSteps / validParticipants，除零→0。
@@ -16,7 +16,7 @@
  *     dashboard 额外排除 abnormal（待裁定异常不计入）+ 活动期过滤（date>=start_date，剔除活动期外脏记录）。
  *   - validParticipants 校验 join_status==='joined'（与 rankAggregate 个人榜同口径，防已注销/未注册用户灌大人均分母）。
  *   - deptRank 复用 RankCache，绝不重算（R8.5）。
- *   - 投影脱敏，不下发 _openid / phone / sync_count。
+ *   - 投影脱敏，不下发 _openid / sync_count。
  *
  * 本地轨：store/now/config 注入式，纯函数可单测；不调真实云 API。
  * 解耦：本模块不 require wx-server-sdk。
@@ -70,12 +70,12 @@ function projectDeptRank(row) {
  * 构建数据看板。
  *
  * @param {object} params
- * @param {object} params.store mock db（{ User, Whitelist, StepRecord, RankCache }）
+ * @param {object} params.store mock db（{ User, InviteCode, StepRecord, RankCache }）
  * @param {string} [params.activityId] 活动 id（用于过滤 StepRecord / RankCache）
  * @param {object} [params.activity] 活动文档（含 start_time；用于活动期过滤；缺失→兜底不过滤）
  * @param {Date} [params.now=new Date()] 注入时间
  * @param {object} [params.config] 配置覆盖（timezoneOffsetMinutes / trendDays）
- * @returns {object} { participated, whitelistTotal, rate, totalSteps, avgSteps, validParticipants, dailyActive, deptRank }
+ * @returns {object} { participated, inviteCodesTotal, rate, totalSteps, avgSteps, validParticipants, dailyActive, deptRank }
  */
 function buildDashboard(params) {
   const p = params || {};
@@ -95,18 +95,18 @@ function buildDashboard(params) {
   const endDate = activityEndDate(p.activity, cfg.timezoneOffsetMinutes);
 
   const users = Array.isArray(store.User) ? store.User : [];
-  const whitelist = Array.isArray(store.Whitelist) ? store.Whitelist : [];
+  const inviteCodes = Array.isArray(store.InviteCode) ? store.InviteCode : [];
   const records = Array.isArray(store.StepRecord) ? store.StepRecord : [];
   const rankCache = Array.isArray(store.RankCache) ? store.RankCache : [];
 
   // 1. 参与人数（已报名）。
   const participated = users.filter((u) => u && u.join_status === 'joined').length;
 
-  // 2. 白名单总人数。
-  const whitelistTotal = whitelist.length;
+  // 2. 已发邀请码总数（含未用/已用/禁用，反映邀约规模）。
+  const inviteCodesTotal = inviteCodes.length;
 
-  // 3. 参与率（除零→0）。
-  const rate = whitelistTotal > 0 ? participated / whitelistTotal : 0;
+  // 3. 参与率 = 已报名 / 已发码（除零→0）。
+  const rate = inviteCodesTotal > 0 ? participated / inviteCodesTotal : 0;
 
   // 4. 有效步数记录（口径：活动期内已同步的非未来日，非异常；见 isValidRecord），按 activity_id 过滤。
   const activityRecords = records.filter(
@@ -169,7 +169,7 @@ function buildDashboard(params) {
 
   return {
     participated,
-    whitelistTotal,
+    inviteCodesTotal,
     rate,
     totalSteps,
     avgSteps,

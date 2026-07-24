@@ -3,7 +3,7 @@
  * Action: profile / join / chooseDept / stats
  *
  * 本轮实现 profile（B5）。join 留 D1（不实现），stats 留后续阶段。
- * 身份完全以 cloud.getWXContext().OPENID 为可信来源，不下发原始 phone / openid。
+ * 身份完全以 cloud.getWXContext().OPENID 为可信来源，不下发原始 openid。
  */
 const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -16,13 +16,12 @@ const { joinDepartment } = require('./userJoin');
 const { chooseDepartment } = require('./userChooseDept');
 const { buildStats } = require('./userStats');
 const { updateProfile, cancelAccount } = require('./userAccount');
-const { setPhone } = require('./userPhone');
 const { getActiveActivityId, getActiveActivity } = require('../activity/activityResolver');
 const { loadByWhere } = require('../common/db');
 
 // handler 表：action -> handler。
 const handlers = {
-  // B5: 个人资料（脱敏手机号 / 部门 / 累计步数，不下发敏感字段）。
+  // B5: 个人资料（邀请码 / 部门 / 累计步数，不下发敏感字段）。
   // 累计步数由 buildStats 实时聚合 StepRecord 得来（与 user.stats / home 同源），不再读
   //   User.total_steps 幽灵字段（该字段从不被写、恒 0，曾致「我的」页与首页累计步数对不上）。
   profile: async (event, context) => {
@@ -131,19 +130,6 @@ const handlers = {
     const openid = context && context.openid;
     const db = cloud.database();
     return cancelAccount({ openid, db: wrapRemoveAll(db) });
-  },
-  // 手动设置手机号（保底路径：getPhoneNumber 组件未开通 / 唤不出时用）。requireUser。
-  // ⚠️ 降级路径，接收前端明文 phone；安全代价与缓解措施见 userPhone.js 顶部注释。
-  // 不授予 is_admin（超管冷启动只走 auth.phone 微信解密，避免明文伪造超管号提权）。
-  setPhone: async (event, context) => {
-    const openid = context && context.openid;
-    const db = cloud.database();
-    return setPhone({
-      openid,
-      db,
-      phone: event && event.phone,
-      now: new Date()
-    });
   }
 };
 
@@ -271,7 +257,7 @@ async function loadMyRank(cloudSdk, activityId, userId) {
 
 // 需登录态（requireUser）的 action：必须有 OPENID 且 User 存在。
 // 与 activity.current 游客通道不同——join/stats/update/cancel 必须登录态。
-const REQUIRE_USER_ACTIONS = { join: true, chooseDept: true, stats: true, update: true, cancel: true, setPhone: true };
+const REQUIRE_USER_ACTIONS = { join: true, chooseDept: true, stats: true, update: true, cancel: true };
 
 exports.main = async (event) => {
   const action = event && event.action;

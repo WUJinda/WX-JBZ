@@ -7,9 +7,9 @@
  *   - 部门在注册向导选定，选完固定不可换：已选过不同部门 → 拒绝；同部门幂等成功。
  *
  * 参考 admin/changeDept.js 范式（校验 + 改 store 引用 + 返回投影），但按 _openid 查
- * （user 域约定：join/update/setPhone/profile 均按 _openid 键），且仅未选/同部门时可设。
+ * （user 域约定：join/update/chooseDept/profile 均按 _openid 键），且仅未选/同部门时可设。
  *
- * 红线：身份仅 OPENID；不下发原始 phone / openid / unionid。
+ * 红线：身份仅 OPENID；不下发原始 openid / unionid。
  */
 
 const { CODE, BizError } = require('../common/errors');

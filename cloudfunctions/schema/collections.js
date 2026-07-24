@@ -17,9 +17,6 @@ const COLLECTIONS = {
     description: '用户（对齐技术架构 §5.1）',
     indexes: [
       { name: 'idx_user_openid', fields: { _openid: 1 }, unique: true },
-      // phone 唯一索引：建号时 phone 必填非空（auth.register 一次性提交），无 phone='' 空占位，
-      // 故旧「空串撞键致新用户登录失败」问题已消除。唯一性 = 此 DB 索引 + register 应用层查重双保险。
-      { name: 'idx_user_phone', fields: { phone: 1 }, unique: true },
       { name: 'idx_user_dept', fields: { dept_id: 1 }, unique: false },
       { name: 'idx_user_admin', fields: { is_admin: 1 }, unique: false }
     ],
@@ -29,8 +26,7 @@ const COLLECTIONS = {
       unionid: { type: 'string', optional: true, onlyServer: true, desc: '微信 unionid（可选，预留）' },
       nickname: { type: 'string', desc: '昵称（取微信昵称或自填）' },
       avatar: { type: 'string', desc: '头像 URL（取微信头像或自传）' },
-      phone: { type: 'string', onlyServer: true, desc: '🔒 完整手机号（注册必填、唯一；由 auth.register 写入，唯一性=DB索引+应用层查重）' },
-      phone_masked: { type: 'string', desc: '脱敏手机号（138****1234），前端展示' },
+      invite_code: { type: 'string', desc: '注册时使用的邀请码（一人一码准入券，由 auth.register 写入，仅审计/展示用，不加唯一索引）' },
       dept_id: { type: 'string', optional: true, desc: '部门 id（报名后写入）' },
       join_status: {
         type: 'string',
@@ -46,15 +42,28 @@ const COLLECTIONS = {
     }
   },
 
-  Whitelist: {
-    description: '员工白名单（对齐技术架构 §5.3）',
+  InviteCode: {
+    description: '邀请码（一人一码小程序准入券，不绑活动；用户注册时输入，原子消费后绑定 openid）',
     indexes: [
-      { name: 'idx_whitelist_phone', fields: { phone: 1 }, unique: true }
+      // code 唯一索引：原子消费 where({code, status:'unused'}).update 依赖它确保并发仅一个文档命中。
+      { name: 'idx_invite_code', fields: { code: 1 }, unique: true },
+      { name: 'idx_invite_status', fields: { status: 1 }, unique: false }
     ],
     fields: {
-      _id: { type: 'string', desc: '主键' },
-      phone: { type: 'string', onlyServer: true, desc: '🔒 完整手机号，仅后端匹配' },
-      imported_at: { type: 'date', desc: '导入时间' }
+      _id: { type: 'string', desc: '主键（云数据库自动生成）' },
+      code: { type: 'string', desc: '邀请码（6 位 Crockford Base32，大写无横线，排除 I/L/O/U）' },
+      status: {
+        type: 'string',
+        enum: ['unused', 'used', 'disabled'],
+        default: 'unused',
+        desc: '状态：unused 未用 / used 已用（注册消费后置 used）/ disabled 管理员禁用'
+      },
+      used_by: { type: 'string', onlyServer: true, desc: '🔒 使用者 openid（注册消费后写入，不下发原始 openid）' },
+      used_at: { type: 'date', optional: true, desc: '使用时间' },
+      batch_id: { type: 'string', optional: true, desc: '生成批次号（管理员一次批量生成归一个批次，便于管理）' },
+      created_by: { type: 'string', onlyServer: true, desc: '🔒 生成者 openid（管理员）' },
+      created_at: { type: 'date', desc: '生成时间' },
+      note: { type: 'string', optional: true, desc: '备注（如"发给某部门"）' }
     }
   },
 

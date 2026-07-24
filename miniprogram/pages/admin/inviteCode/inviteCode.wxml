@@ -1,0 +1,44 @@
+<!-- pages/admin/inviteCode/inviteCode.wxml
+  后台邀请码管理：批量生成 + 列表 + 禁用 + 复制。
+  红线：只渲染 code/status 等非敏感字段（used_by 原始 openid 已被后端剥离）。
+-->
+<view class="admin-page">
+  <view class="page-title">{{pageLabel}}</view>
+
+  <!-- 批量生成 -->
+  <view class="gen-block">
+    <view class="gen-row">
+      <input class="count-input" type="number" value="{{countInput}}" bindinput="onCountInput" placeholder="数量" />
+      <button class="gen-btn" bindtap="onGenerate" loading="{{generating}}" disabled="{{generating}}">批量生成</button>
+    </view>
+    <view class="gen-result" wx:if="{{genResult}}">{{genResult}}</view>
+  </view>
+
+  <!-- 状态筛选 -->
+  <view class="filter-bar">
+    <picker mode="selector" range="{{['全部','未使用','已使用','已禁用']}}" bindchange="onFilterChange">
+      <view class="picker-value">状态：{{filterStatus || '全部'}}</view>
+    </picker>
+    <text class="list-meta" wx:if="{{!loading && list.length > 0}}">共 {{totalCount}} 个</text>
+  </view>
+
+  <view class="state-tip" wx:if="{{loading}}">加载中...</view>
+  <view class="state-tip" wx:if="{{!loading && list.length === 0}}">暂无邀请码，点上方「批量生成」</view>
+
+  <!-- 邀请码列表 -->
+  <view class="code-list" wx:if="{{!loading}}">
+    <view class="code-row" wx:for="{{list}}" wx:key="code">
+      <view class="code-main">
+        <text class="code-text">{{item.code}}</text>
+        <text class="code-status {{item.cls}}">{{item.text}}</text>
+      </view>
+      <view class="code-actions">
+        <view class="act-btn" data-code="{{item.code}}" bindtap="onCopy">复制</view>
+        <view class="act-btn" wx:if="{{item.status === 'unused'}}" data-code="{{item.code}}" bindtap="onDisable">禁用</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="load-more" wx:if="{{loadingMore}}">加载中...</view>
+  <view class="load-more" wx:if="{{!loading && !loadingMore && !hasMore && list.length > 0}}">没有更多了</view>
+</view>

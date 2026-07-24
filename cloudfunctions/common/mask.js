@@ -31,22 +31,4 @@ function maskNickname(name) {
   return head + middle + tail;
 }
 
-/**
- * 手机号脱敏：138****1234（对齐 miniprogram/utils/format.js 的 maskPhone 实现）。
- * 非合法手机号（非字符串/数字、长度不为 11 或非数字）原样返回，不抛错（展示兜底）。
- *
- * 说明：云函数部署独立打包，无法 require 小程序目录下的 utils/format，
- * 故在此提供等价实现供云函数复用（避免部署后 MODULE_NOT_FOUND）。
- *
- * @param {string|number} phone
- * @returns {string|*}
- */
-function maskPhone(phone) {
-  if (typeof phone !== 'string' && typeof phone !== 'number') return phone;
-  const s = String(phone);
-  // 仅对 11 位纯数字做脱敏
-  if (!/^\d{11}$/.test(s)) return s;
-  return s.slice(0, 3) + '****' + s.slice(7);
-}
-
-module.exports = { maskNickname, maskPhone };
+module.exports = { maskNickname };

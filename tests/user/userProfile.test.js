@@ -21,12 +21,11 @@ describe('user.profile 纯函数', () => {
   });
 
   describe('projectProfile（脱敏下发）', () => {
-    it('不下发原始 phone / openid / unionid', () => {
+    it('不下发原始 openid / unionid', () => {
       const user = {
         _openid: 'oSECRET',
         unionid: 'uSECRET',
-        phone: '13812341234',
-        phone_masked: '138****1234',
+        invite_code: 'ABC123',
         nickname: '张明',
         avatar: 'a.jpg',
         dept_id: 'd_01',
@@ -34,10 +33,9 @@ describe('user.profile 纯函数', () => {
         total_steps: 12500
       };
       const out = projectProfile(user);
-      expect(out).not.toHaveProperty('phone');
       expect(out).not.toHaveProperty('openid');
       expect(out).not.toHaveProperty('unionid');
-      expect(out.phone_masked).toBe('138****1234');
+      expect(out.invite_code).toBe('ABC123');
       expect(out.nickname).toBe('张明');
       expect(out.dept_id).toBe('d_01');
       expect(out.join_status).toBe('joined');
@@ -46,15 +44,9 @@ describe('user.profile 纯函数', () => {
       expect(out.is_admin).toBe(false);
     });
 
-    it('phone_masked 缺失但 phone 存在时，按完整号兜底脱敏（不下发完整号）', () => {
-      const out = projectProfile({ phone: '15900001111' });
-      expect(out.phone_masked).toBe('159****1111');
-      expect(out).not.toHaveProperty('phone');
-    });
-
-    it('phone 完全缺失时 phone_masked 为空串', () => {
+    it('invite_code 缺失时为空串', () => {
       const out = projectProfile({});
-      expect(out.phone_masked).toBe('');
+      expect(out.invite_code).toBe('');
     });
 
     it('total_steps 缺失兜底为 0', () => {
@@ -80,7 +72,7 @@ describe('user.profile 纯函数', () => {
   });
 
   describe('getProfile 主逻辑', () => {
-    it('按 openid 查到用户并脱敏下发', async () => {
+    it('按 openid 查到用户并下发 invite_code（不下发 _openid）', async () => {
       const { db } = createMockDb({
         User: [
           {
@@ -88,17 +80,16 @@ describe('user.profile 纯函数', () => {
             _openid: 'oU',
             nickname: '张明',
             avatar: 'a.jpg',
-            phone: '13812341234',
-            phone_masked: '138****1234',
+            invite_code: 'ABC123',
             dept_id: 'd_01',
             join_status: 'joined'
           }
         ]
       });
       const out = await getProfile({ openid: 'oU', db });
-      expect(out.phone_masked).toBe('138****1234');
+      expect(out.invite_code).toBe('ABC123');
       expect(out.dept_id).toBe('d_01');
-      expect(out).not.toHaveProperty('phone');
+      expect(out).not.toHaveProperty('_openid');
     });
 
     it('dept_id 有值时关联 Department 补 dept_name（修复前端部门显示「未加入」）', async () => {

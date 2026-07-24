@@ -1,6 +1,6 @@
 /**
  * admin 云函数入口：后台管理（对齐技术架构 §4.1/§122/§152，PRD F8）。
- * Action: whitelistImport / users / changeDept / abnormalList / verdict / dashboard / deptManage / points / adjustPoints / settlePoints
+ * Action: inviteCode.generate / inviteCode.list / inviteCode.disable / users / changeDept / abnormalList / verdict / dashboard / deptManage / points / adjustPoints / settlePoints
  *
  * 所有 action 均为管理员类：handler 内先 loadByWhere 拉相关集合到 store →
  * assertAdmin(store, callerOpenid) → 调对应纯函数 → 写回库 → 返回。
@@ -20,8 +20,7 @@ const { loadByWhere } = require('../common/db');
 const { getActivityById, getActiveActivityId } = require('../activity/activityResolver');
 
 const { assertAdmin } = require('./adminGuard');
-const { parseWhitelist } = require('./whitelistParse');
-const { applyWhitelistImport } = require('./whitelistImport');
+const { generateCodes, listCodes, disableCode } = require('./inviteCode');
 const { queryUsers } = require('./userList');
 const { changeUserDept } = require('./changeDept');
 const { setAdminRole } = require('./adminRole');
@@ -35,30 +34,60 @@ const { adjustPoints } = require('./pointAdjust');
 const { ensureSchema } = require('../schema/initIndexes');
 
 const handlers = {
-  // R8.2 白名单导入：raw_text → parseWhitelist → applyWhitelistImport → 写回 Whitelist。
-  whitelistImport: async (event, context) => {
+  // 邀请码批量生成（一人一码准入券）。loadByWhere InviteCode 供纯函数查重去重。
+  // assertAdmin → generateCodes（内存去重生成 N 码）→ generateInviteCodesToCloud 批量 add。
+  'inviteCode.generate': async (event, context) => {
     const store = {
-      User: await loadByWhere(cloud,'User'),
-      Whitelist: await loadByWhere(cloud,'Whitelist')
+      User: await loadByWhere(cloud, 'User'),
+      InviteCode: await loadByWhere(cloud, 'InviteCode')
     };
     assertAdmin(store, context.openid);
 
-    const now = (event && event.now) || new Date().toISOString();
-    const rawText = (event && (event.raw_text || event.rawText)) || '';
-    const delimiter = event && event.delimiter;
-
-    const parsed = parseWhitelist(rawText, { delimiter });
-    const result = applyWhitelistImport(store, { phones: parsed.phones, now });
-
-    // 写回 Whitelist（upsert：按 phone 覆盖 imported_at；新增条目 add）。
-    // P1-3：written/failed 基于实际写库结果（非纯函数估算），失败条目上报前端不假成功。
-    const writeBack = await upsertWhitelistToCloud(cloud, store.Whitelist, now);
-    return Object.assign({}, result, {
-      duplicate: parsed.duplicate,
-      invalid: parsed.invalid,
+    const result = generateCodes({
+      store,
+      count: event && event.count,
+      createdBy: context.openid,
+      now: new Date()
+    });
+    // 写回 InviteCode（批量 add）。P1-3：written/failed 基于实际写库结果，失败条目上报前端不假成功。
+    const writeBack = await generateInviteCodesToCloud(cloud, result.docs);
+    return {
+      generated: result.generated,
+      codes: result.codes,
+      duplicate: result.duplicate,
+      batch_id: result.batchId,
       written: writeBack.written,
       write_failed: writeBack.failed
+    };
+  },
+
+  // 邀请码列表（筛选 + 分页 + 投影，不下发 used_by 原始 openid）。
+  'inviteCode.list': async (event, context) => {
+    const store = {
+      User: await loadByWhere(cloud, 'User'),
+      InviteCode: await loadByWhere(cloud, 'InviteCode')
+    };
+    assertAdmin(store, context.openid);
+
+    return listCodes(store, {
+      status: event && event.status,
+      batchId: event && event.batch_id,
+      page: event && event.page,
+      pageSize: event && event.page_size
     });
+  },
+
+  // 禁用邀请码（仅 unused 可禁用；used 已绑定用户不可改）。
+  'inviteCode.disable': async (event, context) => {
+    const store = {
+      User: await loadByWhere(cloud, 'User'),
+      InviteCode: await loadByWhere(cloud, 'InviteCode')
+    };
+    assertAdmin(store, context.openid);
+
+    const result = disableCode({ store, code: event && event.code });
+    await disableInviteCodeToCloud(cloud, result.code);
+    return result;
   },
 
   // 用户列表（筛选 + 分页 + 投影）。
@@ -171,7 +200,7 @@ const handlers = {
   dashboard: async (event, context) => {
     const store = {
       User: await loadByWhere(cloud,'User'),
-      Whitelist: await loadByWhere(cloud,'Whitelist'),
+      InviteCode: await loadByWhere(cloud,'InviteCode'),
       StepRecord: await loadByWhere(cloud,'StepRecord'),
       RankCache: await loadByWhere(cloud,'RankCache')
     };
@@ -321,37 +350,45 @@ const handlers = {
 // loadByWhere(cloud, name)（无 where/field = 全量，admin 纯函数需全量内存筛选）。
 
 /**
- * 云轨：白名单 upsert 写回（新增条目 add；已存在条目按 phone update imported_at）。
- * 本地轨单测不经此路径。
+ * 云轨：批量新增邀请码写回。本地轨单测不经此路径。
  * P1-3：批量操作收集失败计数返回 {written, failed}（不再静默吞），handler 据此上报前端。
  * @param {object} cloudSdk
- * @param {object[]} whitelist 已就地改的 Whitelist（含 phone/imported_at）
- * @param {string} now
+ * @param {object[]} docs generateCodes 产出的待写入文档（code/status/batch_id/created_by/created_at/note）
  * @returns {Promise<{written: number, failed: string[]}>}
  */
-async function upsertWhitelistToCloud(cloudSdk, whitelist, now) {
+async function generateInviteCodesToCloud(cloudSdk, docs) {
   const db = cloudSdk.database();
   let written = 0;
   const failed = [];
-  for (const w of whitelist) {
-    if (!w || !w.phone) continue;
+  for (const d of docs) {
+    if (!d || !d.code) continue;
     try {
-      if (w._id) {
-        // D2：loadByWhere 拉取的已有条目含 _id，直接按 _id update imported_at（省去每条 where({phone}).get
-        //   的重复查询，N 条从 2N 次 DB 调用降到 N 次，防大批量白名单导入超时）。
-        await db.collection('Whitelist').doc(w._id).update({ data: { imported_at: now } });
-      } else {
-        // 新增（applyWhitelistImport push 的，无 _id）：add。
-        await db.collection('Whitelist').add({ data: { phone: w.phone, imported_at: now } });
-      }
+      await db.collection('InviteCode').add({ data: d });
       written += 1;
     } catch (err) {
       // P1-3：收集失败（不阻断其余条目），返回 written/failed 供 handler 上报（部分成功可重跑）。
-      console.warn('[写回失败]', 'Whitelist(' + w.phone + ')', (err && err.message) || err);
-      failed.push(w.phone);
+      console.warn('[写回失败]', 'InviteCode(' + d.code + ')', (err && err.message) || err);
+      failed.push(d.code);
     }
   }
   return { written, failed };
+}
+
+/**
+ * 云轨：禁用邀请码写回（where({code, status:'unused'}).update，幂等）。
+ * @param {object} cloudSdk
+ * @param {string} code
+ */
+async function disableInviteCodeToCloud(cloudSdk, code) {
+  const db = cloudSdk.database();
+  try {
+    await db.collection('InviteCode').where({ code, status: 'unused' }).update({
+      data: { status: 'disabled' }
+    });
+  } catch (err) {
+    // P1-3：写库失败上抛（不再静默吞致前端假成功）。
+    throw BizError(CODE.SYS_DB_ERROR, 'InviteCode.disable 写回失败(' + code + '): ' + ((err && err.message) || err));
+  }
 }
 
 /**

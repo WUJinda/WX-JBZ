@@ -6,11 +6,22 @@ const {
 const { createMockDb } = require('../helpers/mockDb');
 const { CODE } = require('../../cloudfunctions/common/errors');
 
+function unusedCode(code) {
+  return {
+    code,
+    status: 'unused',
+    batch_id: 'b1',
+    created_by: 'admin',
+    created_at: new Date('2026-07-01'),
+    note: ''
+  };
+}
+
 describe('auth.register 纯函数', () => {
   describe('validateNickname（与 userAccount/editCalc 同口径）', () => {
     it('trim 后 1..NICKNAME_MAX_LEN 码点合法', () => {
       expect(validateNickname('张明')).toBe(true);
-      expect(validateNickname('  张明  ')).toBe(true); // 内部 trim
+      expect(validateNickname('  张明  ')).toBe(true);
       expect(validateNickname('a')).toBe(true);
       expect(validateNickname('a'.repeat(NICKNAME_MAX_LEN))).toBe(true);
     });
@@ -27,150 +38,125 @@ describe('auth.register 纯函数', () => {
     });
   });
 
-  describe('registerUser 主逻辑（一次性建号 upsert）', () => {
-    it('全新用户：add 建号，phone 非空，join_status=pending，is_admin=false（不授超管）', async () => {
-      const { db, store } = createMockDb({ User: [] });
+  describe('registerUser 主逻辑（消费邀请码 + 一次性建号）', () => {
+    it('全新用户：消费邀请码 + add 建号，invite_code 写入，join_status=pending，is_admin=false（不授超管）', async () => {
+      const { db, store } = createMockDb({
+        User: [],
+        InviteCode: [unusedCode('ABCDEF')]
+      });
       const out = await registerUser({
         openid: 'oNEW',
         nickname: '新人',
         avatar: 'cloud://a.jpg',
-        phone: '13812341234',
+        inviteCode: 'ABCDEF',
         db,
         now: new Date('2026-07-08T10:00:00Z')
       });
       expect(out.registered).toBe(true);
       expect(out.is_new).toBe(true);
-      expect(out.phone_masked).toBe('138****1234');
+      expect(out.invite_code).toBe('ABCDEF');
       expect(out.join_status).toBe('pending');
       expect(store.User.length).toBe(1);
       expect(store.User[0]._openid).toBe('oNEW');
-      expect(store.User[0].phone).toBe('13812341234');
-      expect(store.User[0].phone_masked).toBe('138****1234');
+      expect(store.User[0].invite_code).toBe('ABCDEF');
       expect(store.User[0].join_status).toBe('pending');
-      expect(store.User[0].is_admin).toBe(false); // 手动填写路径不授超管
+      expect(store.User[0].is_admin).toBe(false); // 邀请码注册不授超管
       expect(store.User[0].nickname).toBe('新人');
+      // 邀请码被消费：status=used + used_by
+      expect(store.InviteCode[0].status).toBe('used');
+      expect(store.InviteCode[0].used_by).toBe('oNEW');
     });
 
-    it('手机号归一化：+86 前缀（紧跟11位）/ 横线分隔 → 11 位纯数字', async () => {
-      // normalizePhoneInput 的 +86 去前缀要求紧跟 11 位连续数字（与 authPhone 同源）
-      const { db, store } = createMockDb({ User: [] });
-      await registerUser({ openid: 'oX', nickname: '张三', phone: '+8613812341234', db });
-      expect(store.User[0].phone).toBe('13812341234');
-      expect(store.User[0].phone_masked).toBe('138****1234');
-      // 横线分隔（无国家码）也能归一化
-      const { db: db2, store: store2 } = createMockDb({ User: [] });
-      await registerUser({ openid: 'oY', nickname: '李四', phone: '138-1234-1234', db: db2 });
-      expect(store2.User[0].phone).toBe('13812341234');
-    });
-
-    it('phone 被别的 openid 占用 → BIZ_PHONE_TAKEN，不新增', async () => {
+    it('邀请码归一化：小写/带横线/误读字符（I→1）→ 归一化后消费', async () => {
       const { db, store } = createMockDb({
-        User: [{ _id: 'u1', _openid: 'oOTHER', phone: '13812341234', phone_masked: '138****1234' }]
+        User: [],
+        InviteCode: [unusedCode('ABC123')]
       });
-      await expect(
-        registerUser({ openid: 'oNEW', nickname: '新人', phone: '13812341234', db })
-      ).rejects.toMatchObject({ code: CODE.BIZ_PHONE_TAKEN });
-      expect(store.User.length).toBe(1); // 未新增
+      // 'abc-i23' → 大写 ABC-I23 → 去横线 ABCI23 → I→1 → ABC123
+      const out = await registerUser({ openid: 'oX', nickname: '张三', inviteCode: 'abc-i23', db });
+      expect(out.invite_code).toBe('ABC123');
+      expect(store.InviteCode[0].status).toBe('used');
     });
 
-    it('本人同 openid 已存在（历史 phone="" 占位）→ update 补 phone（upsert，is_new:false）', async () => {
+    it('已存在用户（重复提交/竞态）→ 幂等返回 is_new:false，不重复消费邀请码', async () => {
       const { db, store } = createMockDb({
-        User: [
-          {
-            _id: 'u1',
-            _openid: 'oME',
-            nickname: '',
-            phone: '',
-            phone_masked: '',
-            join_status: 'pending'
-          }
-        ]
+        User: [{ _id: 'u1', _openid: 'oME', nickname: '我', invite_code: 'OLD123', join_status: 'pending' }],
+        InviteCode: [unusedCode('NEW123')]
       });
-      const out = await registerUser({
-        openid: 'oME',
-        nickname: '我',
-        avatar: 'cloud://b.jpg',
-        phone: '13812341234',
-        db
-      });
+      const out = await registerUser({ openid: 'oME', nickname: '我', inviteCode: 'NEW123', db });
       expect(out.registered).toBe(true);
       expect(out.is_new).toBe(false);
-      expect(store.User.length).toBe(1); // update 不新增
-      expect(store.User[0].phone).toBe('13812341234');
-      expect(store.User[0].nickname).toBe('我');
+      expect(out.invite_code).toBe('OLD123'); // 沿用已建号时的码
+      expect(store.User.length).toBe(1); // 不新增
+      expect(store.InviteCode[0].status).toBe('unused'); // 未消费新码
     });
 
-    it('昵称格式非法 → BIZ_PARAM_MISSING', async () => {
+    it('昵称格式非法 → BIZ_PARAM_MISSING（不消费码）', async () => {
+      const { db, store } = createMockDb({ User: [], InviteCode: [unusedCode('ABC123')] });
+      await expect(
+        registerUser({ openid: 'oX', nickname: '', inviteCode: 'ABC123', db })
+      ).rejects.toMatchObject({ code: CODE.BIZ_PARAM_MISSING });
+      expect(store.InviteCode[0].status).toBe('unused'); // 未消费
+    });
+
+    it('缺邀请码 → BIZ_PARAM_MISSING', async () => {
       const { db } = createMockDb({ User: [] });
       await expect(
-        registerUser({ openid: 'oX', nickname: '', phone: '13812341234', db })
+        registerUser({ openid: 'oX', nickname: '张三', inviteCode: '', db })
       ).rejects.toMatchObject({ code: CODE.BIZ_PARAM_MISSING });
     });
 
-    it('手机号非法（非 11 位）→ BIZ_PARAM_MISSING', async () => {
+    it('邀请码格式非法（非 6 位 Crockford）→ BIZ_INVITE_CODE_INVALID', async () => {
       const { db } = createMockDb({ User: [] });
       await expect(
-        registerUser({ openid: 'oX', nickname: '张三', phone: '123', db })
-      ).rejects.toMatchObject({ code: CODE.BIZ_PARAM_MISSING });
+        registerUser({ openid: 'oX', nickname: '张三', inviteCode: 'ZZZZZZZZ', db }) // 8 位
+      ).rejects.toMatchObject({ code: CODE.BIZ_INVITE_CODE_INVALID });
+    });
+
+    it('邀请码已被使用 → BIZ_INVITE_CODE_USED', async () => {
+      const { db } = createMockDb({
+        User: [],
+        InviteCode: [{ code: 'ABC123', status: 'used', used_by: 'oOTHER', batch_id: 'b1', created_by: 'admin', created_at: new Date('2026-07-01'), note: '' }]
+      });
+      await expect(
+        registerUser({ openid: 'oNEW', nickname: '新人', inviteCode: 'ABC123', db })
+      ).rejects.toMatchObject({ code: CODE.BIZ_INVITE_CODE_USED });
+    });
+
+    it('邀请码已被禁用 → BIZ_INVITE_CODE_DISABLED', async () => {
+      const { db } = createMockDb({
+        User: [],
+        InviteCode: [{ code: 'ABC123', status: 'disabled', batch_id: 'b1', created_by: 'admin', created_at: new Date('2026-07-01'), note: '' }]
+      });
+      await expect(
+        registerUser({ openid: 'oNEW', nickname: '新人', inviteCode: 'ABC123', db })
+      ).rejects.toMatchObject({ code: CODE.BIZ_INVITE_CODE_DISABLED });
+    });
+
+    it('邀请码不存在 → BIZ_INVITE_CODE_INVALID', async () => {
+      const { db } = createMockDb({ User: [], InviteCode: [] });
+      await expect(
+        registerUser({ openid: 'oNEW', nickname: '新人', inviteCode: 'ABC123', db })
+      ).rejects.toMatchObject({ code: CODE.BIZ_INVITE_CODE_INVALID });
     });
 
     it('avatar 可选：空串允许建号（后续 profile.edit 补）', async () => {
-      const { db, store } = createMockDb({ User: [] });
-      await registerUser({ openid: 'oX', nickname: '张三', avatar: '', phone: '13812341234', db });
+      const { db, store } = createMockDb({ User: [], InviteCode: [unusedCode('ABC123')] });
+      await registerUser({ openid: 'oX', nickname: '张三', avatar: '', inviteCode: 'ABC123', db });
       expect(store.User[0].avatar).toBe('');
     });
 
     it('openid 缺失 → AUTH_NO_OPENID', async () => {
-      const { db } = createMockDb({ User: [] });
+      const { db } = createMockDb({ User: [], InviteCode: [unusedCode('ABC123')] });
       await expect(
-        registerUser({ nickname: '张三', phone: '13812341234', db })
+        registerUser({ nickname: '张三', inviteCode: 'ABC123', db })
       ).rejects.toMatchObject({ code: CODE.AUTH_NO_OPENID });
     });
 
     it('db 缺失 → SYS_DB_ERROR', async () => {
       await expect(
-        registerUser({ openid: 'oX', nickname: '张三', phone: '13812341234' })
+        registerUser({ openid: 'oX', nickname: '张三', inviteCode: 'ABC123' })
       ).rejects.toMatchObject({ code: CODE.SYS_DB_ERROR });
-    });
-
-    it('update 命中 0 行（并发注销等）→ 抛 SYS_DB_ERROR，不静默假成功（P1-3）', async () => {
-      // 自定义 mock：openid 查到存在，但 update 返回 0 行（模拟 where 后被并发删除）
-      const customDb = {
-        collection: () => ({
-          where: (cond) => ({
-            get: () =>
-              Promise.resolve({
-                data:
-                  '_openid' in cond
-                    ? [{ _id: 'u1', _openid: 'oME', phone: '', join_status: 'pending' }]
-                    : []
-              }),
-            update: () => Promise.resolve({ stats: { updated: 0 } })
-          })
-        })
-      };
-      await expect(
-        registerUser({ openid: 'oME', nickname: '我', phone: '13812341234', db: customDb })
-      ).rejects.toMatchObject({ code: CODE.SYS_DB_ERROR });
-    });
-
-    it('add 撞 idx_user_phone 唯一索引（并发同号）→ 转 BIZ_PHONE_TAKEN', async () => {
-      // 自定义 mock：phone 未占、openid 不存在，但 add 抛 idx_user_phone 撞键
-      const customDb = {
-        collection: () => ({
-          where: () => ({
-            get: () => Promise.resolve({ data: [] })
-          }),
-          add: () =>
-            Promise.reject({
-              errMsg:
-                'collection.add:fail -502001 duplicate key error index: idx_user_phone dup key'
-            })
-        })
-      };
-      await expect(
-        registerUser({ openid: 'oNEW', nickname: '新人', phone: '13812341234', db: customDb })
-      ).rejects.toMatchObject({ code: CODE.BIZ_PHONE_TAKEN });
     });
   });
 

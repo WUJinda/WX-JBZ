@@ -1,9 +1,9 @@
 /**
  * admin.queryUsers 纯函数（对齐技术架构 §122，PRD F8 用户管理）。
  *
- * 职责：从 store.User 筛选（deptId 等值；keyword 模糊匹配 nickname/phone_masked，大小写不敏感）+ 本地分页。
- *   - projectUser 下发白名单字段：nickname/avatar/phone_masked/dept_id/join_status/joined_at/created_at/is_admin。
- *   - 绝不下发 _openid / phone（红线，逐字段白名单）。
+ * 职责：从 store.User 筛选（deptId 等值；keyword 模糊匹配 nickname/invite_code，大小写不敏感）+ 本地分页。
+ *   - projectUser 下发白名单字段：nickname/avatar/invite_code/dept_id/join_status/joined_at/created_at/is_admin。
+ *   - 绝不下发 _openid（红线，逐字段白名单）。
  *   - DEFAULT_PAGE_SIZE=50。
  *
  * 本地轨：store 注入式，纯函数可单测；不调真实云 API。
@@ -12,12 +12,12 @@
 
 const DEFAULT_PAGE_SIZE = 50;
 
-// 投影白名单：逐字段枚举，绝不下发 _openid / phone。
+// 投影白名单：逐字段枚举，绝不下发 _openid。
 const USER_FIELDS = [
   '_id',
   'nickname',
   'avatar',
-  'phone_masked',
+  'invite_code',
   'dept_id',
   'join_status',
   'joined_at',
@@ -26,7 +26,7 @@ const USER_FIELDS = [
 ];
 
 /**
- * 用户投影：仅下发白名单字段（红线：绝不下发 _openid / phone）。
+ * 用户投影：仅下发白名单字段（红线：绝不下发 _openid）。
  * @param {object} u
  * @returns {object}
  */
@@ -45,7 +45,7 @@ function projectUser(u) {
  * @param {object} params
  * @param {string} [params.activityId] 活动 id（P0 单期，预留；暂不强过滤）
  * @param {string} [params.deptId] 部门 id 等值过滤
- * @param {string} [params.keyword] 关键字模糊匹配 nickname / phone_masked（大小写不敏感）
+ * @param {string} [params.keyword] 关键字模糊匹配 nickname / invite_code（大小写不敏感）
  * @param {number} [params.page=1] 页码（从 1 起）
  * @param {number} [params.pageSize=50] 每页条数
  * @returns {{list: object[], totalCount: number}}
@@ -64,13 +64,13 @@ function queryUsers(store, params) {
     filtered = filtered.filter((u) => u.dept_id === p.deptId);
   }
 
-  // keyword 模糊匹配 nickname / phone_masked（大小写不敏感）。
+  // keyword 模糊匹配 nickname / invite_code（大小写不敏感）。
   if (p.keyword) {
     const kw = String(p.keyword).toLowerCase();
     filtered = filtered.filter((u) => {
       const nick = (u.nickname || '').toLowerCase();
-      const masked = (u.phone_masked || '').toLowerCase();
-      return nick.indexOf(kw) >= 0 || masked.indexOf(kw) >= 0;
+      const code = (u.invite_code || '').toLowerCase();
+      return nick.indexOf(kw) >= 0 || code.indexOf(kw) >= 0;
     });
   }
 

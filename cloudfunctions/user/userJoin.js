@@ -7,14 +7,14 @@
  *   - R1.4 防重复报名：同 openid 已 joined 再次 join → 拒绝（无论 dept_id）。
  *
  * 前置条件（join 假设，由 handler/前置流程保证）：
- *   - 用户已通过 auth.phone 白名单验证（登录态）；join 不再校验白名单；
+ *   - 用户已通过邀请码准入建号（登录态）；join 不再校验准入；
  *   - handler 已 requireUser（必须 OPENID，登录态）。
  *
  * 本地轨：store 注入式，纯函数可单测；不调真实微信云 API。
  * joinDepartment 负责业务判定 + 直接更新注入 store 中的 User 文档（单测观察 store 验证落库结果）。
  *
  * 红线：
- *   - 身份仅 OPENID；不下发原始 phone / openid / unionid；
+ *   - 身份仅 OPENID；不下发原始 openid / unionid；
  *   - 防重复报名（已 joined 再次 join 一律拒绝）。
  */
 

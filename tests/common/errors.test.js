@@ -10,7 +10,7 @@ describe('errors 模块', () => {
     expect(String(CODE.AUTH_NO_OPENID)).toMatch(/^1\d{3}$/);
     expect(String(CODE.AUTH_NOT_ADMIN)).toMatch(/^1\d{3}$/);
     // 2xxx 业务
-    expect(String(CODE.BIZ_NOT_IN_WHITELIST)).toMatch(/^2\d{3}$/);
+    expect(String(CODE.BIZ_INVITE_CODE_INVALID)).toMatch(/^2\d{3}$/);
     expect(String(CODE.BIZ_PARAM_MISSING)).toMatch(/^2\d{3}$/);
     // 3xxx 步数
     expect(String(CODE.STEP_DECRYPT_FAILED)).toMatch(/^3\d{3}$/);
@@ -43,8 +43,14 @@ describe('errors 模块', () => {
   });
 
   it('BizError 携带可选 data', () => {
-    const err = BizError(CODE.BIZ_NOT_IN_WHITELIST, '不在白名单', { phone: 'x' });
-    expect(err.data).toEqual({ phone: 'x' });
+    const err = BizError(CODE.BIZ_INVITE_CODE_USED, '邀请码已用', { code: 'x' });
+    expect(err.data).toEqual({ code: 'x' });
+  });
+
+  it('邀请码错误码 BIZ_INVITE_CODE_INVALID/USED/DISABLED = 2011/2012/2013', () => {
+    expect(CODE.BIZ_INVITE_CODE_INVALID).toBe(2011);
+    expect(CODE.BIZ_INVITE_CODE_USED).toBe(2012);
+    expect(CODE.BIZ_INVITE_CODE_DISABLED).toBe(2013);
   });
 
   it('notImplemented 返回 5xxx 系统码且 message 含 not implemented', () => {

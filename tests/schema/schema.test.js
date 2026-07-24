@@ -12,27 +12,34 @@ describe('集合 schema 定义（B1）', () => {
     expect(u).toBeDefined();
     expect(Array.isArray(u.indexes)).toBe(true);
     // 字段齐全
-    for (const f of ['_id', '_openid', 'nickname', 'avatar', 'phone', 'phone_masked', 'dept_id', 'join_status', 'is_admin', 'created_at', 'updated_at']) {
+    for (const f of ['_id', '_openid', 'nickname', 'avatar', 'invite_code', 'dept_id', 'join_status', 'is_admin', 'created_at', 'updated_at']) {
       expect(u.fields[f], `User 缺少字段: ${f}`).toBeDefined();
     }
   });
 
-  it('User 含 _openid 与 phone 两个唯一索引', () => {
+  it('User 含 _openid 唯一索引（手机号机制已移除，idx_user_phone 删除）', () => {
     const u = COLLECTIONS.User;
     const uniqueIdx = u.indexes.filter((i) => i.unique);
     const fields = uniqueIdx.map((i) => Object.keys(i.fields)[0]);
     expect(fields).toContain('_openid');
-    expect(fields).toContain('phone');
+    // 手机号唯一索引已随手机号机制移除
+    expect(fields).not.toContain('phone');
   });
 
-  it('Whitelist 集合结构合法（字段 + phone 唯一索引）', () => {
-    const w = COLLECTIONS.Whitelist;
-    expect(w).toBeDefined();
-    expect(Array.isArray(w.indexes)).toBe(true);
-    expect(w.fields.phone).toBeDefined();
-    const phoneIdx = w.indexes.find((i) => i.fields.phone);
-    expect(phoneIdx, 'Whitelist 缺少 phone 索引').toBeDefined();
-    expect(phoneIdx.unique).toBe(true);
+  it('InviteCode 集合结构合法（code 唯一索引 + status 枚举 + used_by onlyServer）', () => {
+    const ic = COLLECTIONS.InviteCode;
+    expect(ic).toBeDefined();
+    expect(Array.isArray(ic.indexes)).toBe(true);
+    expect(ic.fields.code).toBeDefined();
+    expect(ic.fields.status).toBeDefined();
+    const codeIdx = ic.indexes.find((i) => i.fields.code);
+    expect(codeIdx, 'InviteCode 缺少 code 唯一索引').toBeDefined();
+    expect(codeIdx.unique).toBe(true);
+    expect(ic.fields.status.enum).toContain('unused');
+    expect(ic.fields.status.enum).toContain('used');
+    expect(ic.fields.status.enum).toContain('disabled');
+    // used_by 为 onlyServer（不下发原始 openid）
+    expect(ic.fields.used_by.onlyServer).toBe(true);
   });
 
   it('Activity 集合结构合法（字段 + status/start_time 索引）', () => {
@@ -85,8 +92,8 @@ describe('集合 schema 定义（B1）', () => {
 
   it('敏感字段标记 onlyServer（不下发前端的依据）', () => {
     expect(COLLECTIONS.User.fields._openid.onlyServer).toBe(true);
-    expect(COLLECTIONS.User.fields.phone.onlyServer).toBe(true);
-    expect(COLLECTIONS.Whitelist.fields.phone.onlyServer).toBe(true);
+    expect(COLLECTIONS.InviteCode.fields.used_by.onlyServer).toBe(true);
+    expect(COLLECTIONS.InviteCode.fields.created_by.onlyServer).toBe(true);
   });
 
   it('StepRecord 集合结构合法（PRD F3 / 技术架构 §5.5：字段齐全 + (user_id,activity_id,date) 唯一索引）', () => {
@@ -159,11 +166,11 @@ describe('索引初始化脚本（B1）', () => {
     };
     const out = await ensureIndexes(mockCloud);
     expect(out.User).toBeDefined();
-    expect(out.Whitelist).toBeDefined();
+    expect(out.InviteCode).toBeDefined();
     expect(out.Activity).toBeDefined();
     // 每个集合的索引数与声明一致
     expect(out.User.length).toBe(COLLECTIONS.User.indexes.length);
-    expect(out.Whitelist.length).toBe(COLLECTIONS.Whitelist.indexes.length);
+    expect(out.InviteCode.length).toBe(COLLECTIONS.InviteCode.indexes.length);
     expect(out.Activity.length).toBe(COLLECTIONS.Activity.indexes.length);
     // 总创建数 = 全部集合索引之和
     const totalDeclared = Object.keys(COLLECTIONS).reduce(
@@ -181,8 +188,8 @@ describe('索引初始化脚本（B1）', () => {
       }
     });
     const db = { collection: fakeCollection };
-    const results = await ensureCollectionIndexes(db, 'Whitelist');
-    expect(results.length).toBe(COLLECTIONS.Whitelist.indexes.length);
+    const results = await ensureCollectionIndexes(db, 'InviteCode');
+    expect(results.length).toBe(COLLECTIONS.InviteCode.indexes.length);
     results.forEach((r) => {
       expect(r.ok).toBe(false); // 已存在 → ok=false 但不抛
       expect(r.reason).toBeDefined();
@@ -192,8 +199,8 @@ describe('索引初始化脚本（B1）', () => {
   it('ensureCollectionIndexes 在 createIndex 不可用时返回 manual 清单（wx-server-sdk 云函数端无此 API）', async () => {
     // 真实云环境：db.collection(name) 返回的对象没有 createIndex 方法。
     const db = { collection: () => ({ /* 无 createIndex */ }) };
-    const results = await ensureCollectionIndexes(db, 'Whitelist');
-    expect(results.length).toBe(COLLECTIONS.Whitelist.indexes.length);
+    const results = await ensureCollectionIndexes(db, 'InviteCode');
+    expect(results.length).toBe(COLLECTIONS.InviteCode.indexes.length);
     results.forEach((r) => {
       expect(r.manual).toBe(true);
       expect(r.ok).toBe(false);

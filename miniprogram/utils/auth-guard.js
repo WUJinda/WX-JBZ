@@ -6,11 +6,11 @@
  *
  * 状态字段（由调用方从本地缓存或登录结果传入）：
  *   - loggedIn: 是否已登录（拿到 openid 且 User 已存在）
- *   - phoneVerified: 是否已完成手机号验证
+ *   - registered: 是否已完成邀请码准入建号（去手机号后与 loggedIn 同口径，保留以兼容守卫语义）
  *   - joined: 是否已报名（join_status === 'joined'）
  *   - isAdmin: 是否管理员（决定能否进入 admin/*）
  *
- * 目标页优先级：登录 > 手机号验证 > 部门选择(报名) > 业务页。
+ * 目标页优先级：登录 > 已注册 > 部门选择(报名) > 业务页。
  */
 
 const PAGES = {
@@ -27,14 +27,14 @@ const PAGES = {
  * 根据状态决定下一个该去的页面。
  * @param {object} state
  * @param {boolean} [state.loggedIn]
- * @param {boolean} [state.phoneVerified]
+ * @param {boolean} [state.registered]
  * @param {boolean} [state.joined]
  * @returns {string} 目标页路径
  */
 function nextRoute(state) {
   const s = state || {};
   if (!s.loggedIn) return PAGES.LOGIN;
-  if (!s.phoneVerified) return PAGES.LOGIN;
+  if (!s.registered) return PAGES.LOGIN;
   if (!s.joined) return PAGES.DEPT;
   return PAGES.HOME;
 }

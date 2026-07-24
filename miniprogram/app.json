@@ -10,7 +10,7 @@
     "pages/admin/dashboard/dashboard",
     "pages/admin/activity/activity",
     "pages/admin/activity/list",
-    "pages/admin/whitelist/whitelist",
+    "pages/admin/inviteCode/inviteCode",
     "pages/admin/users/users",
     "pages/admin/abnormal/abnormal",
     "pages/admin/dept/dept",

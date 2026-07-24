@@ -44,15 +44,14 @@ describe('auth.login 纯函数', () => {
     });
   });
 
-  describe('buildNewUser（构造 User 文档工具，现由 auth.register 复用后覆盖 phone）', () => {
-    it('构造 User 文档（含 openid / 占位空 phone / join_status=pending）', () => {
+  describe('buildNewUser（构造 User 文档工具，现由 auth.register 复用后覆盖 invite_code）', () => {
+    it('构造 User 文档（含 openid / 占位空 invite_code / join_status=pending）', () => {
       const now = () => '2026-06-26T10:00:00Z';
       const doc = buildNewUser({ openid: 'oABC' }, { nickname: '张明', avatar: 'a.jpg' }, now);
       expect(doc._openid).toBe('oABC');
       expect(doc.nickname).toBe('张明');
       expect(doc.avatar).toBe('a.jpg');
-      expect(doc.phone).toBe(''); // 占位空串；register 复用后覆盖为真实号
-      expect(doc.phone_masked).toBe('');
+      expect(doc.invite_code).toBe(''); // 占位空串；register 消费邀请码后覆盖
       expect(doc.join_status).toBe('pending');
       expect(doc.is_admin).toBe(false);
       expect(doc.created_at).toBe('2026-06-26T10:00:00Z');
@@ -72,22 +71,20 @@ describe('auth.login 纯函数', () => {
   });
 
   describe('projectLoginState（登录态投影）', () => {
-    it('不下发原始 phone / openid / unionid', () => {
+    it('不下发原始 openid / unionid', () => {
       const user = {
         _openid: 'oSECRET',
         unionid: 'uSECRET',
-        phone: '13812341234',
-        phone_masked: '138****1234',
+        invite_code: 'ABC123',
         nickname: '张明',
         join_status: 'joined',
         is_admin: false,
         dept_id: 'd_01'
       };
       const out = projectLoginState(user);
-      expect(out).not.toHaveProperty('phone');
       expect(out).not.toHaveProperty('openid');
       expect(out).not.toHaveProperty('unionid');
-      expect(out.phone_masked).toBe('138****1234');
+      expect(out.registered).toBe(true);
     });
 
     it('user 为 null 返回未注册态（is_new:true）', () => {
@@ -97,19 +94,16 @@ describe('auth.login 纯函数', () => {
       expect(out.is_new).toBe(true);
     });
 
-    it('registered 表示已完成手机号验证（phone 非空）', () => {
-      expect(projectLoginState({ _openid: 'oX', phone: '', phone_masked: '' }).registered).toBe(false);
-      expect(
-        projectLoginState({ _openid: 'oX', phone: '13812341234', phone_masked: '138****1234' }).registered
-      ).toBe(true);
+    it('registered = User 文档存在（去手机号后口径，老用户天然兼容）', () => {
+      expect(projectLoginState(null).registered).toBe(false);
+      expect(projectLoginState({ _openid: 'oX', invite_code: 'ABC123' }).registered).toBe(true);
+      // 即便历史占位用户（无 invite_code）也视为已注册：User 存在即已准入
+      expect(projectLoginState({ _openid: 'oX' }).registered).toBe(true);
     });
 
-    it('is_new：user 为 null → true；存在 → false（无论是否验机）', () => {
+    it('is_new：user 为 null → true；存在 → false', () => {
       expect(projectLoginState(null).is_new).toBe(true);
-      expect(projectLoginState({ _openid: 'oX', phone: '', phone_masked: '' }).is_new).toBe(false);
-      expect(
-        projectLoginState({ _openid: 'oX', phone: '13812341234', phone_masked: '138****1234' }).is_new
-      ).toBe(false);
+      expect(projectLoginState({ _openid: 'oX' }).is_new).toBe(false);
     });
   });
 
@@ -120,7 +114,7 @@ describe('auth.login 纯函数', () => {
       expect(out.is_new).toBe(true);
       expect(out.registered).toBe(false);
       expect(out.join_status).toBe('pending');
-      // 关键：login 不再 add User（建号移至 register，避免 phone='' 占位撞 idx_user_phone 唯一索引）
+      // 关键：login 不再 add User（建号移至 register，消费邀请码后建号）
       expect(store.User.length).toBe(0);
     });
 
@@ -129,8 +123,7 @@ describe('auth.login 纯函数', () => {
         _id: 'u_001',
         _openid: 'oDUP',
         nickname: '老用户',
-        phone: '13812341234',
-        phone_masked: '138****1234',
+        invite_code: 'OLD123',
         join_status: 'joined',
         is_admin: true,
         dept_id: 'd_01'

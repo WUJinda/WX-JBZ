@@ -4,35 +4,46 @@
 // 注册向导（新用户首次登录）：
 //   1. 一键登录（auth.login 只查 OPENID 判新老用户，**不建号**）
 //   2. 填昵称头像（chooseAvatar + nickname input，暂存前端）
-//   3. 手动填写手机号 → 一次性提交 auth.register（昵称+头像+手机号建号，phone 必填非空）
+//   3. 填写邀请码 → 一次性提交 auth.register（昵称+头像+邀请码，消费邀请码后建号）
 //
 // 老用户回归：auth.login 返回 join_status==='joined' → 直接 switchTab home；
-//             registered=true（已验手机号）未 joined → 直接进 dept 选部门。
+//             registered=true（已建号）未 joined → 直接进 dept 选部门。
 //
 // 身份取 cloud.getWXContext().OPENID（云开发自动注入），不用 wx.login。
-// 邀请码（底层仍为 phone 字段）手填：明文降级，不依赖微信「手机号快速验证组件」——体验版无需开通组件即可测；
-//   安全代价与缓解见后端 authRegister.js 顶部注释。
+// 准入凭证为「一人一码邀请码」（手机号/白名单机制已移除）：用户输入邀请码，后端原子消费后建号。
 // 昵称头像校验/上传复用 editCalc（与编辑资料页同源，与后端同口径）。
-// 建号推迟到步骤 3 一次性提交，避免旧流程「先建 phone='' 占位」撞 idx_user_phone 唯一索引。
+// 建号推迟到步骤 3 一次性提交（消费邀请码 → add User）。
 //
-// 注：手机号输入变量命名 phoneInput（非 phone），以避开结构测试「wxml 不绑定后端完整 phone」
-//   红线——此处是用户手动输入值，非后端下发的完整手机号。
+// 注：邀请码输入变量命名 inviteInput，前端宽松校验（归一化后 6 位 Crockford），后端严格校验。
 
 const { validateNickname, buildAvatarCloudPath } = require('../profile/edit/editCalc');
+
+// 邀请码前端归一化（与后端 auth/inviteCode.normalizeInviteCode 同口径）：转大写 + 去 O/I/L/U 误读 + 去空格横线。
+function normalizeInviteInput(raw) {
+  if (raw == null) return '';
+  return String(raw)
+    .toUpperCase()
+    .replace(/[\s-]/g, '')
+    .replace(/O/g, '0')
+    .replace(/[IL]/g, '1')
+    .replace(/U/g, 'V');
+}
+// 前端宽松格式校验：归一化后 6 位 Crockford 字符（0-9 + 去 I/L/O/U 的 A-Z）。后端再严格校验。
+const INVITE_RE = /^[0-9A-HJKMNP-TV-Z]{6}$/;
 
 Page({
   data: {
     pageLabel: '登录授权',
-    // 向导步骤态：'init'（登录）| 'profile'（昵称头像）| 'phone'（手机号）
+    // 向导步骤态：'init'（登录）| 'profile'（昵称头像）| 'invite'（邀请码）
     authState: 'init',
     // 昵称头像（profile 步骤采集，提交时一并上传/带上传给 register）
     nickname: '',
     avatar: '',
-    // 手机号输入值（phone 步骤，手动填写）
-    phoneInput: '',
+    // 邀请码输入值（invite 步骤，手动填写）
+    inviteInput: '',
     authDenied: false, // 登录查询失败
     profileDenied: false, // 昵称头像校验失败
-    phoneDenied: false, // 手机号校验/注册失败
+    inviteDenied: false, // 邀请码校验/注册失败
     submitting: false
   },
 
@@ -53,8 +64,8 @@ Page({
         // 按 is_new / join_status / registered 分流：
         //   is_new===true  → 新用户（库内无 User），进昵称头像填写步骤
         //   joined         → 老用户回归首页（tabBar 须 switchTab）
-        //   registered（已验手机号）未 joined → 直接选部门
-        //   其余兜底       → 进 profile（兼容历史 phone='' 占位用户补全注册）
+        //   registered（已建号）未 joined → 直接选部门
+        //   其余兜底       → 进 profile
         if (data && data.is_new) {
           self.setData({ authState: 'profile', authDenied: false });
         } else if (data && data.join_status === 'joined') {
@@ -123,8 +134,8 @@ Page({
     });
   },
 
-  // 「下一步」：校验昵称后只暂存、进入手机号步骤。
-  // 不调 user.update —— 建号推迟到 register 一次性提交（昵称+头像+手机号），避免空占位。
+  // 「下一步」：校验昵称后只暂存、进入邀请码步骤。
+  // 不调 user.update —— 建号推迟到 register 一次性提交（昵称+头像+邀请码）。
   onSubmitProfile() {
     const self = this;
     if (this.data.submitting) return; // 防双击
@@ -134,34 +145,34 @@ Page({
       wx.showToast({ title: '请输入昵称（1-20字）', icon: 'none' });
       return;
     }
-    self.setData({ authState: 'phone', nickname, profileDenied: false });
+    self.setData({ authState: 'invite', nickname, profileDenied: false });
   },
 
-  // ---- 步骤 3：手动填写手机号 → auth.register 一次性建号 ----
-  onPhoneInput(e) {
+  // ---- 步骤 3：填写邀请码 → auth.register 一次性建号（消费邀请码）----
+  onInviteInput(e) {
     const v = (e && e.detail && e.detail.value) || '';
-    this.setData({ phoneInput: v });
+    this.setData({ inviteInput: v });
   },
 
-  async onSubmitPhone() {
+  async onSubmitInviteCode() {
     const self = this;
     if (this.data.submitting) return; // 防双击
-    const phone = (this.data.phoneInput || '').trim();
-    if (!/^\d{11}$/.test(phone)) {
-      self.setData({ phoneDenied: true });
+    const code = normalizeInviteInput(this.data.inviteInput);
+    if (!INVITE_RE.test(code)) {
+      self.setData({ inviteDenied: true });
       wx.showToast({ title: '邀请码格式不正确', icon: 'none' });
       return;
     }
     const app = getApp();
     const api = app && app.api;
     if (!api || typeof api.call !== 'function') {
-      self.setData({ phoneDenied: true });
+      self.setData({ inviteDenied: true });
       wx.showToast({ title: '云能力未就绪', icon: 'none' });
       return;
     }
-    self.setData({ submitting: true, phoneDenied: false });
+    self.setData({ submitting: true, inviteDenied: false });
     try {
-      // 头像临时文件上传云存储拿 fileID（昵称头像与手机号一起提交建号）。
+      // 头像临时文件上传云存储拿 fileID（昵称头像与邀请码一起提交建号）。
       let avatar = this.data.avatar;
       if (this._pendingAvatarTempPath) {
         avatar = await this.uploadAvatar(this._pendingAvatarTempPath);
@@ -169,7 +180,7 @@ Page({
       }
       await api.call(
         'auth',
-        { action: 'register', nickname: this.data.nickname, avatar, phone },
+        { action: 'register', nickname: this.data.nickname, avatar, invite_code: code },
         { loading: '注册中' }
       );
       // register 成功 = User 已建号 = 已登录；同步 globalData.loggedIn。
@@ -184,8 +195,8 @@ Page({
         wx.redirectTo({ url: '/pages/dept/dept' });
       }, 700);
     } catch (err) {
-      self.setData({ phoneDenied: true });
-      // 弹真实错误（手机号被占用 BIZ_PHONE_TAKEN 等），便于定位。
+      self.setData({ inviteDenied: true });
+      // 弹真实错误（邀请码已用/无效等），便于定位。
       wx.showModal({
         title: '注册失败',
         content: (err && (err.message || err.errMsg)) || '请重试',
@@ -196,8 +207,8 @@ Page({
     }
   },
 
-  // 手机号失败后重新点击按钮（重置提示）
-  onRetryPhone() {
-    this.setData({ phoneDenied: false });
+  // 邀请码失败后重新点击按钮（重置提示）
+  onRetryInvite() {
+    this.setData({ inviteDenied: false });
   }
 });
