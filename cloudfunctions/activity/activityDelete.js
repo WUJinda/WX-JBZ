@@ -1,8 +1,9 @@
 /**
- * activity.delete 业务纯函数（管理员硬删除活动 + 连带清理该活动的步数/榜单/部门）。
+ * activity.delete 业务纯函数（管理员硬删除活动 + 连带清理该活动的步数/榜单）。
  *
  * 业务规则（与用户确认）：
- *   - 删除 = 硬删除：彻底移除活动文档 + 连带清理该 activity_id 下的 StepRecord/RankCache/Department。
+ *   - 删除 = 硬删除：彻底移除活动文档 + 连带清理该 activity_id 下的 StepRecord/RankCache。
+ *     Department 不删——部门是相对固定的组织结构数据，与活动生命周期无关。
  *     区别于 terminate（软终止 terminated=true，文档保留、榜单冻结）。
  *   - 不可恢复（与 terminate 同为危险操作，前端二次确认 + 危险样式）。
  *   - 重置 User.join_status（云轨 resetUserJoinStatusToCloud 把 joined → pending，参与人数归零；
@@ -14,7 +15,7 @@
  * 与 terminate 的结构差异：
  *   - terminate 纯函数就地改文档（terminated=true）→ 云轨 upsert 写回；
  *   - delete 是 doc.remove（无法 upsert），故纯函数只做「校验 + 返回被删活动定位信息」，
- *     实际批量删除在云轨 deleteActivityToCloud（where().remove() 删 Activity/StepRecord/RankCache/Department）。
+ *     实际批量删除在云轨 deleteActivityToCloud（where().remove() 删 Activity/StepRecord/RankCache）。
  *
  * 红线：
  *   - 管理员鉴权由 handler 经 assertAdmin 承担，本纯函数不做鉴权；

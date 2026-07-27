@@ -1131,7 +1131,7 @@ describe('activity.save action 挂载与共享 adminGuard（I）', () => {
     // delete handler 内调用 deleteActivity 纯函数 + 云轨批量删除
     expect(src).toMatch(/deleteActivity\(store/);
     expect(src).toMatch(/deleteActivityToCloud/);
-    // where().remove() 批量删 4 集合（Activity/StepRecord/RankCache/Department）
+    // where().remove() 批量删 3 集合（Activity/StepRecord/RankCache）——Department 不删
     expect(src).toMatch(/where\(\s*\{\s*activity_id:\s*activityId\s*\}\s*\)\.remove/);
   });
 

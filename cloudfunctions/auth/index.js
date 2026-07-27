@@ -86,4 +86,6 @@ exports.main = async (event) => {
   }
 };
 
-module.exports = { handleRegister };
+// 注意：不能用 module.exports = { handleRegister }，会覆盖 exports.main，
+// 导致微信云运行时找不到 main handler（报 handler not found）。
+module.exports.handleRegister = handleRegister;

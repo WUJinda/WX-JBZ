@@ -1,5 +1,6 @@
 /**
- * activity.delete 纯函数单测（管理员硬删除活动 + 连带清理该活动的步数/榜单/部门）。
+ * activity.delete 纯函数单测（管理员硬删除活动 + 连带清理该活动的步数/榜单）。
+ * Department 不删——部门是相对固定的组织结构数据。
  *   - 正常：返回被删活动投影（含 activity_id 供云轨批量 remove）；
  *   - 校验：缺 activity_id / 活动不存在 / store 缺失；
  *   - activity_id 自动 trim；

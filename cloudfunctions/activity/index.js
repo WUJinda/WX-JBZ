@@ -192,8 +192,9 @@ const handlers = {
     return result;
   },
 
-  // 硬删除活动（不可恢复，连带清理 StepRecord/RankCache/Department）：管理员（assertAdmin）。
+  // 硬删除活动（不可恢复，连带清理 StepRecord/RankCache）：管理员（assertAdmin）。
   // 区别于 terminate（软终止）：delete 彻底移除活动文档 + 该活动名下全部数据。
+  // Department 不删——部门是相对固定的组织结构数据，与活动生命周期无关。
   delete: async (event) => {
     const context = authMiddleware({ getWXContext: cloud.getWXContext });
     const store = {
@@ -258,7 +259,9 @@ async function upsertActivityToCloud(cloudSdk, activity, activityId, now) {
 }
 
 /**
- * 云轨：硬删除活动 + 连带清理该 activity_id 下的 StepRecord/RankCache/Department。
+ * 云轨：硬删除活动 + 连带清理该 activity_id 下的 StepRecord/RankCache。
+ * 部门（Department）不删——部门是相对固定的组织结构数据，与活动生命周期无关，
+ * 删除活动后应保留部门信息供后续活动复用。
  * where().remove() 为云数据库原生批量删除（与 tasks dailyLock 的 where().update() 同类，非事务批量，可用）。
  * 某集合无该 activity_id 文档时 removed=0，不报错（幂等）。
  * P1-3：失败收集上抛，不静默吞（否则前端假成功，与 upsert/persist 写回同口径）。
@@ -269,8 +272,9 @@ async function upsertActivityToCloud(cloudSdk, activity, activityId, now) {
 async function deleteActivityToCloud(cloudSdk, activityId) {
   const db = cloudSdk.database();
   const failed = [];
-  // 4 个集合均按 activity_id 过滤批量删：活动文档本体 + 该活动名下的步数/榜单/部门。
-  for (const name of ['Activity', 'StepRecord', 'RankCache', 'Department']) {
+  // 3 个集合均按 activity_id 过滤批量删：活动文档本体 + 该活动名下的步数/榜单。
+  // Department 不删（部门与活动无关，是固定的组织结构数据）。
+  for (const name of ['Activity', 'StepRecord', 'RankCache']) {
     try {
       // wx-server-sdk 的 where().remove() 单次最多删 20 条（见 user/index.js wrapRemoveAll）；
       // StepRecord 可能远超 20（多用户×多天），须循环删到 removed=0，否则漏删留孤儿数据。
