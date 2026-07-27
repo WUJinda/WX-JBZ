@@ -129,7 +129,9 @@ const handlers = {
   cancel: async (event, context) => {
     const openid = context && context.openid;
     const db = cloud.database();
-    return cancelAccount({ openid, db: wrapRemoveAll(db) });
+    // 传入用户注册时使用的邀请码，注销时释放复位为 unused（允许同码重新注册）
+    const inviteCode = (context.user && context.user.invite_code) || '';
+    return cancelAccount({ openid, db: wrapRemoveAll(db), inviteCode });
   }
 };
 
@@ -166,7 +168,9 @@ function wrapRemoveAll(db) {
                 if (n === 0) break; // 无更多匹配 → 终止
               }
               return { stats: { removed: total } };
-            }
+            },
+            // update 透传：邀请码释放（where+update 原子写，无 20 条限制问题）
+            update: (data) => w.update(data)
           };
         }
       };

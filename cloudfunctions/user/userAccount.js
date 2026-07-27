@@ -106,15 +106,19 @@ async function updateProfile(params) {
 /**
  * 注销账号（纯函数 + 注入式 db）。
  *
- * 流程：删 StepRecord where user_id=openid → 删 User where _openid=openid。
- * 幂等：删 0 条不抛错（防并发二次点击）。
+ * 流程：删 StepRecord → 释放邀请码 → 删 User。
+ * 幂等：删 0 条 / 释放 0 条不抛错（防并发二次点击）。
+ *
+ * 邀请码释放（修复 bug：注销后码仍 used → 无法重新注册）：
+ *   - 按传入的 inviteCode 查 InviteCode where({ code, status:'used', used_by: openid })；
+ *   - 命中则复位为 unused（清 used_by / used_at），允许同码重新注册；
+ *   - 未传 inviteCode 或未命中（码已被管理员处理）静默跳过，不阻断注销。
  *
  * 孤儿数据防护（对齐 admin/deptManage.deleteDept 的注释风格）：
  *   - 不强删 RankCache：聚合缓存，由下次 tasks.rankAggregate 覆盖重建，强删反而引入空窗；
- *   - 无白名单集合（准入改邀请码，见 docs/邀请码机制.md），注销仅清本人数据；
  *   - 不删 Department：member_count 是聚合冗余，下次聚合任务自动校正。
  *
- * 注销后同微信再进入 = 新用户：OPENID 不变但 User 已删，auth.login 重新建号。
+ * 注销后同微信再进入 = 新用户：OPENID 不变但 User 已删，邀请码已释放可重新注册。
  *
  * 注意：wx-server-sdk 的 where().remove() 单次上限 20 条，StepRecord 可能超量。
  *   真实库由 user/index.js 的 wrapRemoveAll 包循环；本纯函数对注入 db 直接 remove 一次
@@ -122,12 +126,13 @@ async function updateProfile(params) {
  *
  * @param {object} params
  * @param {string} params.openid 当前用户 openid
- * @param {object} params.db 数据库句柄（真实库应为 wrapRemoveAll 包过的代理）
- * @returns {Promise<{deleted_steps: number, deleted_user: number}>}
+ * @param {object} params.db 数据库句柄（真实库应为 wrapRemoveAll 包过的代理，需支持 remove + update）
+ * @param {string} [params.inviteCode] 用户注册时使用的邀请码（用于释放复位）
+ * @returns {Promise<{deleted_steps: number, deleted_user: number, released_code: boolean}>}
  * @throws {BizError} AUTH_NO_OPENID / SYS_DB_ERROR
  */
 async function cancelAccount(params) {
-  const { openid, db } = params || {};
+  const { openid, db, inviteCode } = params || {};
   if (!openid || typeof openid !== 'string') {
     throw BizError(CODE.AUTH_NO_OPENID, 'cancelAccount: openid required');
   }
@@ -135,15 +140,30 @@ async function cancelAccount(params) {
     throw BizError(CODE.SYS_DB_ERROR, 'cancelAccount: db with collection() is required');
   }
 
-  // 先删步数记录（StepRecord.user_id = openid；rankAggregate 以此关联用户）
+  // 1. 删步数记录（StepRecord.user_id = openid；rankAggregate 以此关联用户）
   const stepRes = await db.collection('StepRecord').where({ user_id: openid }).remove();
   const deleted_steps = (stepRes && stepRes.stats && stepRes.stats.removed) || 0;
 
-  // 再删 User 文档
+  // 2. 释放邀请码（used → unused，清 used_by / used_at），允许同码重新注册
+  let released_code = false;
+  if (inviteCode) {
+    const codeRes = await db.collection('InviteCode')
+      .where({ code: inviteCode, status: 'used', used_by: openid })
+      .update({
+        data: {
+          status: 'unused',
+          used_by: '',
+          used_at: null
+        }
+      });
+    released_code = ((codeRes && codeRes.stats && codeRes.stats.updated) || 0) > 0;
+  }
+
+  // 3. 删 User 文档
   const userRes = await db.collection('User').where({ _openid: openid }).remove();
   const deleted_user = (userRes && userRes.stats && userRes.stats.removed) || 0;
 
-  return { deleted_steps, deleted_user };
+  return { deleted_steps, deleted_user, released_code };
 }
 
 module.exports = {

@@ -166,6 +166,66 @@ describe('user.update / user.cancel 纯函数', () => {
       expect(store.User.find((u) => u._openid === 'oOTHER')).toBeTruthy();
     });
 
+    it('注销时释放邀请码：used → unused，清 used_by / used_at', async () => {
+      const { db, store } = createMockDb({
+        StepRecord: [],
+        User: [
+          { _id: 'u_1', _openid: 'oU', invite_code: 'ABC123' }
+        ],
+        InviteCode: [
+          { code: 'ABC123', status: 'used', used_by: 'oU', used_at: new Date('2026-07-20'), batch_id: 'b1', created_at: new Date('2026-07-01'), note: '张明 / 软件开发中心' }
+        ]
+      });
+      const out = await cancelAccount({ openid: 'oU', db, inviteCode: 'ABC123' });
+      expect(out.released_code).toBe(true);
+      expect(out.deleted_user).toBe(1);
+      // 邀请码已复位
+      const code = store.InviteCode.find((c) => c.code === 'ABC123');
+      expect(code.status).toBe('unused');
+      expect(code.used_by).toBe('');
+      expect(code.used_at).toBeNull();
+    });
+
+    it('注销时邀请码已被管理员处理（不存在/已删）：released_code=false，不阻断注销', async () => {
+      const { db } = createMockDb({
+        StepRecord: [],
+        User: [{ _openid: 'oU', invite_code: 'GONE' }],
+        InviteCode: []
+      });
+      const out = await cancelAccount({ openid: 'oU', db, inviteCode: 'GONE' });
+      expect(out.released_code).toBe(false);
+      expect(out.deleted_user).toBe(1);
+    });
+
+    it('不传 inviteCode 时跳过释放（released_code=false）', async () => {
+      const { db, store } = createMockDb({
+        StepRecord: [],
+        User: [{ _openid: 'oU' }],
+        InviteCode: [
+          { code: 'ABC123', status: 'used', used_by: 'oU' }
+        ]
+      });
+      const out = await cancelAccount({ openid: 'oU', db });
+      expect(out.released_code).toBe(false);
+      // 码仍保持 used（未被触碰）
+      expect(store.InviteCode[0].status).toBe('used');
+    });
+
+    it('仅释放本人码：他人使用的同码不受影响', async () => {
+      const { db, store } = createMockDb({
+        StepRecord: [],
+        User: [{ _openid: 'oU', invite_code: 'ABC123' }],
+        InviteCode: [
+          { code: 'ABC123', status: 'used', used_by: 'oOTHER', used_at: new Date('2026-07-19') }
+        ]
+      });
+      const out = await cancelAccount({ openid: 'oU', db, inviteCode: 'ABC123' });
+      expect(out.released_code).toBe(false);
+      // used_by 不是 oU，码未被复位
+      expect(store.InviteCode[0].status).toBe('used');
+      expect(store.InviteCode[0].used_by).toBe('oOTHER');
+    });
+
     it('幂等：无数据时删 0 条不抛错', async () => {
       const { db } = createMockDb({ StepRecord: [], User: [] });
       const out = await cancelAccount({ openid: 'oNONE', db });
@@ -173,13 +233,13 @@ describe('user.update / user.cancel 纯函数', () => {
       expect(out.deleted_user).toBe(0);
     });
 
-    it('不下发敏感字段（仅返回计数）', async () => {
+    it('不下发敏感字段（仅返回计数与释放标志）', async () => {
       const { db } = createMockDb({
         StepRecord: [{ user_id: 'oU' }],
         User: [{ _openid: 'oU', phone: '13812341234' }]
       });
       const out = await cancelAccount({ openid: 'oU', db });
-      expect(Object.keys(out).sort()).toEqual(['deleted_steps', 'deleted_user']);
+      expect(Object.keys(out).sort()).toEqual(['deleted_steps', 'deleted_user', 'released_code']);
     });
 
     it('openid 缺失：抛 AUTH_NO_OPENID', async () => {
