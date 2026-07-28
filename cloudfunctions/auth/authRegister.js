@@ -13,8 +13,8 @@
  * 流程顺序：先查 User——已存在（重复提交/竞态）幂等返回，不重复消费邀请码；
  *   不存在才校验昵称/码 → 消费邀请码 → add。
  *
- * 已知边界：消费码后若 add 失败（极罕见）会浪费一张码，管理员重生成即可；
- *   不做回滚（回滚引入新竞态，得不偿失）。
+ * 已知边界：消费码后若 add 失败，自动回滚码（used→unused）；
+ *   回滚本身失败（极罕见）会浪费一张码，管理员重生成即可。
  *
  * 本地轨：db 注入式（mockDb 可单测）；不 require wx-server-sdk。同域 require
  *   auth/inviteCode（consumeCode）与 auth/authLogin（buildNewUser），不引入跨目录依赖
@@ -116,8 +116,12 @@ async function registerUser(params) {
   try {
     await userCol.add({ data: doc });
   } catch (e) {
-    // idx_user_openid 并发双击撞键等异常原样上抛，由 main catch 转 SYS_DB_ERROR。
-    // （已无 idx_user_phone；invite_code 无唯一索引，不在此撞键。）
+    // 建号失败：回滚邀请码（used→unused），避免码白白浪费。
+    // where 限定 used+openid 确保只回滚本次消费的码，不影响并发其他用户。
+    await db.collection('InviteCode')
+      .where({ code, status: 'used', used_by: openid })
+      .update({ data: { status: 'unused', used_by: '', used_at: null } })
+      .catch(() => {});
     throw e;
   }
   return {
