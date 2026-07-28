@@ -199,15 +199,17 @@ function buildPersonalRanking({ store, activityId, today, startDate, endDate }) 
 
 /**
  * 查部门名（store 注入）。
+ * 部门是相对固定的组织数据，仅按 dept_id 匹配，不校验 activity_id
+ * （部门可能建于旧活动名下，但跨活动复用）。
  * @param {object} store
  * @param {string} deptId
- * @param {string} activityId
+ * @param {string} activityId （保留参数兼容，实际不使用）
  * @returns {string}
  */
 function lookupDeptName(store, deptId, activityId) {
   if (!deptId || !store || !Array.isArray(store.Department)) return '';
   const dept = store.Department.find(
-    (d) => d && d.dept_id === deptId && (!d.activity_id || d.activity_id === activityId)
+    (d) => d && d.dept_id === deptId
   );
   return (dept && dept.name) || '';
 }
@@ -219,15 +221,17 @@ function lookupDeptName(store, deptId, activityId) {
  * 供 buildDeptRanking 算 2/3 样本量阈值。与 member_count（聚合的有步数人数）语义不同、互不影响。
  * 缺省/非数字/负数 → 0（调用方 size=0 时退化为仅绝对下限，向后兼容旧规则）。
  *
+ * 部门仅按 dept_id 匹配，不校验 activity_id（部门跨活动复用）。
+ *
  * @param {object} store
  * @param {string} deptId
- * @param {string} activityId
+ * @param {string} activityId （保留参数兼容，实际不使用）
  * @returns {number} 部门配置人数（整数≥0）
  */
 function lookupDeptSize(store, deptId, activityId) {
   if (!deptId || !store || !Array.isArray(store.Department)) return 0;
   const dept = store.Department.find(
-    (d) => d && d.dept_id === deptId && (!d.activity_id || d.activity_id === activityId)
+    (d) => d && d.dept_id === deptId
   );
   const size = Number(dept && dept.size);
   return Number.isFinite(size) && size > 0 ? Math.floor(size) : 0;

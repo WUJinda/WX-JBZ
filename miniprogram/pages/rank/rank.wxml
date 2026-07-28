@@ -144,6 +144,14 @@
   </block>
 
   <!-- ============ 我的排名条（固定底部，仅个人榜） ============ -->
+  <!-- 游客态排名条：未登录时展示登录引导（用户主动点击跳转，不自动弹框）
+       with-picker：今日榜模式上移让位日期选择器（与已登录排名条同口径） -->
+  <view class="my-rank-bar guest-rank-bar {{subTab === 'today' ? 'with-picker' : ''}}" wx:if="{{!isLoggedIn && tab === 'personal' && viewMode === 'list'}}" bindtap="onGuestLoginTap">
+    <view class="my-rank-left">
+      <view class="my-rank-no">登录后查看我的排名</view>
+    </view>
+    <view class="my-rank-login-tip">去登录 ›</view>
+  </view>
   <!-- 累计榜排名条 -->
   <view class="my-rank-bar" wx:if="{{tab === 'personal' && viewMode === 'list' && subTab === 'total' && myRank}}">
     <view class="my-rank-left">
@@ -184,6 +192,13 @@
   </view>
 
   <!-- ============ 我的部门卡（固定底部，仅部门榜） ============ -->
+  <!-- 游客态部门卡：未登录时展示登录引导 -->
+  <view class="my-rank-bar guest-rank-bar" wx:if="{{!isLoggedIn && tab === 'dept' && viewMode === 'list'}}" bindtap="onGuestLoginTap">
+    <view class="my-rank-left">
+      <view class="my-rank-no">登录后查看我的部门排名</view>
+    </view>
+    <view class="my-rank-login-tip">去登录 ›</view>
+  </view>
   <view class="my-rank-bar" wx:if="{{tab === 'dept' && viewMode === 'list' && myDeptRank}}">
     <view class="my-rank-left">
       <view class="my-rank-no">我的部门 第 {{myDeptRank.rank}} 名</view>

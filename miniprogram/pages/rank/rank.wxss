@@ -213,6 +213,10 @@
   font-weight: 600;
 }
 
+/* 游客态排名条（未登录引导） */
+.guest-rank-bar .my-rank-no { color: #888; font-weight: 400; }
+.my-rank-login-tip { font-size: 28rpx; color: #07c160; font-weight: 600; }
+
 /* 更新时间 */
 .updated-at {
   text-align: center;

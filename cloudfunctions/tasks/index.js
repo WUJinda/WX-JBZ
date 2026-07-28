@@ -50,7 +50,8 @@ const handlers = {
     const store = {
       StepRecord: await loadByWhere(cloud, 'StepRecord', { activity_id: activityId }, STEP_FIELDS_AGG),
       User: await loadByWhere(cloud, 'User', {}, USER_FIELDS_AGG),
-      Department: await loadByWhere(cloud, 'Department', { activity_id: activityId }, DEPT_FIELDS_AGG),
+      // Department 全量拉取（部门是相对固定的组织数据，与活动生命周期无关，不按 activity_id 过滤）。
+      Department: await loadByWhere(cloud, 'Department', {}, DEPT_FIELDS_AGG),
       RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId })
     };
     // 覆盖写回 RankCache（纯函数已就地改 store.RankCache）。

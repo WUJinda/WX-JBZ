@@ -15,7 +15,7 @@ const {
 } = require('./rankCalc');
 const { buildDayList, defaultDayKey } = require('./rankDayList');
 const { hasMore } = require('../../utils/pagination');
-const { handleNotLoggedIn } = require('../../utils/authGuard');
+const { isNotLoggedInError } = require('../../utils/authGuard');
 
 Page({
   data: {
@@ -59,10 +59,15 @@ Page({
     updatedAt: '',
     loading: false,
     loadingMore: false,
-    errorMsg: ''
+    errorMsg: '',
+    // 游客态标志：未登录用户的 myRank 为 null，底部排名条显示「登录后查看排名」。
+    isLoggedIn: true
   },
 
   onShow() {
+    // 每次 onShow 重置游客态：接口成功返回数据后.isLoggedIn 保持 true；
+    // myRank 为 null 时可能是「未进榜」或「游客」，用 isLoggedIn 区分提示文案。
+    this.setData({ isLoggedIn: true });
     // 进入 tab 首次加载对应榜；切换 tab 时由 switchTab 触发加载。
     if (this.data.tab === 'personal') {
       this.ensureDayList(); // 今日榜日期列表（累计榜模式也预取，切「今日榜」即用）；
@@ -233,6 +238,12 @@ Page({
     this.setData({ viewMode: 'list', currentDept: null, memberList: [] });
   },
 
+  /** 游客态「登录查看排名」入口：引导去登录页（用户主动点击）。 */
+  onGuestLoginTap() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/login/login' });
+  },
+
   /** 加载个人榜。reset=true 重新加载第 1 页。 */
   loadPersonal(reset) {
     const app = getApp();
@@ -280,8 +291,11 @@ Page({
         });
       })
       .catch((err) => {
-        // 1002 未登录 → 守卫引导登录（rank.* 需登录态）。
-        if (handleNotLoggedIn(err)) return;
+        // 游客态（1002）：rank 后端已改为游客可浏览，正常不会走到；本地轨兼底。
+        if (isNotLoggedInError(err)) {
+          this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
+          return;
+        }
         // 本地轨：云函数未部署 → 空态占位，不弹错误（照 home.loadStats 模式）。
         this.setData({
           loading: false,
@@ -342,8 +356,11 @@ Page({
         });
       })
       .catch((err) => {
-        // 1002 未登录 → 守卫引导登录（rank.* 需登录态）。
-        if (handleNotLoggedIn(err)) return;
+        // 游客态（1002）：rank 后端已改为游客可浏览，正常不会走到；本地轨兼底。
+        if (isNotLoggedInError(err)) {
+          this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
+          return;
+        }
         // 本地轨：云函数未部署 → 空态占位，不弹错误（照 loadPersonal 模式）。
         this.setData({
           loading: false,
@@ -376,8 +393,11 @@ Page({
         const myRank = (pd && pd.myRank) || null;
         if (myRank) this.setData({ myRank });
       } catch (e) {
-        // 1002 未登录 → 守卫引导登录；否则占位（myRank 空，贡献占比 0）。
-        if (handleNotLoggedIn(e)) return;
+        // 游客态（1002）：rank 后端已改为游客可浏览，正常不会走到；本地轨兼底。
+        if (isNotLoggedInError(e)) {
+          this.setData({ isLoggedIn: false });
+          return;
+        }
       }
     }
     const page = reset ? 1 : this.data.deptPage;
@@ -422,7 +442,10 @@ Page({
         });
       })
       .catch((err) => {
-        if (handleNotLoggedIn(err)) return;
+        if (isNotLoggedInError(err)) {
+          this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
+          return;
+        }
         this.setData({
           loading: false,
           loadingMore: false,
@@ -477,7 +500,10 @@ Page({
         });
       })
       .catch((err) => {
-        if (handleNotLoggedIn(err)) return;
+        if (isNotLoggedInError(err)) {
+          this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
+          return;
+        }
         this.setData({
           loading: false,
           loadingMore: false,

@@ -14,7 +14,7 @@
 // api 实例从 getApp().api 取（与其余页一致）。本地轨 getApp().api 不存在 → 提示并兜底，不崩。
 
 const { validateNickname, buildAvatarCloudPath } = require('./editCalc');
-const { handleNotLoggedIn } = require('../../../utils/authGuard');
+const { handleNotLoggedIn, isNotLoggedInError } = require('../../../utils/authGuard');
 
 Page({
   data: {
@@ -49,8 +49,9 @@ Page({
         });
       })
       .catch((err) => {
-        if (handleNotLoggedIn(err)) {
-          self.setData({ loading: false });
+        // 自动加载路径：1002 不弹框跳转，设游客态提示。
+        if (isNotLoggedInError(err)) {
+          self.setData({ loading: false, errorMsg: '请先登录后编辑资料' });
           return;
         }
         self.setData({ loading: false, errorMsg: (err && err.message) || '加载失败' });

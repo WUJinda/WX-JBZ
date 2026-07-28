@@ -104,9 +104,11 @@
 .adjust-btn {
   font-size: 24rpx;
   color: #07c160;
+  background: #f7f8fa;
   border: 1rpx solid #07c160;
   border-radius: 24rpx;
   padding: 8rpx 20rpx;
+  box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.06);
 }
 
 /* 分页加载 */

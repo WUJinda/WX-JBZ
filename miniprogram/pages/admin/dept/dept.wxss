@@ -28,10 +28,12 @@
 .action-btn {
   font-size: 26rpx;
   color: #07c160;
+  background: #f7f8fa;
   border: 1rpx solid #07c160;
   border-radius: 32rpx;
   padding: 14rpx 28rpx;
   margin-left: 16rpx;
+  box-shadow: 0 2rpx 6rpx rgba(0,0,0,0.06);
 }
 .action-btn.danger {
   color: #fa5151;

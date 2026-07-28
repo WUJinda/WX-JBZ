@@ -84,7 +84,8 @@ const handlers = {
     const store = {
       StepRecord: await loadByWhere(cloud, 'StepRecord', { activity_id: activityId, date }, STEP_FIELDS_DAILY),
       User: await loadByWhere(cloud, 'User', {}, USER_FIELDS_DAILY),
-      Department: await loadByWhere(cloud, 'Department', { activity_id: activityId }, DEPT_FIELDS_DAILY)
+      // Department 全量拉取（部门是相对固定的组织数据，不按 activity_id 过滤）。
+      Department: await loadByWhere(cloud, 'Department', {}, DEPT_FIELDS_DAILY)
     };
     const activity = await getActivityById(cloud, activityId);
     return readPersonalDaily({
@@ -99,8 +100,11 @@ const handlers = {
 // loadCollection 已统一迁移至 common/db.js 的 loadByWhere（P0-5）；personal/dept/deptMembers
 // 改用 loadByWhere(cloud,'RankCache',{activity_id}) 按活动精确拉取（单文档形态）。
 
-// 需登录态（requireUser）的 action：personal/dept/deptMembers 均需 OPENID（与 activity.current 游客通道不同）。
-const REQUIRE_USER_ACTIONS = { personal: true, dept: true, deptMembers: true, personalDaily: true };
+// 排行榜数据为公共内容（RankCache 预聚合），游客可浏览。
+// personal/dept/deptMembers/personalDaily 不再调 assertUserExists——
+// 游客（无 User 文档）的 OPENID 仍可用，只是 myRank/is_me 自然为 null/false。
+// 符合微信审核「先浏览体验再授权」要求：游客可查看完整排行榜，仅「我的排名」需登录。
+const REQUIRE_USER_ACTIONS = {};
 
 exports.main = async (event) => {
   const action = event && event.action;
@@ -110,14 +114,14 @@ exports.main = async (event) => {
       const err = notImplemented(action ? 'rank.' + action : 'rank.<empty>');
       return fail(err.code, err.message);
     }
-    // rank.* 全部需登录态（requireUser，必须有 OPENID）。
-    // authMiddleware 当前 requireUser 为 TODO 占位，OPENID 缺失会在 getOpenid 阶段抛 AUTH_NO_OPENID。
+    // rank.* 游客可浏览：authMiddleware 取 OPENID（微信运行时始终注入），不查 User 存在性。
+    // 游客（无 User 文档）的 OPENID 可用，但 myRank/is_me 自然为 null/false。
     const requireUser = !!REQUIRE_USER_ACTIONS[action];
     const context = authMiddleware({
       getWXContext: cloud.getWXContext,
       requireUser
     });
-    // P1-1：requireUser 的 DB 校验（统一入口，避免每个 handler 重复查 User）。
+    // requireUser 的 action（当前为空集）才查 User 存在性。
     if (requireUser) {
       context.user = await assertUserExists(cloud.database(), context.openid);
     }

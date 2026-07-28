@@ -393,13 +393,15 @@ describe('rank action 挂载与 requireUser（G1）', () => {
     expect(src).toMatch(/require\(['"]\.\/rankQuery['"]\)/);
   });
 
-  it('rank.personal/dept/deptMembers 走 requireUser（需 OPENID，缺则抛 AUTH_NO_OPENID）', () => {
+  it('rank.personal/dept/deptMembers 游客可浏览（不查 User 存在性，REQUIRE_USER_ACTIONS 为空）', () => {
     const src = readSource('cloudfunctions/rank/index.js');
-    expect(src).toMatch(/requireUser/);
+    // authMiddleware 仍取 OPENID（微信运行时始终注入），但不调 assertUserExists
     expect(src).toMatch(/REQUIRE_USER_ACTIONS/);
-    expect(src).toMatch(/personal:\s*true/);
-    expect(src).toMatch(/dept:\s*true/);
-    expect(src).toMatch(/deptMembers:\s*true/);
+    expect(src).toMatch(/REQUIRE_USER_ACTIONS\s*=\s*\{\}/);
+    // 不应将 personal/dept/deptMembers 标记为需登录
+    expect(src).not.toMatch(/personal:\s*true/);
+    expect(src).not.toMatch(/dept:\s*true(?!.)/);
+    expect(src).not.toMatch(/deptMembers:\s*true/);
   });
 
   it('rankQuery.js 纯函数模块存在', () => {
@@ -419,11 +421,12 @@ describe('rank action 挂载与 requireUser（G1）', () => {
     expect(src).not.toMatch(/sync_count\s*:/);
   });
 
-  it('rank/index.js 挂载 personalDaily（今日榜按日）+ require rankDaily + requireUser', () => {
+  it('rank/index.js 挂载 personalDaily（今日榜按日）+ require rankDaily（游客可浏览）', () => {
     const src = readSource('cloudfunctions/rank/index.js');
     expect(src).toMatch(/\bpersonalDaily\s*:\s*async/);
     expect(src).toMatch(/require\(['"]\.\/rankDaily['"]\)/);
-    expect(src).toMatch(/personalDaily:\s*true/);
+    // personalDaily 不再标记为需登录（游客可浏览今日榜）
+    expect(src).not.toMatch(/personalDaily:\s*true/);
   });
 
   it('rankDaily.js 纯函数模块存在且不调真实云 API + 投影脱敏', () => {

@@ -56,7 +56,7 @@
 .error-tip { text-align: center; font-size: 26rpx; color: #e64340; margin-top: 16rpx; }
 .auth-denied-block { margin-top: 32rpx; text-align: center; }
 .auth-denied-tip { display: block; font-size: 26rpx; color: #e64340; margin-bottom: 16rpx; }
-.resetting-btn { background: #fff; color: #07c160; border: 1rpx solid #07c160; border-radius: 48rpx; font-size: 28rpx; }
+.resetting-btn { background: #fff; color: #07c160; border: 1rpx solid #07c160; border-radius: 48rpx; font-size: 28rpx; box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.08); }
 
 /* ended 态：归档提示（替代同步按钮，静态不可点） */
 .archived-tip {
@@ -175,4 +175,32 @@
   color: #fff;
   border-radius: 48rpx;
   font-size: 28rpx;
+}
+
+/* 游客态引导卡片（未登录用户：展示活动概况 + 登录参与入口） */
+.guest-card {
+  text-align: center;
+  padding: 60rpx 32rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+.guest-title {
+  font-size: 36rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 16rpx;
+}
+.guest-desc {
+  font-size: 28rpx;
+  color: #888;
+  margin-bottom: 40rpx;
+}
+.guest-login-btn {
+  display: inline-block;
+  padding: 20rpx 64rpx;
+  background: #07c160;
+  color: #fff;
+  border-radius: 48rpx;
+  font-size: 30rpx;
 }

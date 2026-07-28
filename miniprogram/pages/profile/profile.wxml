@@ -5,12 +5,22 @@
     <view class="hint">加载中...</view>
   </block>
 
-  <block wx:if="{{!loading && errorMsg}}">
+  <!-- 游客态（未登录）：展示登录引导卡片，不弹框跳转 -->
+  <block wx:if="{{!loading && !isLoggedIn}}">
+    <view class="guest-card">
+      <view class="guest-avatar-placeholder">🏃</view>
+      <view class="guest-title">登录后查看个人资料</view>
+      <view class="guest-desc">查看你的邀请码、部门、累计步数和排名记录</view>
+      <button class="guest-login-btn" bindtap="onGuestLoginTap">微信登录</button>
+    </view>
+  </block>
+
+  <block wx:if="{{!loading && isLoggedIn && errorMsg}}">
     <view class="hint error">{{errorMsg}}</view>
     <button class="btn-secondary" bindtap="loadProfile">重新加载</button>
   </block>
 
-  <block wx:if="{{!loading && !errorMsg}}">
+  <block wx:if="{{!loading && isLoggedIn && !errorMsg}}">
     <!-- 头像 + 昵称 -->
     <view class="user-card">
       <image class="avatar" src="{{avatar || ''}}" mode="aspectFill" />

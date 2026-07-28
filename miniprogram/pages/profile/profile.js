@@ -4,7 +4,7 @@
 // 准入凭证为「一人一码邀请码」（注册时一次性消费，无"更改"入口）；本页只读展示 invite_code。
 // 红线：本页只展示后端下发的字段，绝不展示完整 openid。
 
-const { handleNotLoggedIn } = require('../../utils/authGuard');
+const { handleNotLoggedIn, isNotLoggedInError } = require('../../utils/authGuard');
 
 Page({
   data: {
@@ -18,10 +18,14 @@ Page({
     loading: true,
     errorMsg: '',
     // 后台入口（仅 is_admin===true 的用户可见，F8）
-    adminVisible: false
+    adminVisible: false,
+    // 游客态标志：未登录用户展示登录引导卡片，不弹框跳转。
+    isLoggedIn: true
   },
 
   onShow() {
+    // 每次 onShow 重置游客态：profile 成功 isLoggedIn=true；1002 时切为游客态。
+    this.setData({ isLoggedIn: true });
     this.loadProfile();
   },
 
@@ -57,8 +61,11 @@ Page({
         });
       })
       .catch((err) => {
-        // 1002 AUTH_USER_NOT_FOUND（未登录建号）→ 统一守卫弹框引导去登录页（utils/authGuard）。
-        if (handleNotLoggedIn(err)) return;
+        // 1002 未登录（未注册建号）→ 设游客态（不弹框不跳转），页面展示登录引导卡片。
+        if (isNotLoggedInError(err)) {
+          self.setData({ isLoggedIn: false, loading: false, errorMsg: '' });
+          return;
+        }
         // 本地轨失败 → adminVisible 保持 false（入口不显示，符合「仅管理员可见」）
         self.setData({ loading: false, errorMsg: (err && err.message) || '加载失败', adminVisible: false });
       });
@@ -80,6 +87,12 @@ Page({
   onEditProfile() {
     if (typeof wx === 'undefined' || !wx.navigateTo) return;
     wx.navigateTo({ url: '/pages/profile/edit/edit' });
+  },
+
+  /** 游客态「登录查看」入口：引导去登录页（用户主动点击）。 */
+  onGuestLoginTap() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/login/login' });
   },
 
   /** 登出：清本地状态 + 重置 globalData + 回登录页（OPENID 固定，无真正登出）。 */

@@ -18,6 +18,15 @@
 
   <!-- 进行中 / 已结束：有数据可展示 -->
   <block wx:if="{{activityStatus === 'active' || activityStatus === 'ended'}}">
+    <!-- 游客态引导卡片（未登录用户）：展示活动概况 + 登录参与入口，不强制弹框跳转 -->
+    <view class="guest-card" wx:if="{{!isLoggedIn}}">
+      <view class="guest-title">{{activityName || '健步走活动'}}</view>
+      <view class="guest-desc">{{activityStatus === 'active' ? '活动进行中，登录后即可同步步数、查看排名' : '活动已结束，登录后查看你的步数战绩'}}</view>
+      <button class="guest-login-btn" bindtap="onGuestLoginTap">登录参与</button>
+    </view>
+
+    <!-- 已登录用户的完整数据展示（游客态隐藏步数卡/同步/趋势等个性化区域） -->
+    <block wx:if="{{isLoggedIn}}">
     <!-- 步数卡：active 双卡（今日/累计）；ended 单卡（最终累计） -->
     <view class="steps-block" wx:if="{{activityStatus === 'active'}}">
       <view class="steps-card">
@@ -118,6 +127,7 @@
         {{activityStatus === 'ended' ? '暂无步数记录' : '暂无数据，请点击同步步数'}}
       </view>
     </view>
+    </block>
   </block>
 
   <!-- 未开始 / 无活动 / 加载中：整页空态 -->

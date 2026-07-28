@@ -6,7 +6,7 @@
 //   pending 未开始（空态预告）/ none 无活动（空态）。状态来自 globalData.currentActivity。
 const { STATES, transition, shouldThrottle, isSyncFresh, classifyWerunAuth } = require('./homeSync');
 const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
-const { handleNotLoggedIn } = require('../../utils/authGuard');
+const { handleNotLoggedIn, isNotLoggedInError } = require('../../utils/authGuard');
 const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData } = require('./homeStatus');
 
 Page({
@@ -37,7 +37,10 @@ Page({
     isAdmin: false,
     // 用户报名态（profile.join_status）：'pending' 未报名 / 'joined' 已报名 / 'unknown' 未查到。
     // 用于 onSyncTap 预判未报名时引导去报名，避免点了同步才被后端 1004 拦截报错。
-    joinStatus: 'unknown'
+    joinStatus: 'unknown',
+    // 游客态标志：未登录用户（1002）进主页时不弹框跳转，展示游客可见内容 + 登录引导。
+    // 由 loadStats/loadTrend 的 1002 catch 设置；onShow 每次重置为 true，接口成功后置 false。
+    isLoggedIn: true
   },
 
   onLoad() {
@@ -49,6 +52,8 @@ Page({
 
   onShow() {
     this.refreshLastSyncText();
+    // 每次 onShow 重置游客态：接口返回 1002 时才会切为游客态，成功则恢复登录态。
+    this.setData({ isLoggedIn: true });
     this.loadAdminFlag();
     // 按活动状态决定显示模式（active/ended 加载数据；pending/none 空态；unknown 补调 current）。
     this.ensureActivityStatus();
@@ -483,8 +488,11 @@ Page({
         this.setData(patch);
       })
       .catch((err) => {
-        // 1002 未登录 → 守卫引导登录（stats 需登录态）。
-        if (handleNotLoggedIn(err)) return;
+        // 1002 未登录 → 设游客态（不弹框不跳转），页面展示登录引导。
+        if (isNotLoggedInError(err)) {
+          this.setData({ isLoggedIn: false });
+          return;
+        }
         // 本地轨：云函数未部署 → 占位空态，不弹错误（同步功能照常）。
       });
   },
@@ -509,7 +517,11 @@ Page({
         this.applyTrend(list, r);
       })
       .catch((err) => {
-        if (handleNotLoggedIn(err)) return;
+        // 1002 未登录 → 设游客态（不弹框不跳转），页面展示登录引导。
+        if (isNotLoggedInError(err)) {
+          this.setData({ isLoggedIn: false });
+          return;
+        }
         this.applyTrend([], r);
       });
   },
@@ -548,5 +560,11 @@ Page({
   onActivityEntry() {
     if (typeof wx === 'undefined' || !wx.switchTab) return;
     wx.switchTab({ url: '/pages/activity/activity' });
+  },
+
+  /** 游客态「登录参与」入口：引导去登录页（用户主动点击）。 */
+  onGuestLoginTap() {
+    if (typeof wx === 'undefined' || !wx.navigateTo) return;
+    wx.navigateTo({ url: '/pages/login/login' });
   }
 });

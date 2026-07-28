@@ -92,6 +92,7 @@
   border-radius: 48rpx;
   font-size: 32rpx;
   margin-top: 24rpx;
+  box-shadow: 0 2rpx 8rpx rgba(230,67,64,0.12);
 }
 .terminate-btn[disabled] {
   color: #f0a0a0;

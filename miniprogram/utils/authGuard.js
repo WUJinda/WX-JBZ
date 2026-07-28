@@ -1,16 +1,29 @@
 /**
  * 前端登录守卫（对齐 utils/request.js 错误码体系，错误码见 cloudfunctions/common/errors.js）。
  *
- * 各需登录页（profile/home/rank）在 API catch 里调 handleNotLoggedIn(err)：
- *   - err.code === 1002（AUTH_USER_NOT_FOUND：openid 无 User 文档 = 未登录建号）
- *     → 弹 wx.showModal「请先登录」→ redirectTo 到 /pages/login/login；返回 true。
- *   - 其余错误 → 不处理，返回 false（调用方走自己的占位 / 错误逻辑）。
+ * 两种使用场景：
+ *
+ * 1. 页面自动加载路径（onShow/onLoad 触发的 API catch）：
+ *    用 isNotLoggedInError(err) 检测，不弹框、不跳转，仅设置游客态标志，
+ *    让页面展示游客可见内容 + 登录引导。符合微信审核「先浏览体验再授权」要求。
+ *
+ * 2. 用户主动操作路径（点击按钮触发的 API catch）：
+ *    用 handleNotLoggedIn(err)，弹 wx.showModal「请先登录」→ redirectTo 到 login。
  *
  * 设计要点：
  *   - 以云端 User 存在性为准（1002），不依赖易失同步的全局登录标志，避免误判；
- *   - 模块级 redirecting 锁：home/rank 一次 onShow 会并发多个请求，未登录时可能同时
- *     失败 1002，该锁保证只弹一次框（不刷屏）；modal 关闭后复位。
+ *   - 模块级 redirecting 锁：多个并发请求同时失败 1002 时只弹一次框（不刷屏）；modal 关闭后复位。
  */
+
+/**
+ * 静默检测是否为「未登录」错误（无副作用，不弹框、不跳转）。
+ * 供页面自动加载路径使用——检测到未登录时设置游客态标志，展示游客可见内容。
+ * @param {{code?: number}|null|undefined} err
+ * @returns {boolean} true = 未登录（1002）
+ */
+function isNotLoggedInError(err) {
+  return !!(err && err.code === 1002);
+}
 
 let redirecting = false;
 
@@ -38,4 +51,4 @@ function handleNotLoggedIn(err) {
   return true;
 }
 
-module.exports = { handleNotLoggedIn };
+module.exports = { isNotLoggedInError, handleNotLoggedIn };

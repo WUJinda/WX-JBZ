@@ -35,16 +35,17 @@ const DEFAULT_PAGE_SIZE = 50; // 与 rankQuery.readPersonal 同（前端 rankCal
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/; // YYYY-MM-DD（与 StepRecord.date / rankDayList.key 同格式）
 
 /**
- * 查部门名（store 注入；实现同 rankQuery.lookupDeptName，内联避免跨模块耦合）。
+ * 查部门名（store 注入；实现同 rankAggregate.lookupDeptName，内联避免跨模块耦合）。
+ * 部门仅按 dept_id 匹配，不校验 activity_id（部门跨活动复用）。
  * @param {object} store
  * @param {string} deptId
- * @param {string} activityId
+ * @param {string} activityId （保留参数兼容，实际不使用）
  * @returns {string}
  */
 function lookupDeptName(store, deptId, activityId) {
   if (!deptId || !store || !Array.isArray(store.Department)) return '';
   const dept = store.Department.find(
-    (d) => d && d.dept_id === deptId && (!d.activity_id || d.activity_id === activityId)
+    (d) => d && d.dept_id === deptId
   );
   return (dept && dept.name) || '';
 }
