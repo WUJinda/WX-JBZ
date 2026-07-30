@@ -185,6 +185,9 @@ const handlers = {
     const now = (event && event.now) || new Date().toISOString();
     const result = terminateActivity(store, { activity_id: activityId, now });
     await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
+    // 终止活动 = 当前活动结束：重置所有用户报名状态（joined → pending），
+    // 用户需重新报名参加新活动。
+    await resetUserJoinStatusToCloud(cloud, now);
     return result;
   },
 
