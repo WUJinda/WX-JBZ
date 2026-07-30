@@ -125,13 +125,9 @@ const handlers = {
 
     // 云轨：写回 Activity（upsert：存在 update，不存在 add）。单条失败不阻断、幂等可重跑。
     await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
-    // 新建活动 = 开启新一期：重置所有用户报名状态（join_status: joined → pending），
-    // 避免历史报名残留致新活动按钮误显「我的步数」、参与人数沿袭旧值（与 delete 同口径）。
-    // 单期活动模型：编辑（_isNew:false）不重置，保留现有报名。
-    if (result._isNew) {
-      await resetUserJoinStatusToCloud(cloud, now);
-    }
-    // _isNew 仅供 handler 判断是否重置，不下发前端。
+    // 新建活动不再全局重置 join_status（原逻辑假设「新建 = 新一期开始」，但实际上
+    // 新活动可能未开始，而旧活动仍在进行中——全局重置会误清旧活动参与者的报名状态）。
+    // join_status 重置改为由 terminate/delete 等显式结束活动时触发。
     const { _isNew, ...out } = result;
     return out;
   },
@@ -205,13 +201,14 @@ const handlers = {
     const activityId = (event && event.activity_id) || '';
     const now = (event && event.now) || new Date().toISOString();
     const result = deleteActivity(store, { activity_id: activityId, now });
-    // 先重置报名、后硬删活动：reset 幂等且轻量（按 join_status 过滤，与 activity_id 无关），
-    // deleteActivityToCloud 不幂等（活动文档删后重试 delete 会被纯函数 find 不到活动拦下抛
-    // BIZ_PARAM_MISSING）。先 reset 保证「参与人数归零」不受 delete 部分集合删除失败影响——
-    // 反过来 reset 在后时，delete 成功 + reset 失败会致「活动没了但参与人数残留」的卡死态
-    // （重试 delete 因活动已删被纯函数拦下，reset 永不执行）。join_status 全局不绑 activity_id，
-    // 删活动后已报名用户仍 joined 会致看板参与人数不归零，故一并清（dept_id 不动，部门与活动无关）。
-    await resetUserJoinStatusToCloud(cloud, now);
+    // 仅删除「进行中」活动时重置报名状态（删未开始/已结束活动不影响当前参与者）。
+    const deletedActivity = store.Activity.find(
+      (a) => a && (a.activity_id === activityId || a._id === activityId)
+    );
+    const deletedStatus = deletedActivity ? deriveStatus(deletedActivity) : '';
+    if (deletedStatus === 'active') {
+      await resetUserJoinStatusToCloud(cloud, now);
+    }
     await deleteActivityToCloud(cloud, result.activity_id);
     return result;
   }
