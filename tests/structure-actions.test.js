@@ -98,8 +98,7 @@ describe('activity action 挂载与页面结构校验（C1+C2）', () => {
     // CTA（四态文案至少出现「报名参加」「我的步数」「查看战绩」「活动未开始」之一，且为按钮）
     expect(wxml).toMatch(/cta/);
     expect(wxml).toMatch(/报名参加|我的步数|查看战绩|活动未开始/);
-    // 概览：全员累计步数 / 参与人数
-    expect(wxml).toMatch(/total_steps|累计步数/);
+    // 概览：参与人数
     expect(wxml).toMatch(/participant_count|参与人数/);
   });
 
@@ -524,6 +523,7 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/\bpoints\s*:\s*async/);
     expect(src).toMatch(/\badjustPoints\s*:\s*async/);
     expect(src).toMatch(/\bsettlePoints\s*:\s*async/);
+    expect(src).toMatch(/\bsyncRealNames\s*:\s*async/);
     // 白名单导入已移除
     expect(src).not.toMatch(/\bwhitelistImport\s*:\s*async/);
   });
@@ -543,18 +543,18 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     expect(src).toMatch(/require\(['"]\.\/pointAdjust['"]\)/);
   });
 
-  it('admin/index.js 全部 15 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
+  it('admin/index.js 全部 16 handler 调用 assertAdmin（管理员守卫全覆盖）', () => {
     const src = readSource('cloudfunctions/admin/index.js');
     // 语义说明：每个管理员 handler 必须在入口调用 assertAdmin 做管理员守卫，
     // 漏一个 handler 会导致非管理员可绕过鉴权调用该 action。
-    // admin 共 15 个 action（inviteCode.generate/list/disable + users/changeDept/abnormalList/verdict/
-    // dashboard/deptManage/setAdmin/refreshRank/points/adjustPoints/settlePoints/ensureSchema），
-    // 故 assertAdmin 语句调用必须精确出现 15 次（每个 handler 内 1 次）。
+    // admin 共 16 个 action（inviteCode.generate/list/disable + users/changeDept/abnormalList/verdict/
+    // dashboard/deptManage/setAdmin/refreshRank/points/adjustPoints/settlePoints/ensureSchema/syncRealNames），
+    // 故 assertAdmin 语句调用必须精确出现 16 次（每个 handler 内 1 次）。
     const actions = [
       'inviteCode.generate', 'inviteCode.list', 'inviteCode.disable',
       'users', 'changeDept', 'abnormalList', 'verdict', 'dashboard',
       'deptManage', 'setAdmin', 'refreshRank', 'points', 'adjustPoints',
-      'settlePoints', 'ensureSchema'
+      'settlePoints', 'ensureSchema', 'syncRealNames'
     ];
     // 结构化断言：每个 handler 块内都含 assertAdmin（按 handler 名切分源码块）。
     for (const act of actions) {
@@ -587,16 +587,16 @@ describe('admin action 挂载与 assertAdmin 全覆盖（H1）', () => {
     }
   });
 
-  it('assertAdmin 全仓调用总数 = 20（admin 15 + activity 5），锁定无遗漏', () => {
+  it('assertAdmin 全仓调用总数 = 21（admin 16 + activity 5），锁定无遗漏', () => {
     // 跨文件精确总数：避免未来新增 action 漏挂守卫而计数断言不报警。
     // 只数语句调用（行首缩进 + assertAdmin(store），排除注释/require 解构文本。
     const adminSrc = readSource('cloudfunctions/admin/index.js');
     const activitySrc = readSource('cloudfunctions/activity/index.js');
     const adminCount = (adminSrc.match(/^\s+assertAdmin\(store/gm) || []).length;
     const activityCount = (activitySrc.match(/^\s+assertAdmin\(store/gm) || []).length;
-    expect(adminCount).toBe(15);
+    expect(adminCount).toBe(16);
     expect(activityCount).toBe(5);
-    expect(adminCount + activityCount).toBe(20);
+    expect(adminCount + activityCount).toBe(21);
   });
 
   it('admin 纯函数模块文件存在（11 个）', () => {

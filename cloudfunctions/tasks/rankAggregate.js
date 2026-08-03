@@ -158,7 +158,8 @@ function buildPersonalRanking({ store, activityId, today, startDate, endDate }) 
         user_id: openid,
         total_steps: entry.total,
         first_reach_at: firstReachAt,
-        nickname: maskNickname(user.nickname || ''),
+        // 排行榜展示名：有实名用实名（不脱敏），否则用脱敏昵称
+        nickname: user.real_name || maskNickname(user.nickname || ''),
         dept_id: deptId,
         dept_name: lookupDeptName(store, deptId, activityId)
       });

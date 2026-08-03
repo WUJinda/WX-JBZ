@@ -25,6 +25,7 @@ const COLLECTIONS = {
       _openid: { type: 'string', onlyServer: true, desc: '微信 openid（唯一），鉴权身份键' },
       unionid: { type: 'string', optional: true, onlyServer: true, desc: '微信 unionid（可选，预留）' },
       nickname: { type: 'string', desc: '昵称（取微信昵称或自填）' },
+      real_name: { type: 'string', optional: true, desc: '实名（通过邀请码批量导入，用于排行榜和管理后台展示）' },
       avatar: { type: 'string', desc: '头像 URL（取微信头像或自传）' },
       invite_code: { type: 'string', desc: '注册时使用的邀请码（一人一码准入券，由 auth.register 写入，仅审计/展示用，不加唯一索引）' },
       dept_id: { type: 'string', optional: true, desc: '部门 id（报名后写入）' },

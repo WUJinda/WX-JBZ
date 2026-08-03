@@ -343,6 +343,52 @@ const handlers = {
       );
     }
     return ensureSchema(cloud);
+  },
+
+  // 批量同步实名：通过邀请码匹配用户，写入 real_name 字段。
+  // event.mappings = [{ invite_code: 'ABCD12', real_name: '张三' }, ...]
+  syncRealNames: async (event, context) => {
+    const store = { User: await loadByWhere(cloud, 'User') };
+    assertAdmin(store, context.openid);
+
+    const mappings = (event && event.mappings) || [];
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+      throw BizError(CODE.BIZ_PARAM_MISSING, 'syncRealNames: mappings required');
+    }
+
+    const db = cloud.database();
+    let updated = 0;
+    let skipped = 0;
+    const failed = [];
+
+    for (const m of mappings) {
+      if (!m || !m.invite_code || !m.real_name) {
+        skipped++;
+        continue;
+      }
+      try {
+        // 微信云 where().update 单次最多 20 条，invite_code 理论唯一所以最多 1 条
+        const res = await db
+          .collection('User')
+          .where({ invite_code: m.invite_code })
+          .update({
+            data: {
+              real_name: String(m.real_name).trim(),
+              updated_at: new Date().toISOString()
+            }
+          });
+        const n = (res && res.stats && res.stats.updated) || 0;
+        if (n > 0) {
+          updated++;
+        } else {
+          skipped++; // 邀请码无匹配用户（用户尚未注册）
+        }
+      } catch (err) {
+        failed.push(m.invite_code);
+      }
+    }
+
+    return { updated, skipped, failed };
   }
 };
 

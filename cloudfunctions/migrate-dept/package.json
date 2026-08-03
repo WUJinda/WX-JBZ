@@ -1,0 +1,9 @@
+{
+  "name": "migrate-dept",
+  "version": "1.0.0",
+  "description": "临时迁移：把「单位领导」成员全部归入「综合办公室」",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

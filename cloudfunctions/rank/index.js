@@ -16,7 +16,7 @@ const { getActiveActivityId, getActivityById } = require('../activity/activityRe
 // personalDaily（今日榜按日）拉取投影：与 tasks rankAggregate 的 *_FIELDS_AGG 同口径。
 //   StepRecord 不拉 locked（今日榜口径 isValidStepRecord 不依赖 locked）；User 拉 _openid（关联键，投影不下发）。
 const STEP_FIELDS_DAILY = { _id: 1, user_id: 1, activity_id: 1, date: 1, steps: 1, synced_at: 1 };
-const USER_FIELDS_DAILY = { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1 };
+const USER_FIELDS_DAILY = { _id: 1, _openid: 1, nickname: 1, real_name: 1, dept_id: 1, join_status: 1 };
 const DEPT_FIELDS_DAILY = { _id: 1, dept_id: 1, name: 1, activity_id: 1 };
 
 const handlers = {

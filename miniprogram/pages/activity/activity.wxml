@@ -65,13 +65,9 @@
     disabled="{{cta.disabled}}"
   >{{cta.text}}</button>
 
-  <!-- 数据概览：全员累计步数 / 参与人数 -->
+  <!-- 数据概览：参与人数 -->
   <view class="overview-block">
     <view class="block-title">数据概览</view>
-    <view class="overview-row">
-      <text class="overview-label">全员累计步数</text>
-      <text class="overview-value">{{overview.total_steps}}</text>
-    </view>
     <view class="overview-row">
       <text class="overview-label">参与人数</text>
       <text class="overview-value">{{overview.participant_count}}</text>

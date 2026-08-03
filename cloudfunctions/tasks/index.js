@@ -18,7 +18,7 @@ const { settleActivityPoints } = require('./pointSettle');
 
 // P0-5 字段投影：聚合只需这些字段，投影掉 _openid/phone/sync_count 等敏感字段。
 const STEP_FIELDS_AGG = { _id: 1, user_id: 1, activity_id: 1, date: 1, steps: 1, locked: 1, synced_at: 1 };
-const USER_FIELDS_AGG = { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1 };
+const USER_FIELDS_AGG = { _id: 1, _openid: 1, nickname: 1, real_name: 1, dept_id: 1, join_status: 1 };
 const DEPT_FIELDS_AGG = { _id: 1, dept_id: 1, name: 1, activity_id: 1, member_count: 1, size: 1 };
 // pointSettle 投影：结算需读写 User.points（比聚合 USER_FIELDS_AGG 多 points 字段）。
 const USER_FIELDS_SETTLE = { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1, points: 1 };

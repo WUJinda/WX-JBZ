@@ -44,7 +44,7 @@
       <image class="avatar" src="{{item.avatar}}" mode="aspectFill"></image>
       <view class="info">
         <view class="nickname">
-          <text>{{item.nickname || '未命名'}}</text>
+          <text>{{item.real_name || item.nickname || '未命名'}}</text>
           <text class="admin-badge" wx:if="{{item.is_admin}}">管理员</text>
         </view>
         <view class="meta">

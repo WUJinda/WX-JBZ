@@ -131,7 +131,8 @@ async function readPersonalDaily(params) {
       user_id: uid,
       steps: Number(rec.steps) || 0,
       synced_at: rec.synced_at || null,
-      nickname: maskNickname(u.nickname || ''),
+      // 排行榜展示名：有实名用实名（不脱敏），否则用脱敏昵称
+      nickname: u.real_name || maskNickname(u.nickname || ''),
       dept_id: deptId,
       dept_name: lookupDeptName(store, deptId, activityId)
     });

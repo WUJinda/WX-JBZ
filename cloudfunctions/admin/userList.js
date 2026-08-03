@@ -16,6 +16,7 @@ const DEFAULT_PAGE_SIZE = 50;
 const USER_FIELDS = [
   '_id',
   'nickname',
+  'real_name',
   'avatar',
   'invite_code',
   'dept_id',
@@ -64,13 +65,14 @@ function queryUsers(store, params) {
     filtered = filtered.filter((u) => u.dept_id === p.deptId);
   }
 
-  // keyword 模糊匹配 nickname / invite_code（大小写不敏感）。
+  // keyword 模糊匹配 nickname / real_name / invite_code（大小写不敏感）。
   if (p.keyword) {
     const kw = String(p.keyword).toLowerCase();
     filtered = filtered.filter((u) => {
       const nick = (u.nickname || '').toLowerCase();
+      const real = (u.real_name || '').toLowerCase();
       const code = (u.invite_code || '').toLowerCase();
-      return nick.indexOf(kw) >= 0 || code.indexOf(kw) >= 0;
+      return nick.indexOf(kw) >= 0 || real.indexOf(kw) >= 0 || code.indexOf(kw) >= 0;
     });
   }
 
