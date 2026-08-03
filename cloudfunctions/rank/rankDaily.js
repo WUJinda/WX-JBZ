@@ -123,9 +123,12 @@ async function readPersonalDaily(params) {
   });
 
   // 收集行：只列有当天记录的用户（产品口径 A：当日已同步者进榜，不遍历 User 表补 0 步/未同步用户）。
+  // 过滤被移除参赛资格的用户（join_status='removed'），与累计榜 rankAggregate 口径一致。
   const rows = [];
   for (const [uid, rec] of byUser) {
     const u = userMap.get(uid) || {};
+    // 跳过非 joined 状态的用户（管理员移除 / 已退赛）。
+    if (u.join_status && u.join_status !== 'joined') continue;
     const deptId = u.dept_id || '';
     rows.push({
       user_id: uid,

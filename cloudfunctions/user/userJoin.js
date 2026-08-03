@@ -85,6 +85,14 @@ async function joinDepartment(params) {
     );
   }
 
+  // 管理员移除参赛资格（join_status='removed'）：不允许自行恢复。
+  if (user.join_status === 'removed') {
+    throw BizError(
+      CODE.AUTH_JOIN_STATUS_DENIED,
+      '参赛资格已被移除，如需恢复请联系管理员'
+    );
+  }
+
   // 活动已手动终止（terminated 不可恢复）→ 拒绝新报名（与 steps.sync 终止拦截同码同语义）。
   // handler 从活动文档取 terminated 传入；缺省/活动查询失败 → 不校验（降级兼容，不阻断报名）。
   if (activityTerminated === true) {
