@@ -110,11 +110,24 @@ async function registerUser(params) {
   // 原子消费邀请码（unused→used，绑定 openid）。失败按码状态精确抛错。
   await consumeCode({ db, code, openid, now: ts });
 
-  // 建号。复用 buildNewUser 构造基础文档后写入 invite_code。
-  const doc = buildNewUser({ openid }, { nickname: nicknameTrim, avatar: avatarVal }, () => ts);
-  doc.invite_code = code;
+  // 消费成功后，从 InviteCode 文档读取 real_name（管理员预置），写入新用户。
+  let realName = '';
   try {
-    await userCol.add({ data: doc });
+    const codeDoc = await db.collection('InviteCode')
+      .where({ code, status: 'used', used_by: openid })
+      .get();
+    const doc = (codeDoc.data && codeDoc.data[0]) || null;
+    if (doc && typeof doc.real_name === 'string') {
+      realName = doc.real_name;
+    }
+  } catch (_) { /* 查询失败不阻塞注册 */ }
+
+  // 建号。复用 buildNewUser 构造基础文档后写入 invite_code + real_name。
+  const newDoc = buildNewUser({ openid }, { nickname: nicknameTrim, avatar: avatarVal }, () => ts);
+  newDoc.invite_code = code;
+  newDoc.real_name = realName;
+  try {
+    await userCol.add({ data: newDoc });
   } catch (e) {
     // 建号失败：回滚邀请码（used→unused），避免码白白浪费。
     // where 限定 used+openid 确保只回滚本次消费的码，不影响并发其他用户。

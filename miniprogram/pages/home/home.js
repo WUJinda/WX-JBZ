@@ -383,9 +383,6 @@ Page({
           this._forceEnded = true;
           this.apply({ type: 'CLOUD_FAIL', payload: { message: '活动已结束，无法同步' } });
           this.setData({ activityStatus: ACT_STATUS.ENDED });
-        } else if (err && err.code === 3003) {
-          // STEP_SYNC_LIMIT 频控（R3.3）
-          this.apply({ type: 'CLOUD_RATE_LIMIT' });
         } else if (err && err.code === 1004) {
           // AUTH_JOIN_STATUS_DENIED：未报名（pending）。预判未拦截到（冷启动 joinStatus 未就绪）时的兜底。
           // 回 IDLE（RESET 不清 today/total，不显示失败文案，弹窗引导更清晰）+ 引导去 activity 页报名。

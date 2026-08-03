@@ -163,70 +163,45 @@ describe('syncSteps 异常阈值（R3.6）', () => {
   });
 });
 
-describe('syncSteps 频控（R3.3）', () => {
+describe('syncSteps 无每日次数上限（已取消频控）', () => {
   const NOW = new Date('2026-07-01T04:00:00Z');
 
-  it('同用户同日 > 6 次落库被拒（第 7 次抛 STEP_SYNC_LIMIT）', async () => {
+  it('同用户同日可多次同步，不抛 STEP_SYNC_LIMIT', async () => {
     const store = makeStore();
     const list = stepList([['2026-07-01', 8000]]);
-    // 6 次成功
-    for (let i = 0; i < 6; i++) {
+    // 连续同步 10 次，全部成功
+    for (let i = 0; i < 10; i++) {
       await syncSteps({
         store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
         stepInfoList: list, activity: mockActivity(), now: NOW
       });
     }
     const rec = store.StepRecord.find((r) => r.date === '2026-07-01');
-    expect(rec.sync_count).toBe(6);
-    // 第 7 次拒绝
-    await expect(
-      syncSteps({
-        store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
-        stepInfoList: list, activity: mockActivity(), now: NOW
-      })
-    ).rejects.toMatchObject({ code: CODE.STEP_SYNC_LIMIT });
+    expect(rec.sync_count).toBe(10);
+    expect(rec.steps).toBe(8000);
   });
 
-  it('maxSyncPerDay 可配置', async () => {
-    const store = makeStore();
-    const list = stepList([['2026-07-01', 8000]]);
-    await syncSteps({
-      store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
-      stepInfoList: list, activity: mockActivity(), now: NOW,
-      config: { maxSyncPerDay: 1 }
-    });
-    await expect(
-      syncSteps({
-        store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
-        stepInfoList: list, activity: mockActivity(), now: NOW,
-        config: { maxSyncPerDay: 1 }
-      })
-    ).rejects.toMatchObject({ code: CODE.STEP_SYNC_LIMIT });
-  });
-
-  it('默认 maxSyncPerDay = 6', () => {
-    expect(DEFAULT_CONFIG.maxSyncPerDay).toBe(6);
-  });
-
-  it('跨日频控独立：新的一天计数重置', async () => {
+  it('跨日 sync_count 独立重置', async () => {
     const NOW_DAY1 = new Date('2026-07-01T04:00:00Z');
     const NOW_DAY2 = new Date('2026-07-02T04:00:00Z');
     const store = makeStore();
-    // 第一天同步 6 次（达上限）
-    for (let i = 0; i < 6; i++) {
+    // 第一天同步 3 次
+    for (let i = 0; i < 3; i++) {
       await syncSteps({
         store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
         stepInfoList: stepList([['2026-07-01', 8000]]),
         activity: mockActivity(), now: NOW_DAY1
       });
     }
-    // 第二天可继续同步（计数独立）
+    // 第二天 sync_count 重置为 1
     await syncSteps({
       store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
       stepInfoList: stepList([['2026-07-02', 9000]]),
       activity: mockActivity(), now: NOW_DAY2
     });
+    const d1 = store.StepRecord.find((r) => r.date === '2026-07-01');
     const d2 = store.StepRecord.find((r) => r.date === '2026-07-02');
+    expect(d1.sync_count).toBe(3);
     expect(d2.sync_count).toBe(1);
   });
 });

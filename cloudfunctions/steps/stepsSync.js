@@ -1,11 +1,11 @@
 /**
  * steps.sync 业务纯函数（对齐技术架构 §5.5/§6.2/§6.4/§5.5，PRD F3 R3.1~R3.6）。
  *
- * 职责（按日 upsert 去重 + 异常阈值 + 频控 + 锁定不改值 + 活动结束禁同步）：
+ * 职责（按日 upsert 去重 + 异常阈值 + 锁定不改值 + 活动结束禁同步）：
  *   - R3.2 去重：同一 (user_id, activity_id, date) 仅一条，取最新同步值覆盖；
  *     锁定记录（locked=true）不覆盖（架构 §6.4）。
  *   - R3.6 异常阈值：单日 steps > 阈值（默认 50000）→ abnormal=true（仅标记不剔除），可配置。
- *   - R3.3 频控：同用户同日 sync_count > MAX（默认 6）→ 拒绝落库，可配置。
+ *   - sync_count 仍按日累加（追踪用），但不做次数上限拦截（已取消每日频控）。
  *   - R3.5 活动结束：activity 已 ended → sync 拒绝。
  *   - 记 synced_at。
  *
@@ -27,7 +27,6 @@ const { deriveStatus, STATUS } = require('../activity/activityStatus');
  */
 const DEFAULT_CONFIG = {
   abnormalThreshold: 50000, // R3.6：单日 > 此值标 abnormal（可配置）
-  maxSyncPerDay: 6, // R3.3：同用户同日 sync_count 上限（可配置）
   timezoneOffsetMinutes: 480 // 北京时间 UTC+8（date 取本地日，offset 为「UTC→本地」需加的分钟数）
 };
 
@@ -97,7 +96,7 @@ function activityEndDate(activity, offsetMinutes) {
  * → home「累计/参与天数/排名/趋势」进入即全 0（仅 sync 当下用 sync 返回值才正常）。
  *
  * 语义调整：`locked` 降级为 syncSteps 写入时「禁止覆盖」的标记（防活动后期篡改），不再是
- * 「是否有效」的前置。理由：步数解密自微信运动（真实不可伪造）+ 每日频控 + 活动结束 sync 拒绝
+ * 「是否有效」的前置。理由：步数解密自微信运动（真实不可伪造）+ 活动结束 sync 拒绝
  * （STEP_ACTIVITY_CLOSED）→ 活动期内允许 sync 用最新真实值刷新历史日，结束后自然固化。
  *
  * @param {object} r StepRecord（须含 date 字符串）
@@ -170,7 +169,7 @@ function projectStep(rec) {
  * 流程：
  *   1. 活动状态判定：ended → 拒绝（R3.5）。
  *   2. 解密后的 stepInfoList 按日聚合（仅活动期内 date）。
- *   3. 频控：对「当日」(now 所在日) 检查同用户 sync_count 上限（R3.3）。
+ *   3. sync_count：当日累加（追踪用），无次数上限。
  *   4. 逐日 upsert（R3.2 去重）：
  *      - 命中已有记录：locked=true 不覆盖（§6.4）；否则更新 steps/abnormal/synced_at（sync_count 仅当日累加）。
  *      - 无记录：插入。
@@ -184,9 +183,9 @@ function projectStep(rec) {
  * @param {Array<{timestamp:number, step:number}>} params.stepInfoList 解密后的近 30 天步数
  * @param {object} [params.activity] 活动文档（含 start_time/end_time）；缺省则不强加活动期过滤
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
- * @param {object} [params.config] 配置覆盖（abnormalThreshold/maxSyncPerDay/timezoneOffsetMinutes）
+ * @param {object} [params.config] 配置覆盖（abnormalThreshold/timezoneOffsetMinutes）
  * @returns {Promise<object>} { today: {date, steps, abnormal}, history: projectStep[], total: number }
- * @throws {BizError} 缺参 / 活动结束 / 频控超限
+ * @throws {BizError} 缺参 / 活动结束
  */
 async function syncSteps(params) {
   const p = params || {};
@@ -212,15 +211,11 @@ async function syncSteps(params) {
   const nowDate = now instanceof Date ? now : new Date();
   const today = dateFromTimestamp(Math.floor(nowDate.getTime() / 1000), cfg.timezoneOffsetMinutes);
 
-  // 频控（R3.3）：仅针对「当日」的同步计数。取当日已有记录的 sync_count（去重后每用户当日一条）。
-  // 计数口径：以「当日最近一次 sync 落库后的 sync_count」为准，每次同步 +1，> MAX 拒绝。
+  // sync_count 仍按日累加（追踪用），但不做次数上限拦截（已取消每日频控）。
   const todayRec = store.StepRecord.find(
     (r) => r && r.user_id === userId && r.activity_id === activityId && r.date === today
   );
   const todayCount = todayRec ? Number(todayRec.sync_count) || 0 : 0;
-  if (todayCount >= cfg.maxSyncPerDay) {
-    throw BizError(CODE.STEP_SYNC_LIMIT, 'sync: exceed daily sync limit (' + cfg.maxSyncPerDay + ')');
-  }
 
   // 按日聚合 stepInfoList。
   const byDate = aggregateByDate(stepInfoList, cfg.timezoneOffsetMinutes);
@@ -255,7 +250,7 @@ async function syncSteps(params) {
       existing.steps = item.steps;
       existing.abnormal = abnormal;
       existing.synced_at = syncedAtIso;
-      // sync_count：仅当日累加；非当日 date 不增加计数（按日频控）。
+      // sync_count：仅当日累加；非当日 date 不增加计数。
       if (item.date === today) {
         existing.sync_count = newCount;
       }

@@ -43,12 +43,6 @@ describe('homeSync 授权状态机 transition', () => {
     expect(s.lastSyncTs).toBe(1000);
   });
 
-  it('CLOUD_RATE_LIMIT → rateLimited（频控提示）', () => {
-    const s = transition({ syncState: STATES.SYNCING }, { type: 'CLOUD_RATE_LIMIT' });
-    expect(s.syncState).toBe(STATES.RATE_LIMITED);
-    expect(s.errorMsg).toContain('上限');
-  });
-
   it('CLOUD_FAIL → failed（携带错误信息）', () => {
     const s = transition(
       { syncState: STATES.SYNCING },
