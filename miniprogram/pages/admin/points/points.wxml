@@ -51,7 +51,7 @@
   <view class="point-list" wx:if="{{!loading}}">
     <view class="point-row" wx:for="{{list}}" wx:key="_id">
       <view class="info">
-        <view class="nickname">{{item.nickname || '未命名'}}</view>
+        <view class="nickname">{{item.real_name || item.nickname || '未命名'}}</view>
         <view class="meta">
           <text>{{item.dept_name || item.dept_id || '未分部门'}}</text>
           <text class="dot">·</text>
@@ -62,7 +62,7 @@
       <view
         class="adjust-btn"
         data-user-id="{{item._id}}"
-        data-nickname="{{item.nickname}}"
+        data-nickname="{{item.real_name || item.nickname}}"
         data-points="{{item.points}}"
         bindtap="onOpenAdjust"
       >调整</view>

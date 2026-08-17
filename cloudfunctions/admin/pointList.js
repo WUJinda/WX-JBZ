@@ -16,7 +16,7 @@
 const DEFAULT_PAGE_SIZE = 50;
 
 // 投影白名单：逐字段枚举，绝不下发 _openid / phone / sync_count。
-const POINT_USER_FIELDS = ['_id', 'nickname', 'dept_id', 'points'];
+const POINT_USER_FIELDS = ['_id', 'nickname', 'real_name', 'dept_id', 'points'];
 
 /**
  * 积分台账用户投影：白名单字段 + join dept_name + total_steps（辅助）。

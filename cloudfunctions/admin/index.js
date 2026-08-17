@@ -270,7 +270,7 @@ const handlers = {
     const store = {
       // 投影须含 is_admin：assertAdmin 依 user.is_admin===true 判定（adminGuard.js:32），
       //   漏投影则字段 undefined→!==true→必抛 AUTH_NOT_ADMIN(1003)，积分台账列表任何管理员调都失败。
-      User: await loadByWhere(cloud, 'User', {}, { _id: 1, _openid: 1, nickname: 1, dept_id: 1, join_status: 1, points: 1, is_admin: 1 }),
+      User: await loadByWhere(cloud, 'User', {}, { _id: 1, _openid: 1, nickname: 1, real_name: 1, dept_id: 1, join_status: 1, points: 1, is_admin: 1 }),
       Department: await loadByWhere(cloud, 'Department'),
       RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId })
     };
