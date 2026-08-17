@@ -81,8 +81,9 @@ const handlers = {
     return result;
   },
 
-  // G4: 活动结束积分结算（个人榜 Top3 +5/3/1，部门榜第1名部门参赛人员每人 +2）。
+  // G4: 活动结束积分结算（个人榜前10名平缓曲线 +12/10/8/7/6/5/4/3/2/1（0步跳过不递补），部门榜第1名部门参赛人员每人 +2）。
   // 系统级不鉴权（与 rankAggregate/dailyLock 同）。结算幂等：纯函数判 points_settled + handler CAS 占位防并发重发。
+  // 结算成功同时写 settlement 摘要（部门冠军+前十名单）到 Activity，供 activity.current 下发给活动页弹窗。
   pointSettle: async (event) => {
     const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const activity = await getActivityById(cloud, activityId);
@@ -94,9 +95,16 @@ const handlers = {
     const result = await settleActivityPoints({ store, activityId, activity, now });
     if (!result.settled) return result; // 未结束 / 已结算 / 无 RankCache → 跳过
     // CAS 占位（防并发重发）：where(points_settled:false).update(true)，updated===0 说明已被其他实例结算 → 不发奖。
+    // settlement 摘要（活动页弹窗数据）随同一次 update 原子落库，不单独写、不会与积分状态分叉。
     const upd = await cloud.database().collection('Activity')
       .where({ activity_id: activityId, points_settled: false })
-      .update({ data: { points_settled: true, points_settled_at: result.settledAt } });
+      .update({
+        data: {
+          points_settled: true,
+          points_settled_at: result.settledAt,
+          settlement: result.settlement
+        }
+      });
     if (!(upd && upd.stats && upd.stats.updated)) {
       return Object.assign({}, result, { settled: false, alreadySettled: true });
     }

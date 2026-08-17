@@ -153,6 +153,10 @@ function projectActivity(activity, status, overview) {
     // calcCountdown 靠 a.terminated===true 判「已终止」→ ended。若不下发，手动终止后前端仍按时间窗算成「进行中」。
     terminated: a.terminated === true,
     rules: a.rules || '',
+    // 结算公告摘要（pointSettle 结算后写入；未结算为 null）：活动页「比赛结束」弹窗用。
+    // 含部门冠军 + 前十名得分名单（nickname 为 rankAggregate 已脱敏的展示名，与排行榜同等可见面）。
+    // 不含 openid/敏感字段；新活动顶替后 current 切换，旧活动 settlement 不再下发 → 弹窗自然取消。
+    settlement: a.settlement || null,
     overview: {
       total_steps: typeof ov.total_steps === 'number' && ov.total_steps >= 0
         ? Math.floor(ov.total_steps)

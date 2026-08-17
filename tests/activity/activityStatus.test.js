@@ -248,4 +248,32 @@ describe('activity.current 纯函数（C1）', () => {
       expect(JSON.stringify(arr)).toBe(snapshot);
     });
   });
+
+  describe('projectActivity 下发 settlement（结算公告摘要）', () => {
+    const settlement = {
+      settled_at: '2026-07-22T00:00:00Z',
+      dept_champion: { dept_id: 'd1', dept_name: '综合部' },
+      top: [{ rank: 1, nickname: '甲', delta: 12 }]
+    };
+
+    it('已结算活动 → settlement 原样下发', () => {
+      const out = projectActivity(
+        { activity_id: 'a_001', start_time: START, end_time: END, settlement },
+        STATUS.ENDED
+      );
+      expect(out.settlement).toEqual(settlement);
+    });
+
+    it('未结算/无 settlement 字段 → 下发 null（前端不弹窗）', () => {
+      const out = projectActivity({ activity_id: 'a_001', start_time: START, end_time: END }, STATUS.ACTIVE);
+      expect(out.settlement).toBeNull();
+    });
+
+    it('settlement 不含 openid 等敏感字段（昵称与排行榜同等可见面）', () => {
+      const s = { dept_champion: { dept_id: 'd1', dept_name: '综合部' }, top: [{ rank: 1, nickname: '甲', delta: 12 }] };
+      const json = JSON.stringify(projectActivity({ settlement: s }, STATUS.ENDED).settlement);
+      expect(json).not.toContain('openid');
+      expect(json).not.toContain('phone');
+    });
+  });
 });

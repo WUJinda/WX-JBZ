@@ -1,5 +1,5 @@
 // pages/admin/points/points.js
-// 后台积分台账：查看全员积分 + 手动调整 + 手动触发结算（积分规则：个人榜前3名 +5/3/1，部门榜第1名部门成员每人 +2）。
+// 后台积分台账：查看全员积分 + 手动调整 + 手动触发结算（积分规则：个人榜前10名 +12/10/8/7/6/5/4/3/2/1（0步跳过不递补），部门榜第1名部门成员每人 +2）。
 //
 // 对接 admin.points（queryPoints 输出 list:[{_id,nickname,dept_id,dept_name,points,total_steps}], totalCount）
 // 调整对接 admin.adjustPoints（adjustPoints 输出 {userId,points,delta,updatedAt}）

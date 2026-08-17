@@ -8,7 +8,7 @@
   <!-- 积分规则说明 -->
   <view class="rule-block">
     <view class="rule-title">积分规则</view>
-    <view class="rule-line">个人榜 第 1/2/3 名：+5 / +3 / +1 分</view>
+    <view class="rule-line">个人榜前 10 名：+12 / +10 / +8 / +7 / +6 / +5 / +4 / +3 / +2 / +1 分（0 步不发分）</view>
     <view class="rule-line">部门榜 第 1 名 部门全员：每人 +2 分</view>
     <view class="rule-tip">活动结束后按最终榜单自动结算一次。下方可手动调整或立即结算。</view>
     <button class="settle-btn" bindtap="onSettle">立即结算</button>

@@ -1,11 +1,14 @@
 /**
  * tasks.settleActivityPoints 业务纯函数（个人积分规则结算部分）。
  *
- * 职责：活动结束后，按【最终累计榜单】一次性结算积分：
- *   - 个人榜第 1/2/3 名分别 +5/+3/+1；
+ * 职责：活动结束后，按【最终累计榜单】一次性结算积分（2026-08-17 规则调整，对标 F1 名次分制）：
+ *   - 个人榜前 10 名（PERSONAL_AWARDS 平缓曲线）分别 +12/+10/+8/+7/+6/+5/+4/+3/+2/+1；
+ *   - 0 步门槛（F1「完赛才计分」）：total_steps<=0 的名次跳过且【不递补】——
+ *     有效步数人数不足 10 时宁缺毋滥，防 0 步/未同步用户滑进前十得分；
  *   - 部门榜第 1 名（非小样本部门），该部门所有参赛人员（join_status==='joined'）每人 +2；
- *   - 个人奖与部门奖叠加（同人既是个人 Top3 又在部门第1名部门 → 两笔相加）。
+ *   - 个人奖与部门奖叠加（同人既是个人前 10 又在部门第1名部门 → 两笔相加）。
  *   - 部门奖排除 small_sample 部门：若所有部门均为小样本则跳过部门奖（防 1~2 人部门凭极值获奖）。
+ *   - 生成结算公告摘要 settlement（活动页「比赛结束」弹窗用）：部门冠军 + 前十名得分名单。
  *
  * 结算数据来源：读 store.RankCache（已被 tasks.rankAggregate 聚合的最终榜），不重算。
  *   end_time 后 steps.sync 被拒（STEP_ACTIVITY_CLOSED），步数固化，RankCache 即最终值；
@@ -27,8 +30,9 @@
 const { CODE, BizError } = require('../common/errors');
 const { deriveStatus } = require('../activity/activityStatus');
 
-// 个人榜名次 → 积分（rank 1/2/3 → 5/3/1）。
-const PERSONAL_AWARDS = [5, 3, 1];
+// 个人榜名次 → 积分（前 10 名平缓曲线：rank 1~10 → 12/10/8/7/6/5/4/3/2/1）。
+// 2026-08-17 调整：Top3 [5,3,1] → Top10 平缓版——扩大得分面 + 头部差距平缓防碾压（对标 F1 名次分，曲线取平缓变体）。
+const PERSONAL_AWARDS = [12, 10, 8, 7, 6, 5, 4, 3, 2, 1];
 // 部门榜第 1 名部门参赛人员每人积分。
 const DEPT_WINNER_MEMBER_AWARD = 2;
 
@@ -48,7 +52,12 @@ const DEPT_WINNER_MEMBER_AWARD = 2;
  *   activityId, settled: boolean,
  *   alreadySettled?: boolean,        // activity.points_settled===true → 跳过
  *   skipped?: 'not-ended'|'no-rankcache',
- *   awards?: [{ userId, openid, delta, reason }],  // reason: 'personal-rank-1/2/3' | 'dept-winner-member'
+ *   awards?: [{ userId, openid, delta, reason }],  // reason: 'personal-rank-N'(N=1~10) | 'dept-winner-member'
+ *   settlement?: {                  // 结算公告摘要（活动页弹窗），就地写 activity.settlement 随 handler CAS 落库
+ *     settled_at: string(ISO),
+ *     dept_champion: { dept_id, dept_name } | null,  // null=全小样本等无部门冠军
+ *     top: [{ rank, nickname, delta }]               // 实际获得名次分者（0 步跳过的不在列，rank 为榜单真实名次）
+ *   },
  *   settledAt?: string(ISO)
  * }
  */
@@ -79,7 +88,7 @@ async function settleActivityPoints(params) {
     return { activityId, settled: false, skipped: 'not-ended', settledAt };
   }
 
-  // 读最终榜单：personal 取 Top3，dept 取第 1 名。
+  // 读最终榜单：personal 取前 PERSONAL_AWARDS.length 名，dept 取第 1 名。
   const personalDoc = store.RankCache.find(
     (d) => d && d.type === 'personal' && d.activity_id === activityId
   );
@@ -98,16 +107,29 @@ async function settleActivityPoints(params) {
     if (u && u._openid) userByOpenid.set(u._openid, u);
   });
 
-  // 个人奖：Top3（rows 已按 rank 升序）。
-  const top3 = personalRows.slice(0, 3);
-  top3.forEach((row, i) => {
+  // 结算公告摘要：前十名得分名单（实际发名次分者，0 步跳过的不在列）。
+  const settlementTop = [];
+
+  // 个人奖：前 PERSONAL_AWARDS.length 名（rows 已按 rank 升序）。
+  // 0 步门槛（2026-08-17 决策，对标 F1「完赛才计分」）：total_steps<=0 跳过且不递补——
+  //   参与且产生步数的人数不足 10 时，靠后的名次分作废，防 0 步/未同步用户滑进前十得分。
+  const topRankers = personalRows.slice(0, PERSONAL_AWARDS.length);
+  topRankers.forEach((row, i) => {
     const openid = row && row.user_id;
     const delta = PERSONAL_AWARDS[i];
     if (!openid || !delta) return;
+    if (!(Number(row.total_steps) > 0)) return; // 0 步门槛：跳过且不递补
     const user = userByOpenid.get(openid);
     if (!user) return; // 榜单中的 openid 在 User 表找不到 → 跳过（理论上不会）
     user.points = (Number(user.points) || 0) + delta;
     awards.push({ userId: user._id, openid, delta, reason: 'personal-rank-' + (i + 1) });
+    // rank 用榜单真实名次（0 步跳过时名次不连续，如实展示）；缺失时回退序号。
+    const rowRank = Number(row.rank);
+    settlementTop.push({
+      rank: Number.isFinite(rowRank) && rowRank > 0 ? rowRank : i + 1,
+      nickname: row.nickname || '',
+      delta
+    });
   });
 
   // 部门奖：第 1 名（非小样本）部门的所有参赛人员（joined 全口径，含 0 步成员）。
@@ -129,13 +151,23 @@ async function settleActivityPoints(params) {
     });
   }
 
-  // 标记已结算（就地改 activity，handler 据此 CAS 写回库）。
+  // 结算公告摘要（活动页「比赛结束」弹窗数据）：部门冠军（无则 null）+ 前十名得分名单。
+  const settlement = {
+    settled_at: settledAt,
+    dept_champion: deptId
+      ? { dept_id: deptId, dept_name: (deptWinner && deptWinner.dept_name) || '' }
+      : null,
+    top: settlementTop
+  };
+
+  // 标记已结算（就地改 activity，handler 据此 CAS 写回库；settlement 摘要随同一次 update 落库）。
   if (activity && typeof activity === 'object') {
     activity.points_settled = true;
     activity.points_settled_at = settledAt;
+    activity.settlement = settlement;
   }
 
-  return { activityId, settled: true, awards, settledAt };
+  return { activityId, settled: true, awards, settlement, settledAt };
 }
 
 module.exports = {
