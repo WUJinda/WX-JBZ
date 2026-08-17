@@ -11,6 +11,8 @@ miniprogram_npm/
 cloudfunctions-dist/
 # 一次性导出脚本（用完即删，不入库）
 cloudfunctions/export-steps/
+# 一次性导出产物（步数数据 xlsx 等，不入库）
+exports/
 # 本地调试缓存
 .cache/
 
