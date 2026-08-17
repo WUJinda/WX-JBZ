@@ -12,6 +12,10 @@ const STATUS = {
   TERMINATED: 'terminated' // 已终止（管理员手动终止，前端红标区别于自然结束）
 };
 
+// 业务时区固定为北京时间（UTC+8）：倒计时「当日」对齐、进度天数、时间展示均按东八区日历日，
+// 不随运行设备时区漂移（海外手机上看活动页时间/倒计时不变）。
+const TZ_OFFSET_MS = 8 * 3600000;
+
 function toTs(t) {
   if (t == null) return NaN;
   if (typeof t === 'number') return t;
@@ -95,15 +99,16 @@ function splitDiff(ms) {
 }
 
 /**
- * 取某时间戳「当日 23:59:59.999」的时间戳（按 UTC 计算）。
- * R7.3 的「当日」指 end_time 所在日历日；为保持纯函数确定性且与时区无关地可测，
- * 此处按 UTC 日界对齐（测试用 UTC 整点时间构造场景，避免夏令时等干扰）。
- * 真实业务时间字符串带 +08:00，Date.parse 后为绝对时间戳，当日对齐以该时间戳所在 UTC 日为准。
+ * 取某时间戳「北京当日 23:59:59.999」的时间戳。
+ * R7.3 的「当日」指 end_time 所在的东八区日历日：先把时间戳平移到东八区视角
+ * （+8h 后用 UTC 日界等价于北京日历日），对齐后再平移回来。
+ * 旧实现按纯 UTC 日界对齐，「结束当日」会比北京口径晚 8 小时（7/21 23:59:59+08:00
+ * 会被对齐到北京 7/22 07:59:59），活动最后一天倒计时凭空多 8 小时。
  */
 function endOfDayTs(ts) {
-  const d = new Date(ts);
+  const d = new Date(ts + TZ_OFFSET_MS);
   d.setUTCHours(23, 59, 59, 999);
-  return d.getTime();
+  return d.getTime() - TZ_OFFSET_MS;
 }
 
 /**
@@ -112,7 +117,7 @@ function endOfDayTs(ts) {
  *   - 进行中：已进行天数（含今日）/ 总天数；
  *   - 已结束：总天数 / 总天数（进度满）。
  *
- * 天数按日历日计算（以 start_time / end_time 当日为起止日，含首尾）。
+ * 天数按东八区日历日计算（以 start_time / end_time 当日为起止日，含首尾）。
  * 总天数 = end 当日 - start 当日 + 1（含首尾两日）。
  * 已进行天数 = now 当日 - start 当日 + 1（进行中，含今日），下限 1、上限总天数。
  *
@@ -130,8 +135,8 @@ function calcProgress(activity, now) {
     return { daysElapsed: 0, daysTotal: 0, percent: 0 };
   }
 
-  const startDay = utcDayIndex(start);
-  const endDay = utcDayIndex(end);
+  const startDay = cnDayIndex(start);
+  const endDay = cnDayIndex(end);
   const daysTotal = Math.max(1, endDay - startDay + 1);
 
   // 未开始
@@ -143,7 +148,7 @@ function calcProgress(activity, now) {
     return { daysElapsed: daysTotal, daysTotal, percent: 100 };
   }
   // 进行中
-  const curDay = utcDayIndex(cur);
+  const curDay = cnDayIndex(cur);
   let daysElapsed = curDay - startDay + 1;
   if (daysElapsed < 1) daysElapsed = 1;
   if (daysElapsed > daysTotal) daysElapsed = daysTotal;
@@ -151,9 +156,29 @@ function calcProgress(activity, now) {
   return { daysElapsed, daysTotal, percent };
 }
 
-/** 取某时间戳的 UTC 日序号（自 epoch 起的天数，向下取整）。 */
-function utcDayIndex(ts) {
-  return Math.floor(ts / 86400000);
+/** 取某时间戳的东八区日序号（自 epoch 起按北京日历日计数，向下取整）。
+ * 旧实现按纯 UTC 日序号：start_time 固定为北京 00:00（= UTC 前一日 16:00），
+ * 总天数恒多算 1 天。平移 +8h 后再取 UTC 日界即北京日历日。 */
+function cnDayIndex(ts) {
+  return Math.floor((ts + TZ_OFFSET_MS) / 86400000);
+}
+
+/**
+ * 时间展示格式化：ISO 串 / 时间戳 → 'yyyy-MM-dd HH:mm:ss'（固定东八区）。
+ * 不用 Date 的本地 getter（getHours 等）——那会随设备时区漂移（海外设备显示当地时间）；
+ * 平移 +8h 后用 UTC getter 取字段，输出恒为北京时间。
+ * @param {string|number|Date} value 可被 toTs 解析的时间；非法/空返回 ''。
+ * @returns {string} 如 '2026-07-21 23:59:59'
+ */
+function formatDateTime(value) {
+  const ts = toTs(value);
+  if (!Number.isFinite(ts)) return '';
+  const d = new Date(ts + TZ_OFFSET_MS);
+  const p2 = (n) => (n < 10 ? '0' + n : String(n));
+  return (
+    d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) +
+    ' ' + p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + ':' + p2(d.getUTCSeconds())
+  );
 }
 
 /**
@@ -191,11 +216,39 @@ function deriveCta(status, joinStatus, signupEnded) {
   return { text: '报名参加', action: 'login', disabled: false };
 }
 
+/**
+ * 结算公告弹窗是否展示（比赛结束结算通知，2026-08-17 调整：会话级弹一次，不做持久化记忆）。
+ *
+ * 判定链（全部满足才弹）：
+ *   1. activity.settlement 存在（后端 pointSettle 结算后才写入；进行中/未结算活动天然无此字段）；
+ *   2. settlement 有可展示内容（前十名单或部门冠军至少其一）；
+ *   3. activity_id 非空（空态活动不弹）。
+ *
+ * 生命周期语义（「只作为比赛结束的结算通知」）：
+ *   - 弹出时机由页面层会话标记控制：每次打开小程序后的会话内，首次进入活动页签时弹一次；
+ *     同一会话内重复进入不再弹；「我知道了」仅关闭当前弹窗，不写 storage；
+ *   - 重新打开小程序（冷启动）会再次弹出，直到新活动发布顶替：activity.current 切到新活动，
+ *     旧活动 settlement 不再下发 → 弹窗自然取消。
+ *
+ * @param {object} activity activity.current 出参（含 settlement）
+ * @returns {boolean}
+ */
+function shouldShowSettlement(activity) {
+  if (!activity || !activity.activity_id) return false;
+  const s = activity.settlement;
+  if (!s || typeof s !== 'object') return false;
+  const hasTop = Array.isArray(s.top) && s.top.length > 0;
+  const hasChampion = !!(s.dept_champion && (s.dept_champion.dept_name || s.dept_champion.dept_id));
+  return hasTop || hasChampion;
+}
+
 module.exports = {
   STATUS,
   calcCountdown,
   calcProgress,
   deriveCta,
+  shouldShowSettlement,
+  formatDateTime,
   _toTs: toTs,
   _endOfDayTs: endOfDayTs
 };

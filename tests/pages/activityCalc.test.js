@@ -3,12 +3,14 @@ const {
   calcCountdown,
   calcProgress,
   deriveCta,
+  shouldShowSettlement,
+  formatDateTime,
   _endOfDayTs
 } = require('../../miniprogram/pages/activity/activityCalc');
 
-// 活动窗口：2026-07-01 00:00:00 ~ 2026-07-21 23:59:59（UTC）
-const START = Date.parse('2026-07-01T00:00:00Z');
-const END = Date.parse('2026-07-21T23:59:59Z');
+// 活动窗口：2026-07-01 00:00:00 ~ 2026-07-21 23:59:59（北京时间，与真实业务存储格式一致）
+const START = Date.parse('2026-07-01T00:00:00+08:00');
+const END = Date.parse('2026-07-21T23:59:59+08:00');
 const activity = { start_time: START, end_time: END };
 
 describe('活动主页计算纯函数（C2）', () => {
@@ -25,9 +27,8 @@ describe('活动主页计算纯函数（C2）', () => {
     });
 
     it('进行中：倒计时到结束当日 23:59:59，label=距结束', () => {
-      // 假设 now 在结束当日（2026-07-21）早上 00:00:00
-      // 结束当日 23:59:59.999 → 差约 23 时 59 分
-      const now = Date.parse('2026-07-21T00:00:00Z');
+      // 北京 2026-07-21 00:00:00；结束当日（北京日历日）23:59:59 → 差约 23 时 59 分
+      const now = Date.parse('2026-07-21T00:00:00+08:00');
       const cd = calcCountdown(activity, now);
       expect(cd.status).toBe(STATUS.ACTIVE);
       expect(cd.label).toBe('距结束');
@@ -40,8 +41,8 @@ describe('活动主页计算纯函数（C2）', () => {
 
     it('结束当日：即使 end_time 早于当日 23:59:59，仍按当日 23:59:59 倒计时（R7.3）', () => {
       // 构造一个 end_time 在当日中午的活动，验证倒计时仍对齐到当日 23:59:59
-      const a = { start_time: Date.parse('2026-07-21T00:00:00Z'), end_time: Date.parse('2026-07-21T12:00:00Z') };
-      const now = Date.parse('2026-07-21T00:00:00Z');
+      const a = { start_time: Date.parse('2026-07-21T00:00:00+08:00'), end_time: Date.parse('2026-07-21T12:00:00+08:00') };
+      const now = Date.parse('2026-07-21T00:00:00+08:00');
       const cd = calcCountdown(a, now);
       // 仍处于进行中（cur ≤ end），倒计时对齐到当日 23:59:59
       expect(cd.status).toBe(STATUS.ACTIVE);
@@ -111,7 +112,8 @@ describe('活动主页计算纯函数（C2）', () => {
 
   describe('calcProgress（进度 R7.1）', () => {
     it('未开始：已进行 0 天，进度 0%', () => {
-      const p = calcProgress(activity, Date.parse('2026-06-20T00:00:00Z'));
+      const now = Date.parse('2026-06-20T00:00:00+08:00');
+      const p = calcProgress(activity, now);
       expect(p.daysElapsed).toBe(0);
       // 总天数 = 21（7-1 至 7-21 含首尾）
       expect(p.daysTotal).toBe(21);
@@ -119,8 +121,8 @@ describe('活动主页计算纯函数（C2）', () => {
     });
 
     it('进行中：已进行天数含今日，在 [1, 总天数] 内', () => {
-      // 7-10 当日：已进行 10 天（7-1..7-10）
-      const p = calcProgress(activity, Date.parse('2026-07-10T00:00:00Z'));
+      // 7-10 当日（北京）：已进行 10 天（7-1..7-10）
+      const p = calcProgress(activity, Date.parse('2026-07-10T00:00:00+08:00'));
       expect(p.daysElapsed).toBe(10);
       expect(p.daysTotal).toBe(21);
       expect(p.percent).toBe(Math.round((10 / 21) * 100));
@@ -132,7 +134,7 @@ describe('活动主页计算纯函数（C2）', () => {
     });
 
     it('已结束：已进行 = 总天数，进度 100%', () => {
-      const p = calcProgress(activity, Date.parse('2026-08-01T00:00:00Z'));
+      const p = calcProgress(activity, Date.parse('2026-08-01T00:00:00+08:00'));
       expect(p.daysElapsed).toBe(21);
       expect(p.daysTotal).toBe(21);
       expect(p.percent).toBe(100);
@@ -217,6 +219,84 @@ describe('活动主页计算纯函数（C2）', () => {
       const cta = deriveCta(STATUS.ACTIVE, 'pending');
       expect(cta.text).toBe('报名参加');
       expect(cta.disabled).toBe(false);
+    });
+  });
+
+  describe('shouldShowSettlement（比赛结束结算公告弹窗判定）', () => {
+    const settled = {
+      activity_id: 'a_001',
+      name: '健步走',
+      settlement: {
+        settled_at: '2026-07-22T00:00:00Z',
+        dept_champion: { dept_id: 'd1', dept_name: '综合部' },
+        top: [
+          { rank: 1, nickname: '甲', delta: 12 },
+          { rank: 2, nickname: '乙', delta: 10 }
+        ]
+      }
+    };
+
+    it('结算摘要存在且有内容 → 展示', () => {
+      expect(shouldShowSettlement(settled)).toBe(true);
+    });
+
+    it('未结算（settlement=null）→ 不展示', () => {
+      expect(shouldShowSettlement({ activity_id: 'a_001', settlement: null })).toBe(false);
+      expect(shouldShowSettlement({ activity_id: 'a_001' })).toBe(false);
+    });
+
+    it('空态活动（activity_id 缺失）→ 不展示', () => {
+      expect(shouldShowSettlement({ settlement: settled.settlement })).toBe(false);
+      expect(shouldShowSettlement(null)).toBe(false);
+    });
+
+    it('摘要无可展示内容（top 空且无部门冠军）→ 不展示', () => {
+      const empty = {
+        activity_id: 'a_001',
+        settlement: { settled_at: 't', dept_champion: null, top: [] }
+      };
+      expect(shouldShowSettlement(empty)).toBe(false);
+      // 仅部门冠军也可展示
+      const onlyChampion = {
+        activity_id: 'a_001',
+        settlement: { settled_at: 't', dept_champion: { dept_id: 'd1', dept_name: '综合部' }, top: [] }
+      };
+      expect(shouldShowSettlement(onlyChampion)).toBe(true);
+    });
+  });
+
+  describe('formatDateTime（东八区固定格式化）', () => {
+    it("ISO 串（+08:00）→ yyyy-MM-dd HH:mm:ss", () => {
+      expect(formatDateTime('2026-07-21T23:59:59+08:00')).toBe('2026-07-21 23:59:59');
+      expect(formatDateTime('2026-07-01T00:00:00+08:00')).toBe('2026-07-01 00:00:00');
+    });
+
+    it('UTC 时刻也按东八区展示（不随运行设备/测试机时区漂移）', () => {
+      // 2026-07-21T16:00:00Z = 北京 2026-07-22 00:00:00
+      expect(formatDateTime(Date.parse('2026-07-21T16:00:00Z'))).toBe('2026-07-22 00:00:00');
+    });
+
+    it('非法/空 → 空串（空态活动不显示乱码）', () => {
+      expect(formatDateTime(null)).toBe('');
+      expect(formatDateTime('')).toBe('');
+      expect(formatDateTime('abc')).toBe('');
+    });
+  });
+
+  describe('东八区日界（endOfDayTs / cnDayIndex）', () => {
+    it('结束当日 23:59:59 按北京日历日对齐（修最后一天倒计时多 8 小时）', () => {
+      // 北京 7/21 12:00 的「当日 23:59:59」是北京 7/21 23:59:59.999，而非 UTC 日界对齐出的北京 7/22 07:59:59
+      expect(_endOfDayTs(Date.parse('2026-07-21T12:00:00+08:00'))).toBe(
+        Date.parse('2026-07-21T23:59:59.999+08:00')
+      );
+    });
+
+    it('北京 00:00~08:00 属于当日（非 UTC 前一日），进度总天数不多算 1 天', () => {
+      // start 北京 7/1 00:00（= UTC 6/30 16:00，旧 UTC 日序号落在 6/30 → 总天数 22）
+      const a = { start_time: '2026-07-01T00:00:00+08:00', end_time: '2026-07-21T23:59:59+08:00' };
+      expect(calcProgress(a, Date.parse('2026-07-01T06:00:00+08:00')).daysTotal).toBe(21);
+      // 北京 7/2 凌晨 00:30（= UTC 7/1 16:30，旧 UTC 日序号仍是 7/1）已是第 2 天
+      expect(calcProgress(a, Date.parse('2026-07-02T00:30:00+08:00')).daysElapsed).toBe(2);
     });
   });
 });

@@ -1,18 +1,26 @@
 // pages/activity/activity.js
 // 活动主页（启动页，游客可见）—— 对齐 PRD F7 R7.1~R7.4，开发计划阶段 C2。
-const { calcCountdown, calcProgress, deriveCta, STATUS } = require('./activityCalc');
+const { calcCountdown, calcProgress, deriveCta, shouldShowSettlement, formatDateTime, STATUS } = require('./activityCalc');
 const { handleNotLoggedIn } = require('../../utils/authGuard');
 
 // F2：空态活动（云函数失败/活动未发布时用，替代旧 mockActivity 的假时间窗 2026-07-01~07-21）。
 const EMPTY_ACTIVITY = {
   activity_id: '', name: '', start_time: null, end_time: null, signup_deadline: null,
-  terminated: false, status: 'pending', rules: '', overview: { total_steps: 0, participant_count: 0 }
+  terminated: false, status: 'pending', rules: '', settlement: null, overview: { total_steps: 0, participant_count: 0 }
 };
+
+// 结算公告会话标记（内存态，不落 storage）：每次小程序冷启动 JS 模块重新加载时重置为 false，
+// 本次会话内首次在活动页弹出后置 true → 同一会话内重复进入活动页签不再弹；
+// 切后台再回前台（小程序未销毁）不重置，不算「重新进入小程序」；重新打开小程序会再弹。
+let settlementShownThisSession = false;
 
 Page({
   data: {
     // 活动信息（来自 activity.current）
     activity: null, // { activity_id, name, start_time, end_time, signup_deadline, status, terminated, rules, overview }
+    // 起止时间展示文本（固定东八区 yyyy-MM-dd HH:mm:ss）：原始串保留在 activity.start_time/end_time 供倒计时/进度计算。
+    startTimeText: '',
+    endTimeText: '',
     joinStatus: 'pending', // 当前用户报名状态（本地轨 mock；真实留 D1）
     // 派生展示
     status: STATUS.PENDING, // pending / active / ended
@@ -21,6 +29,8 @@ Page({
     progress: null, // { daysElapsed, daysTotal, percent }
     cta: { text: '活动未开始', action: 'none', disabled: true },
     overview: { total_steps: 0, participant_count: 0 },
+    // 比赛结束结算公告弹窗（2026-08-17）：活动结束结算后展示一次，用户可关闭；新活动顶替后自动取消。
+    settlementVisible: false,
     loading: true
   },
 
@@ -100,10 +110,42 @@ Page({
         status: activity.status || ''
       };
     }
-    this.setData({ activity, joinStatus: joinStatus === 'joined' ? 'joined' : 'pending' }, () => {
+    this.setData({
+      activity,
+      startTimeText: formatDateTime(activity.start_time),
+      endTimeText: formatDateTime(activity.end_time),
+      joinStatus: joinStatus === 'joined' ? 'joined' : 'pending'
+    }, () => {
       this.refreshDerived();
+      this.refreshSettlement(activity);
       this.setData({ loading: false });
     });
+  },
+
+  /**
+   * 结算公告弹窗：结算摘要存在且有内容 → 弹（详见 activityCalc.shouldShowSettlement）。
+   * 触发时机：每次打开小程序后的会话内，首次进入活动页签时弹出一次（会话标记拦截后续重复弹）；
+   * 「我知道了」仅关闭当前弹窗，不做任何持久化记忆；新活动顶替后 settlement 不再下发 → 弹窗自然取消
+   * （只作为本次比赛结束的结算通知）。
+   */
+  refreshSettlement(activity) {
+    const act = activity || this.data.activity;
+    // 本次小程序会话已弹过 → 不再弹（含用户已手动关闭的情形）。
+    if (settlementShownThisSession) {
+      this.setData({ settlementVisible: false });
+      return;
+    }
+    // 首次进入且摘要有效 → 弹出并占用本会话唯一一次机会（数据未就绪/无结算则不占用，下次进页仍可弹）。
+    const visible = shouldShowSettlement(act);
+    if (visible) {
+      settlementShownThisSession = true;
+    }
+    this.setData({ settlementVisible: visible });
+  },
+
+  /** 结算公告「我知道了」：仅关闭当前弹窗（不记忆，下次打开小程序首次进活动页仍会弹）。 */
+  onSettlementClose() {
+    this.setData({ settlementVisible: false });
   },
 
   /** 刷新倒计时 / 进度 / CTA（纯函数计算）。 */

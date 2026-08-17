@@ -178,3 +178,138 @@
 }
 .overview-label { color: #888; }
 .overview-value { color: #ff6b35; font-weight: 600; }
+
+/* ===== 比赛结束结算公告弹窗（2026-08-17）===== */
+/* 遮罩全屏居中；卡片限宽限高，内容纵向排布，任何超长文本换行/省略，不横向溢出 */
+.settle-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.settle-card {
+  width: 86%;
+  max-width: 640rpx;
+  max-height: 76vh;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 40rpx 32rpx 32rpx;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settle-badge {
+  align-self: center;
+  font-size: 24rpx;
+  color: #ff6b35;
+  border: 2rpx solid #ff6b35;
+  border-radius: 24rpx;
+  padding: 4rpx 20rpx;
+}
+.settle-title {
+  text-align: center;
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #222;
+  margin-top: 16rpx;
+}
+.settle-activity-name {
+  text-align: center;
+  font-size: 26rpx;
+  color: #888;
+  margin-top: 8rpx;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* 部门冠军 */
+.settle-champion-block {
+  flex-shrink: 0;
+  margin-top: 28rpx;
+  padding: 20rpx 24rpx;
+  background: #fff7f2;
+  border-radius: 12rpx;
+}
+.settle-champion-label {
+  font-size: 24rpx;
+  color: #ff6b35;
+}
+.settle-champion-name {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333;
+  margin-top: 6rpx;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* 前十名积分列表：纵向排布；名次固定宽、昵称自适应省略、分值右对齐 */
+.settle-top-block {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 24rpx;
+  display: flex;
+  flex-direction: column;
+}
+.settle-top-label {
+  flex-shrink: 0;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 8rpx;
+}
+.settle-top-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 40vh;
+}
+.settle-top-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12rpx 8rpx;
+  border-bottom: 1rpx solid #f2f2f2;
+}
+.settle-top-item:last-child {
+  border-bottom: none;
+}
+.settle-top-rank {
+  flex: 0 0 56rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  color: #ff6b35;
+  text-align: center;
+}
+.settle-top-name {
+  flex: 1 1 auto;
+  min-width: 0; /* flex 子项防溢出关键：允许收缩 + 省略 */
+  font-size: 28rpx;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settle-top-delta {
+  flex: 0 0 auto;
+  margin-left: 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #07c160;
+}
+.settle-close-btn {
+  flex-shrink: 0;
+  margin-top: 28rpx;
+  width: 100% !important;
+  background: #07c160;
+  color: #fff;
+  border-radius: 44rpx;
+  font-size: 30rpx;
+}

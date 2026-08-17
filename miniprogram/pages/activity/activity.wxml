@@ -18,11 +18,11 @@
     </view>
     <view class="info-row">
       <text class="info-label">开始时间</text>
-      <text class="info-value">{{activity.start_time}}</text>
+      <text class="info-value">{{startTimeText}}</text>
     </view>
     <view class="info-row">
       <text class="info-label">结束时间</text>
-      <text class="info-value">{{activity.end_time}}</text>
+      <text class="info-value">{{endTimeText}}</text>
     </view>
     <view class="info-row">
       <text class="info-label">当前阶段</text>
@@ -71,6 +71,35 @@
     <view class="overview-row">
       <text class="overview-label">参与人数</text>
       <text class="overview-value">{{overview.participant_count}}</text>
+    </view>
+  </view>
+
+  <!-- 比赛结束结算公告弹窗：每次打开小程序后的会话内首次进入本页时弹出一次（「我知道了」仅关闭不记忆；新活动顶替后自动取消） -->
+  <view class="settle-mask" wx:if="{{settlementVisible && activity.settlement}}">
+    <view class="settle-card">
+      <view class="settle-badge">比赛结束</view>
+      <view class="settle-title">结算公告</view>
+      <view class="settle-activity-name">{{activity.name}}</view>
+
+      <!-- 部门冠军（全小样本无部门奖时隐藏该块） -->
+      <view class="settle-champion-block" wx:if="{{activity.settlement.dept_champion}}">
+        <view class="settle-champion-label">部门冠军</view>
+        <view class="settle-champion-name">{{activity.settlement.dept_champion.dept_name || activity.settlement.dept_champion.dept_id}}</view>
+      </view>
+
+      <!-- 前十名积分：纵向排布，每行一名，不横向溢出 -->
+      <view class="settle-top-block" wx:if="{{activity.settlement.top.length > 0}}">
+        <view class="settle-top-label">前十名积分</view>
+        <scroll-view class="settle-top-list" scroll-y enhanced show-scrollbar="{{false}}">
+          <view class="settle-top-item" wx:for="{{activity.settlement.top}}" wx:key="rank">
+            <text class="settle-top-rank">{{item.rank}}</text>
+            <text class="settle-top-name">{{item.nickname}}</text>
+            <text class="settle-top-delta">{{item.delta}} 分</text>
+          </view>
+        </scroll-view>
+      </view>
+
+      <button class="settle-close-btn" bindtap="onSettlementClose">我知道了</button>
     </view>
   </view>
 </view>
