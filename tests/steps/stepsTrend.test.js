@@ -76,10 +76,10 @@ describe('buildTrend 趋势（F4）', () => {
     expect(out.list[29].steps).toBe(5000);
   });
 
-  it('range 仅接受 7/30，其余按 7 兜底', () => {
-    const out = buildTrend({ records: [], range: 100, now: NOW });
-    expect(out.range).toBe(7);
-    expect(out.list).toHaveLength(7);
+  it('range 接受任意 ≥1 正整数，缺省/非法 → 7', () => {
+    const out = buildTrend({ records: [], range: 15, now: NOW });
+    expect(out.range).toBe(15);
+    expect(out.list).toHaveLength(15);
     const out2 = buildTrend({ records: [], range: 'abc', now: NOW });
     expect(out2.range).toBe(7);
   });

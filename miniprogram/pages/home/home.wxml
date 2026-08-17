@@ -96,7 +96,7 @@
       <text class="rank-entry-arrow">›</text>
     </view>
 
-    <!-- F4：步数趋势（R4.2：近 7/30 天切换；R4.3：无数据展示占位） -->
+    <!-- F4：步数趋势（近 7 天 / 活动总天数切换；R4.3：无数据展示占位） -->
     <view class="trend-block">
       <view class="trend-header">
         <text class="trend-title">步数趋势</text>
@@ -107,20 +107,23 @@
             bindtap="onTrendRange"
           >近7天</text>
           <text
-            class="trend-tab {{trendRange === 30 ? 'trend-tab-active' : ''}}"
-            data-range="30"
+            wx:if="{{trendFullRange > 7}}"
+            class="trend-tab {{trendRange === trendFullRange ? 'trend-tab-active' : ''}}"
+            data-range="{{trendFullRange}}"
             bindtap="onTrendRange"
-          >近30天</text>
+          >近{{trendFullRange}}天</text>
         </view>
       </view>
 
-      <!-- 纯 CSS 柱状图（柱高百分比归一化） -->
-      <view class="trend-bars" wx:if="{{!trendEmpty}}">
-        <view class="trend-bar-wrap" wx:for="{{trendList}}" wx:key="date">
-          <view class="trend-bar" style="height:{{item.heightPct}}%"></view>
-          <text class="trend-bar-date">{{item.date}}</text>
+      <!-- 纯 CSS 柱状图（柱高百分比归一化）；天数多时 scroll-view 可左右滑动 -->
+      <scroll-view class="trend-scroll" scroll-x enable-flex wx:if="{{!trendEmpty}}">
+        <view class="trend-bars" style="width: {{trendBarsWidth}}">
+          <view class="trend-bar-wrap" wx:for="{{trendList}}" wx:key="date">
+            <view class="trend-bar" style="height:{{item.heightPct}}%"></view>
+            <text class="trend-bar-date">{{item.dateLabel}}</text>
+          </view>
         </view>
-      </view>
+      </scroll-view>
 
       <!-- R4.3 空态占位（ended 态文案调整：活动结束不再引导同步） -->
       <view class="trend-empty" wx:else>

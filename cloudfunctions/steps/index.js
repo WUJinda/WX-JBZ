@@ -236,8 +236,8 @@ const handlers = {
     return getHistory({ store, userId, activityId, activity, from, to });
   },
 
-  // F4: 趋势图（近 7/30 天，纯 CSS 柱状图源数据）。
-  // 入参 range 仅接受 7/30，其余按 7 兜底；buildTrend 内部再次兜底。
+  // F4: 趋势图（近 7 天 / 活动总天数，纯 CSS 柱状图源数据）。
+  // 入参 range 接受任意 ≥1 正整数（前端按活动持续天数动态传入）；buildTrend 内部兜底。
   trend: async (event, context) => {
     const openid = context && context.openid;
     const userId = openid; // P0-1：身份仅 OPENID，禁止 event.user_id（防越权读他人步数）

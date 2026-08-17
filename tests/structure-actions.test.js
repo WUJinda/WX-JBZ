@@ -336,11 +336,11 @@ describe('steps.trend / user.stats action 挂载与 home 趋势结构（F4）', 
     ).toBe(true);
   });
 
-  it('home 含趋势图（7/30 切换 + 纯 CSS 柱状图 + 空态）与参与天数 / 排名入口', () => {
+  it('home 含趋势图（7天/活动总天数切换 + 纯 CSS 柱状图 + 空态）与参与天数 / 排名入口', () => {
     const wxml = readSource('miniprogram/pages/home/home.wxml');
-    // 7/30 切换
+    // 近7天 固定 Tab + 动态活动总天数 Tab
     expect(wxml).toMatch(/data-range="7"/);
-    expect(wxml).toMatch(/data-range="30"/);
+    expect(wxml).toMatch(/data-range="\{\{trendFullRange\}\}"/);
     expect(wxml).toMatch(/onTrendRange/);
     // 纯 CSS 柱状图（百分比高度）
     expect(wxml).toMatch(/height:\{\{item\.heightPct\}\}%/);

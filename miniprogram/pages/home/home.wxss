@@ -117,7 +117,15 @@
 }
 .trend-tab-active { color: #fff; background: #07c160; }
 
-/* 柱状图容器：固定高度 + flex 等分；柱子高度按百分比归一化 */
+/* 柱状图滚动容器：30 天时可左右滑动查看；7 天时内容不超过容器宽度不触发滑动 */
+.trend-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+
+/* 柱状图容器：固定高度 + flex 等分；柱子高度按百分比归一化。
+   宽度由 JS（computeBarsWidth）通过 inline style 动态设置：
+   7 天 → 100%（填满容器 flex 等分）；30 天 → 1800rpx（触发外层 scroll-view 滑动）。 */
 .trend-bars {
   display: flex;
   align-items: flex-end;
@@ -125,7 +133,9 @@
   padding: 16rpx 0;
 }
 .trend-bar-wrap {
-  flex: 1;
+  flex-grow: 1;
+  flex-shrink: 0;
+  flex-basis: 60rpx;
   display: flex;
   flex-direction: column;
   align-items: center;

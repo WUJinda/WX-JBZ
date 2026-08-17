@@ -71,7 +71,7 @@ function buildDateRange(today, range) {
  *
  * @param {object} params
  * @param {object[]} params.records 该用户该活动的 StepRecord 子集（含有效与无效，内部按口径过滤）
- * @param {number} [params.range=7] 区间天数，仅接受 7 / 30，其余按 7 兜底（调用方兜底；此处再次兜底）
+ * @param {number} [params.range=7] 区间天数（≥1 正整数，由调用方按活动持续天数动态传入）
  * @param {object} [params.activity] 活动文档（含 start_time；算活动期起点过滤活动期外脏记录）
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
  * @param {object} [params.config] 配置覆盖（timezoneOffsetMinutes）
@@ -86,9 +86,9 @@ function buildTrend(params) {
     cfg.timezoneOffsetMinutes
   );
 
-  // range 兜底：仅接受 7 / 30，其余按 7。
-  let range = Number(p.range);
-  range = range === 30 ? 30 : 7;
+  // range 兜底：接受任意 ≥1 正整数（活动总天数动态传入），缺省/非法 → 7。
+  let range = Math.floor(Number(p.range));
+  range = range >= 1 ? range : 7;
 
   const recs = sortRecords(p.records);
 

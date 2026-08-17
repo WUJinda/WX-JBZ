@@ -5,7 +5,7 @@
 //   active 进行中（完整展示）/ ended 战绩归档（最终累计+趋势+排名，禁同步）/
 //   pending 未开始（空态预告）/ none 无活动（空态）。状态来自 globalData.currentActivity。
 const { STATES, transition, shouldThrottle, isSyncFresh, classifyWerunAuth } = require('./homeSync');
-const { selectRange, normalizeBars, isEmptyTrend } = require('./homeTrend');
+const { selectRange, normalizeBars, isEmptyTrend, computeBarsWidth, computeActivityDays } = require('./homeTrend');
 const { handleNotLoggedIn, isNotLoggedInError } = require('../../utils/authGuard');
 const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData } = require('./homeStatus');
 
@@ -28,8 +28,11 @@ Page({
     totalDays: 0,
     myRank: null,
     trendRange: 7,
+    // 第二个 Tab 的区间天数（活动总天数，动态计算；>7 才显示第二个 Tab）。
+    trendFullRange: 0,
     trendList: [],
     trendEmpty: true,
+    trendBarsWidth: '100%',
     // 活动状态感知（homeStatus 纯函数驱动）：unknown/active/ended/pending/none
     activityStatus: ACT_STATUS.UNKNOWN,
     activityName: '',
@@ -127,7 +130,8 @@ Page({
     }
     const ga = (app && app.globalData && app.globalData.currentActivity) || {};
     const status = deriveHomeStatus(ga, Date.now());
-    this.setData({ activityStatus: status, activityName: ga.name || '' });
+    const fullRange = computeActivityDays(ga);
+    this.setData({ activityStatus: status, activityName: ga.name || '', trendFullRange: fullRange });
     if (needsFetchStatus(ga)) {
       this.fetchActivityStatus();
       return;
@@ -163,7 +167,8 @@ Page({
           };
         }
         const status = deriveHomeStatus(d, Date.now());
-        this.setData({ activityStatus: status, activityName: d.name || '' });
+        const fullRange = computeActivityDays(d);
+        this.setData({ activityStatus: status, activityName: d.name || '', trendFullRange: fullRange });
         if (shouldLoadData(status)) {
           this.loadStats();
           this.loadTrend(this.data.trendRange);
@@ -523,14 +528,15 @@ Page({
       });
   },
 
-  /** 应用趋势到 data（归一化 + 空态）。 */
+  /** 应用趋势到 data（归一化 + 空态 + 容器宽度）。 */
   applyTrend(list, range) {
     const r = selectRange(range);
     const bars = normalizeBars(list);
     this.setData({
       trendRange: r,
       trendList: bars,
-      trendEmpty: isEmptyTrend(list)
+      trendEmpty: isEmptyTrend(list),
+      trendBarsWidth: computeBarsWidth(bars.length)
     });
   },
 
