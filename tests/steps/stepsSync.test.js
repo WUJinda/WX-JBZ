@@ -127,21 +127,21 @@ describe('syncSteps upsert 去重（R3.2）', () => {
 describe('syncSteps 异常阈值（R3.6）', () => {
   const NOW = new Date('2026-07-01T04:00:00Z');
 
-  it('>50000 标 abnormal=true', async () => {
+  it('>40000 标 abnormal=true', async () => {
     const store = makeStore();
     await syncSteps({
       store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
-      stepInfoList: stepList([['2026-07-01', 60000]]),
+      stepInfoList: stepList([['2026-07-01', 40001]]),
       activity: mockActivity(), now: NOW
     });
     expect(store.StepRecord[0].abnormal).toBe(true);
   });
 
-  it('≤50000 不标 abnormal', async () => {
+  it('≤40000 不标 abnormal', async () => {
     const store = makeStore();
     await syncSteps({
       store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
-      stepInfoList: stepList([['2026-07-01', 50000]]),
+      stepInfoList: stepList([['2026-07-01', 40000]]),
       activity: mockActivity(), now: NOW
     });
     expect(store.StepRecord[0].abnormal).toBe(false);
@@ -158,8 +158,8 @@ describe('syncSteps 异常阈值（R3.6）', () => {
     expect(store.StepRecord[0].abnormal).toBe(true);
   });
 
-  it('默认阈值 = 50000', () => {
-    expect(DEFAULT_CONFIG.abnormalThreshold).toBe(50000);
+  it('默认阈值 = 40000', () => {
+    expect(DEFAULT_CONFIG.abnormalThreshold).toBe(40000);
   });
 });
 

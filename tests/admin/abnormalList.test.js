@@ -74,6 +74,23 @@ describe('queryAbnormal（异常步数列表过滤+排序+分页）', () => {
   it('DEFAULT_PAGE_SIZE=50', () => {
     expect(DEFAULT_PAGE_SIZE).toBe(50);
   });
+
+  it('list 项关联 User 补 name（real_name 优先，无匹配为空）', () => {
+    const store = {
+      User: [
+        { _openid: 'u_r1', real_name: '张三', nickname: 'zs' },
+        { _openid: 'u_r2', nickname: '昵称二' }
+      ],
+      StepRecord: [rec('r1'), rec('r2'), rec('r3')]
+    };
+    const r = queryAbnormal(store, { activityId: ACT });
+    const byId = {};
+    r.list.forEach((x) => { byId[x._id] = x; });
+    expect(byId.r1.name).toBe('张三');
+    expect(byId.r2.name).toBe('昵称二');
+    expect(byId.r3.name).toBe('');
+    expect(r.list.every((x) => x._openid === undefined)).toBe(true);
+  });
 });
 
 describe('projectAbnormal 投影红线（绝不下发 _openid / sync_count）', () => {

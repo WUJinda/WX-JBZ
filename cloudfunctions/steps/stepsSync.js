@@ -4,7 +4,7 @@
  * 职责（按日 upsert 去重 + 异常阈值 + 锁定不改值 + 活动结束禁同步）：
  *   - R3.2 去重：同一 (user_id, activity_id, date) 仅一条，取最新同步值覆盖；
  *     锁定记录（locked=true）不覆盖（架构 §6.4）。
- *   - R3.6 异常阈值：单日 steps > 阈值（默认 50000）→ abnormal=true（仅标记不剔除），可配置。
+ *   - R3.6 异常阈值：单日 steps > 阈值（默认 40000）→ abnormal=true（仅标记不剔除），可配置。
  *   - sync_count 仍按日累加（追踪用），但不做次数上限拦截（已取消每日频控）。
  *   - R3.5 活动结束：activity 已 ended → sync 拒绝。
  *   - 记 synced_at。
@@ -26,7 +26,7 @@ const { deriveStatus, STATUS } = require('../activity/activityStatus');
  * 默认配置（均可被 params.config 覆盖，便于单测与活动级配置）。
  */
 const DEFAULT_CONFIG = {
-  abnormalThreshold: 50000, // R3.6：单日 > 此值标 abnormal（可配置）
+  abnormalThreshold: 40000, // R3.6：单日 > 此值标 abnormal（可配置）
   timezoneOffsetMinutes: 480 // 北京时间 UTC+8（date 取本地日，offset 为「UTC→本地」需加的分钟数）
 };
 

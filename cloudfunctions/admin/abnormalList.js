@@ -74,7 +74,14 @@ function queryAbnormal(store, params) {
   // 分页。
   const start = (page - 1) * pageSize;
   const slice = filtered.slice(start, start + pageSize);
-  const list = slice.map(projectAbnormal);
+
+  const users = (store && Array.isArray(store.User)) ? store.User : [];
+  const list = slice.map((r) => {
+    const out = projectAbnormal(r);
+    const u = users.find((x) => x && x._openid === out.user_id);
+    out.name = (u && (u.real_name || u.nickname)) || '';
+    return out;
+  });
 
   return { list, totalCount };
 }

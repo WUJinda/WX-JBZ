@@ -18,7 +18,7 @@
   <view class="abnormal-list" wx:if="{{!loading}}">
     <view class="abnormal-row" wx:for="{{list}}" wx:key="_id">
       <view class="row-top">
-        <view class="user-id">用户 {{item.user_id}}</view>
+        <view class="user-id">{{item.name || item.user_id}}</view>
         <view class="abnormal-flag">异常</view>
       </view>
       <view class="row-meta">
