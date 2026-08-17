@@ -1,8 +1,8 @@
 /**
  * 后台数据看板前端纯函数单测（F8 R8.5，H2）。
- * formatRate / normalizeDailyActive / isEmptyDashboard，纯函数不耦合 wx 运行时。
+ * formatRate / isEmptyDashboard，纯函数不耦合 wx 运行时。
  */
-const { formatRate, normalizeDailyActive, isEmptyDashboard } = require('../../miniprogram/pages/admin/dashboard/dashboardCalc');
+const { formatRate, isEmptyDashboard } = require('../../miniprogram/pages/admin/dashboard/dashboardCalc');
 
 describe('formatRate 参与率格式化', () => {
   it('正常小数 → 整数百分比', () => {
@@ -37,65 +37,14 @@ describe('formatRate 参与率格式化', () => {
   });
 });
 
-describe('normalizeDailyActive 日活趋势柱高归一化', () => {
-  it('最大 count → 100% 高度', () => {
-    const list = [
-      { date: '2026-06-01', count: 5 },
-      { date: '2026-06-02', count: 10 },
-      { date: '2026-06-03', count: 0 }
-    ];
-    const out = normalizeDailyActive(list);
-    expect(out[0].heightPct).toBe(50);
-    expect(out[1].heightPct).toBe(100);
-    expect(out[2].heightPct).toBe(0);
-  });
-
-  it('全 0 时给统一最小高度（1）避免塌陷', () => {
-    const out = normalizeDailyActive([
-      { date: 'd1', count: 0 },
-      { date: 'd2', count: 0 }
-    ]);
-    expect(out.every((i) => i.heightPct === 1)).toBe(true);
-  });
-
-  it('保留 date/count，附加 heightPct', () => {
-    const out = normalizeDailyActive([{ date: 'd1', count: 8 }]);
-    expect(out[0]).toEqual({ date: 'd1', count: 8, heightPct: 100 });
-  });
-
-  it('非数字 count 兜底 0', () => {
-    const out = normalizeDailyActive([{ date: 'x', count: 'abc' }, { date: 'y', count: 10 }]);
-    expect(out[0].count).toBe(0);
-    expect(out[0].heightPct).toBe(0);
-    expect(out[1].heightPct).toBe(100);
-  });
-
-  it('空数组 → 空数组', () => {
-    expect(normalizeDailyActive([])).toEqual([]);
-  });
-
-  it('非数组 → 空数组', () => {
-    expect(normalizeDailyActive(null)).toEqual([]);
-    expect(normalizeDailyActive(undefined)).toEqual([]);
-  });
-
-  it('不修改入参（纯函数）', () => {
-    const list = [{ date: 'd1', count: 5 }];
-    const snap = JSON.stringify(list);
-    normalizeDailyActive(list);
-    expect(JSON.stringify(list)).toBe(snap);
-  });
-});
-
 describe('isEmptyDashboard 看板空态判定', () => {
-  it('全 0 + 部门榜空 → true', () => {
+  it('全 0 → true', () => {
     expect(
       isEmptyDashboard({
         participated: 0,
         inviteCodesTotal: 0,
         totalSteps: 0,
-        validParticipants: 0,
-        deptRank: []
+        validParticipants: 0
       })
     ).toBe(true);
   });
@@ -106,20 +55,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
         participated: 10,
         inviteCodesTotal: 20,
         totalSteps: 0,
-        validParticipants: 0,
-        deptRank: []
-      })
-    ).toBe(false);
-  });
-
-  it('有部门榜 → false', () => {
-    expect(
-      isEmptyDashboard({
-        participated: 0,
-        inviteCodesTotal: 0,
-        totalSteps: 0,
-        validParticipants: 0,
-        deptRank: [{ rank: 1, dept_id: 'd1' }]
+        validParticipants: 0
       })
     ).toBe(false);
   });
@@ -130,8 +66,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
         participated: 0,
         inviteCodesTotal: 0,
         totalSteps: 1000,
-        validParticipants: 0,
-        deptRank: []
+        validParticipants: 0
       })
     ).toBe(false);
   });
@@ -148,8 +83,7 @@ describe('isEmptyDashboard 看板空态判定', () => {
         participated: '0',
         inviteCodesTotal: '0',
         totalSteps: '0',
-        validParticipants: '0',
-        deptRank: null
+        validParticipants: '0'
       })
     ).toBe(true);
   });

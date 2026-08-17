@@ -2,14 +2,14 @@
 // 后台首页：模块导航 + 数据看板（对齐 PRD F8 R8.5，开发计划阶段 H2）。
 //
 // 看板对接 admin.dashboard（buildDashboard 输出：participated/inviteCodesTotal/rate/
-// totalSteps/avgSteps/validParticipants/dailyActive/deptRank）。
+// totalSteps/avgSteps/validParticipants）。
 // 6 个模块导航：activity / inviteCode（邀请码管理）/ users / abnormal / dept / points。
 //
 // 红线：
-//   - 本页只渲染后端下发的非敏感字段（deptRank 等），绝不渲染 _openid/完整 phone/sync_count。
+//   - 本页只渲染后端下发的非敏感字段，绝不渲染 _openid/完整 phone/sync_count。
 //   - 本地轨云函数未部署：getApp().api 不存在 → 提前 return 设空态；api.call 失败 → 静默 catch → 空态占位，不白屏不崩。
 //   - admin 页是 navigateTo 进入（非 tabBar），onModuleTap 用 wx.navigateTo 跳子页。
-const { formatRate, normalizeDailyActive, isEmptyDashboard } = require('./dashboardCalc');
+const { formatRate, isEmptyDashboard } = require('./dashboardCalc');
 const { enterAdminGuard } = require('../../../utils/auth-guard');
 
 Page({
@@ -22,11 +22,6 @@ Page({
     totalSteps: 0,
     avgSteps: 0,
     validParticipants: 0,
-    // 日活趋势（纯 CSS 柱状）
-    dailyActive: [],
-    dailyActiveEmpty: true,
-    // 部门榜（复用 RankCache，R8.5）
-    deptRank: [],
     // 通用
     loading: true,
     errorMsg: '',
@@ -67,10 +62,8 @@ Page({
           participated: d.participated,
           inviteCodesTotal: d.inviteCodesTotal,
           totalSteps: d.totalSteps,
-          validParticipants: d.validParticipants,
-          deptRank: d.deptRank
+          validParticipants: d.validParticipants
         };
-        const daily = Array.isArray(d.dailyActive) ? d.dailyActive : [];
         this.setData({
           loading: false,
           errorMsg: '',
@@ -80,9 +73,6 @@ Page({
           totalSteps: Number(d.totalSteps) || 0,
           avgSteps: Math.round(Number(d.avgSteps) || 0),
           validParticipants: Number(d.validParticipants) || 0,
-          dailyActive: normalizeDailyActive(daily),
-          dailyActiveEmpty: !Array.isArray(daily) || daily.length === 0,
-          deptRank: Array.isArray(d.deptRank) ? d.deptRank : [],
           empty: isEmptyDashboard(metrics)
         });
       })
@@ -97,9 +87,6 @@ Page({
           totalSteps: 0,
           avgSteps: 0,
           validParticipants: 0,
-          dailyActive: [],
-          dailyActiveEmpty: true,
-          deptRank: [],
           empty: true
         });
       });
@@ -107,7 +94,7 @@ Page({
 
   /**
    * 一键刷新排行榜：调 admin.refreshRank（assertAdmin 守卫 + 转发 tasks.rankAggregate），
-   * 覆盖写 RankCache。成功后重载看板（部门榜等同步更新）。
+   * 覆盖写 RankCache。成功后重载看板。
    * 场景：排查榜单问题 / 用户同步后榜单未即时更新时，管理员手动兜底刷新。
    */
   onRefreshRank() {
@@ -133,7 +120,7 @@ Page({
           icon: 'none',
           duration: 2500
         });
-        // 刷新成功 → 重载看板（部门榜 / 累计步数同步更新）。
+        // 刷新成功 → 重载看板。
         this.loadDashboard();
       })
       .catch((err) => {

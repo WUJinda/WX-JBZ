@@ -1,6 +1,6 @@
 <!-- pages/admin/dashboard/dashboard.wxml
   后台首页：模块导航 + 数据看板（F8 R8.5）。
-  红线：只渲染后端下发的非敏感字段（deptRank 等），不渲染 _openid/完整 phone/sync_count。
+  红线：只渲染后端下发的非敏感字段，不渲染 _openid/完整 phone/sync_count。
 -->
 <view class="admin-page">
   <view class="page-title">{{pageLabel}}</view>
@@ -46,7 +46,7 @@
   <!-- 空态占位（本地轨云函数未部署） -->
   <view class="state-tip" wx:if="{{!loading && empty}}">暂无数据，部署云函数后查看</view>
 
-  <!-- 看板指标 + 趋势 + 部门榜 -->
+  <!-- 看板指标 -->
   <block wx:if="{{!loading && !empty}}">
     <!-- 6 指标卡（参与人数 / 已发码数 / 参与率 / 累计步数 / 人均 / 有效参与） -->
     <view class="metric-grid">
@@ -73,40 +73,6 @@
       <view class="metric-card">
         <text class="metric-label">有效参与</text>
         <text class="metric-value">{{validParticipants}}</text>
-      </view>
-    </view>
-
-    <!-- 日活趋势（纯 CSS 柱状图，每日有同步行为的用户数） -->
-    <view class="trend-block">
-      <view class="trend-header">
-        <text class="trend-title">日活趋势</text>
-      </view>
-      <view class="trend-bars" wx:if="{{!dailyActiveEmpty}}">
-        <view class="trend-bar-wrap" wx:for="{{dailyActive}}" wx:key="date">
-          <view class="trend-bar" style="height:{{item.heightPct}}%"></view>
-          <text class="trend-bar-date">{{item.date}}</text>
-        </view>
-      </view>
-      <view class="trend-empty" wx:else>暂无日活数据</view>
-    </view>
-
-    <!-- 部门榜（复用 RankCache，R8.5） -->
-    <view class="dept-block">
-      <view class="block-title">部门榜</view>
-      <view class="dept-row" wx:for="{{deptRank}}" wx:key="dept_id">
-        <view class="rank-no">{{item.rank}}</view>
-        <view class="info">
-          <view class="name">
-            {{item.dept_name || '未命名部门'}}
-            <text class="small-sample" wx:if="{{item.small_sample}}">样本量小</text>
-          </view>
-          <view class="dept-meta">
-            <text>人均 {{item.avg_steps}} 步</text>
-            <text class="dot">·</text>
-            <text>共 {{item.member_count}} 人</text>
-          </view>
-        </view>
-        <view class="steps">{{item.total_steps}} 步</view>
       </view>
     </view>
   </block>

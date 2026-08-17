@@ -671,7 +671,7 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     'miniprogram/pages/admin/inviteCode/inviteCode.wxml'
   ];
 
-  it('dashboard 页含 5 模块导航卡片 + 6 指标卡 + 日活趋势柱状 + 部门榜', () => {
+  it('dashboard 页含模块导航卡片 + 6 指标卡（无日活趋势/部门榜）', () => {
     const wxml = readSource('miniprogram/pages/admin/dashboard/dashboard.wxml');
     // 模块导航（data-mod 标识；含邀请码管理）
     expect(wxml).toMatch(/data-mod="activity"/);
@@ -688,12 +688,9 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     expect(wxml).toMatch(/totalSteps/);
     expect(wxml).toMatch(/avgSteps/);
     expect(wxml).toMatch(/validParticipants/);
-    // 日活趋势纯 CSS 柱状
-    expect(wxml).toMatch(/dailyActive/);
-    expect(wxml).toMatch(/height:\{\{item\.heightPct\}\}%/);
-    // 部门榜（small_sample 标注）
-    expect(wxml).toMatch(/deptRank/);
-    expect(wxml).toMatch(/small_sample/);
+    // 日活趋势 / 部门榜已移除
+    expect(wxml).not.toMatch(/dailyActive/);
+    expect(wxml).not.toMatch(/deptRank/);
   });
 
   it('dashboard.js 调 admin / action:dashboard，且 api.call 接 .catch', () => {
@@ -709,14 +706,13 @@ describe('admin 后台前端页面结构与红线（H2：dashboard / activity / 
     expect(js).toMatch(/typeof api\.call !== 'function'/);
   });
 
-  it('dashboardCalc.js 纯函数模块存在（formatRate/normalizeDailyActive/isEmptyDashboard）', () => {
+  it('dashboardCalc.js 纯函数模块存在（formatRate/isEmptyDashboard）', () => {
     expect(
       fs.existsSync(path.join(ROOT, 'miniprogram/pages/admin/dashboard/dashboardCalc.js')),
       '缺少 dashboardCalc.js'
     ).toBe(true);
     const src = readSource('miniprogram/pages/admin/dashboard/dashboardCalc.js');
     expect(src).toMatch(/function formatRate/);
-    expect(src).toMatch(/function normalizeDailyActive/);
     expect(src).toMatch(/function isEmptyDashboard/);
   });
 
