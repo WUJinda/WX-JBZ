@@ -1,6 +1,7 @@
 {
   "miniprogramRoot": ".",
   "cloudfunctionRoot": "../cloudfunctions",
+  "env": "cloud1-d1gtq8mlla5f94c43",
   "appid": "wx8efb0106a3930b2b",
   "projectname": "jbz-app",
   "setting": {
