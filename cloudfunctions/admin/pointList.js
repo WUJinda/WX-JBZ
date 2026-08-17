@@ -1,8 +1,9 @@
 /**
  * admin.queryPoints 纯函数（积分台账列表查询，对齐 userList.queryUsers 范式）。
  *
- * 职责：从 store.User 筛选（deptId 等值；keyword 模糊匹配 nickname，大小写不敏感）+ 本地分页；
- *   join dept_name（Department）+ total_steps（RankCache personal rows 的 user_id→total_steps，辅助展示）。
+ * 职责：从 store.User 筛选（deptId 等值；keyword 模糊匹配 nickname，大小写不敏感）
+ *   → 【按积分降序排序（第一优先级，2026-08-17 需求；同分按 total_steps 降序、_id 升序稳定兜底）】
+ *   → 本地分页；join dept_name（Department）+ total_steps（RankCache personal rows 的 user_id→total_steps，辅助展示）。
  *
  * 红线：
  *   - 投影白名单 POINT_USER_FIELDS 逐字段枚举，绝不下发 _openid / phone / sync_count。
@@ -49,6 +50,7 @@ function projectPointUser(u, deptName, totalSteps) {
  * @param {number} [params.pageSize=50] 每页条数
  * @returns {{list: object[], totalCount: number}}
  *   list 每项: { _id, nickname, dept_id, points, dept_name, total_steps }
+ *   排序（筛选后、分页前）：points 数值降序 → 同分 total_steps 降序 → 再同 _id 升序（确定性兜底）。
  */
 function queryPoints(store, params) {
   const p = params || {};
@@ -89,6 +91,21 @@ function queryPoints(store, params) {
   }
 
   const totalCount = filtered.length;
+
+  // 排序（2026-08-17 需求：积分降序为第一优先级，替代原先的 User 插入序）：
+  //   1) points 数值降序（旧用户无字段兜底 0，与 projectPointUser 口径一致；负分自然排在末尾）；
+  //   2) 同分 → total_steps 降序（步数多者靠前，同分多劳优先展示）；
+  //   3) 再同 → _id 升序（确定性兜底，避免同分同步数时列表顺序漂移）。
+  // filtered 是 filter 产生的新数组，就地 sort 不影响 store.User。
+  const pointOf = (u) => Number(u.points) || 0;
+  const stepsOf = (u) => stepsMap.get(u._openid) || 0;
+  filtered.sort((a, b) => {
+    const d = pointOf(b) - pointOf(a);
+    if (d !== 0) return d;
+    const s = stepsOf(b) - stepsOf(a);
+    if (s !== 0) return s;
+    return String(a._id) < String(b._id) ? -1 : String(a._id) > String(b._id) ? 1 : 0;
+  });
 
   // 分页。
   const start = (page - 1) * pageSize;

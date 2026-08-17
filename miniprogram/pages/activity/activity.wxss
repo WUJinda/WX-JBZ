@@ -310,9 +310,9 @@
   flex-shrink: 0;
   align-self: center;
   width: auto !important;
-  height: 68rpx;
-  line-height: 68rpx;
-  padding: 0 56rpx;
+  height: 48rpx;
+  line-height: 48rpx;
+  padding: 0 32rpx;
   margin-top: 20rpx;
   background: #07c160;
   color: #fff;
