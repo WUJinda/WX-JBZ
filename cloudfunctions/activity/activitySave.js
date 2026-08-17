@@ -137,6 +137,9 @@ function saveActivity(store, params) {
     signup_deadline: hasSignup ? input.signup_deadline : null,
     status,
     terminated: false,
+    // 结算标记显式落库（schema default 仅是文档规范）：tasks.pointSettle 的 CAS 依赖该字段可查，
+    //   缺失文档等值 where(points_settled:false) 不命中，曾致结算永远返回 alreadySettled。
+    points_settled: false,
     rules: typeof input.rules === 'string' ? input.rules : '',
     created_at: nowIso,
     updated_at: nowIso

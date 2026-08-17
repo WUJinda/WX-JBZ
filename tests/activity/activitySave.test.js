@@ -46,6 +46,8 @@ describe('saveActivity（正常路径）', () => {
     expect(doc.activity_id).toBe(out.activity_id);
     expect(doc.created_at).toBeTruthy();
     expect(doc.updated_at).toBeTruthy();
+    // 结算标记显式落库（schema default 仅文档规范）：pointSettle CAS 依赖该字段可查，缺失即永不命中
+    expect(doc.points_settled).toBe(false);
     // _isNew 标记新建（云轨 save handler 据此重置 User.join_status）
     expect(out._isNew).toBe(true);
   });

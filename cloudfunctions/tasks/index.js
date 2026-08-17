@@ -94,10 +94,16 @@ const handlers = {
     };
     const result = await settleActivityPoints({ store, activityId, activity, now });
     if (!result.settled) return result; // 未结束 / 已结算 / 无 RankCache → 跳过
-    // CAS 占位（防并发重发）：where(points_settled:false).update(true)，updated===0 说明已被其他实例结算 → 不发奖。
-    // settlement 摘要（活动页弹窗数据）随同一次 update 原子落库，不单独写、不会与积分状态分叉。
-    const upd = await cloud.database().collection('Activity')
-      .where({ activity_id: activityId, points_settled: false })
+    // CAS 占位（防并发重发）：未结算 = points_settled 显式 false 或字段缺失（新建活动不落库该字段，
+    //   schema default 仅是文档规范；等值 where(false) 不匹配缺失文档，曾致 CAS 永不命中 →
+    //   返回 alreadySettled 但从未发奖：台账全 0、永远提示「已结算过」）。
+    const db = cloud.database();
+    const _ = db.command;
+    const upd = await db.collection('Activity')
+      .where(_.or([
+        { activity_id: activityId, points_settled: false },
+        { activity_id: activityId, points_settled: _.exists(false) }
+      ]))
       .update({
         data: {
           points_settled: true,

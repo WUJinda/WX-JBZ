@@ -212,6 +212,21 @@ describe('settleActivityPoints 幂等与跳过', () => {
     expect(store.User[0].points).toBe(0); // 未加
   });
 
+  it('活动文档缺 points_settled 字段（旧数据/未初始化）→ 不误判已结算，正常发奖并就地置位', async () => {
+    // 回归：新建活动不落库该字段（schema default 仅是文档规范），CAS where(false) 不匹配缺失文档，
+    //   曾致 handler 永远返回 alreadySettled 但从未发奖（台账全 0）。纯函数层必须把缺失视为未结算。
+    const store = {
+      User: [user('u1', 'op1', 'd1', 'joined', 0)],
+      RankCache: [personalDoc([{ rank: 1, user_id: 'op1', total_steps: 100 }]), deptDoc([])]
+    };
+    const act = activity(); // 不带 points_settled 字段
+    const r = await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: act, now: NOW });
+    expect(r.settled).toBe(true);
+    expect(r.alreadySettled).toBeUndefined();
+    expect(store.User[0].points).toBe(12); // 个人榜第 1 名
+    expect(act.points_settled).toBe(true); // 就地标记（handler 据此 CAS 落库）
+  });
+
   it('活动未结束（active）→ skipped:not-ended', async () => {
     const store = { User: [user('u1', 'op1', 'd1')], RankCache: [personalDoc([]), deptDoc([])] };
     const NOW_ACTIVE = new Date('2026-07-10T04:00:00Z');
