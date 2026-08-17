@@ -199,21 +199,25 @@ Page({
 
   /** 上拉加载更多：按当前 Tab/视图分页。 */
   onReachBottom() {
+    // 修复竞态：loadXxx(true)（reset）期间 loading=true 但 loadingMore=false，
+    //   若 onReachBottom 仅查 loadingMore 会放行 loadXxx(false)，两请求并发 →
+    //   reset 先回 setData(list)，非 reset 后回 concat(list) → 列表翻倍。
+    //   统一查 loading || loadingMore 阻断。
     if (this.data.viewMode === 'members') {
-      if (!this.data.memberHasMore || this.data.loadingMore) return;
+      if (!this.data.memberHasMore || this.data.loading || this.data.loadingMore) return;
       this.loadDeptMembers(false);
       return;
     }
     if (this.data.tab === 'personal') {
       if (this.data.subTab === 'today') {
-        if (!this.data.todayHasMore || this.data.loadingMore) return;
+        if (!this.data.todayHasMore || this.data.loading || this.data.loadingMore) return;
         this.loadTodayRank(false);
       } else {
-        if (!this.data.personalHasMore || this.data.loadingMore) return;
+        if (!this.data.personalHasMore || this.data.loading || this.data.loadingMore) return;
         this.loadPersonal(false);
       }
     } else {
-      if (!this.data.deptHasMore || this.data.loadingMore) return;
+      if (!this.data.deptHasMore || this.data.loading || this.data.loadingMore) return;
       this.loadDept(false);
     }
   },
@@ -257,6 +261,9 @@ Page({
       });
       return;
     }
+    // 请求序列号：防止并发请求的过期响应覆盖新数据（如 onShow reset 与 onReachBottom load-more 并发）。
+    this._personalReqSeq = (this._personalReqSeq || 0) + 1;
+    const seq = this._personalReqSeq;
     const page = reset ? 1 : this.data.personalPage;
     if (reset) {
       this.setData({ loading: true, errorMsg: '' });
@@ -275,6 +282,7 @@ Page({
         { loading: false, silent: true }
       )
       .then((data) => {
+        if (seq !== this._personalReqSeq) return; // 过期响应，丢弃
         const d = data || {};
         const list = Array.isArray(d.list) ? d.list : [];
         const merged = reset ? list : this.data.personalList.concat(list);
@@ -291,6 +299,7 @@ Page({
         });
       })
       .catch((err) => {
+        if (seq !== this._personalReqSeq) return; // 过期响应，丢弃
         // 游客态（1002）：rank 后端已改为游客可浏览，正常不会走到；本地轨兼底。
         if (isNotLoggedInError(err)) {
           this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
@@ -322,6 +331,9 @@ Page({
       this.setData({ todayList: [], todayHasMore: false, errorMsg: '' });
       return;
     }
+    // 请求序列号：防止并发请求的过期响应覆盖新数据。
+    this._todayReqSeq = (this._todayReqSeq || 0) + 1;
+    const seq = this._todayReqSeq;
     const page = reset ? 1 : this.data.todayPage;
     if (reset) {
       this.setData({ loading: true, errorMsg: '' });
@@ -341,6 +353,7 @@ Page({
         { loading: false, silent: true }
       )
       .then((data) => {
+        if (seq !== this._todayReqSeq) return; // 过期响应，丢弃
         const d = data || {};
         const list = Array.isArray(d.list) ? d.list : [];
         const merged = reset ? list : this.data.todayList.concat(list);
@@ -356,6 +369,7 @@ Page({
         });
       })
       .catch((err) => {
+        if (seq !== this._todayReqSeq) return; // 过期响应，丢弃
         // 游客态（1002）：rank 后端已改为游客可浏览，正常不会走到；本地轨兼底。
         if (isNotLoggedInError(err)) {
           this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
@@ -381,6 +395,9 @@ Page({
       this.setData({ deptList: [], deptHasMore: false, errorMsg: '' });
       return;
     }
+    // 请求序列号：防止并发请求的过期响应覆盖新数据。
+    this._deptReqSeq = (this._deptReqSeq || 0) + 1;
+    const seq = this._deptReqSeq;
     // P1-12：部门榜「我的贡献」依赖 myRank.total_steps；若空（用户直进 dept tab 未加载 personal），
     //   先单独查 personal 拿本人 total_steps，避免贡献占比恒 0。
     if (!(this.data.myRank && this.data.myRank.total_steps != null)) {
@@ -418,6 +435,7 @@ Page({
         { loading: false, silent: true }
       )
       .then((data) => {
+        if (seq !== this._deptReqSeq) return; // 过期响应，丢弃
         const d = data || {};
         const list = Array.isArray(d.list) ? d.list : [];
         const merged = reset ? list : this.data.deptList.concat(list);
@@ -442,6 +460,7 @@ Page({
         });
       })
       .catch((err) => {
+        if (seq !== this._deptReqSeq) return; // 过期响应，丢弃
         if (isNotLoggedInError(err)) {
           this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
           return;
@@ -467,6 +486,9 @@ Page({
       this.setData({ memberList: [], memberHasMore: false, errorMsg: '' });
       return;
     }
+    // 请求序列号：防止并发请求的过期响应覆盖新数据。
+    this._memberReqSeq = (this._memberReqSeq || 0) + 1;
+    const seq = this._memberReqSeq;
     const page = reset ? 1 : this.data.memberPage;
     if (reset) {
       this.setData({ loading: true, errorMsg: '' });
@@ -486,6 +508,7 @@ Page({
         { loading: false, silent: true }
       )
       .then((data) => {
+        if (seq !== this._memberReqSeq) return; // 过期响应，丢弃
         const d = data || {};
         const list = Array.isArray(d.list) ? d.list : [];
         const merged = reset ? list : this.data.memberList.concat(list);
@@ -500,6 +523,7 @@ Page({
         });
       })
       .catch((err) => {
+        if (seq !== this._memberReqSeq) return; // 过期响应，丢弃
         if (isNotLoggedInError(err)) {
           this.setData({ isLoggedIn: false, loading: false, loadingMore: false });
           return;
