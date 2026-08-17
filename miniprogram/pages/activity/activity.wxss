@@ -280,6 +280,8 @@
 }
 .settle-top-item:last-child {
   border-bottom: none;
+  /* 底部余量：最后一行与下方按钮拉开距离，避免被按钮贴住/遮挡 */
+  padding-bottom: 36rpx;
 }
 .settle-top-rank {
   flex: 0 0 56rpx;
@@ -306,10 +308,14 @@
 }
 .settle-close-btn {
   flex-shrink: 0;
-  margin-top: 28rpx;
-  width: 100% !important;
+  align-self: center;
+  width: auto !important;
+  height: 68rpx;
+  line-height: 68rpx;
+  padding: 0 56rpx;
+  margin-top: 20rpx;
   background: #07c160;
   color: #fff;
-  border-radius: 44rpx;
-  font-size: 30rpx;
+  border-radius: 34rpx;
+  font-size: 26rpx;
 }
