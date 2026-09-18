@@ -10,6 +10,7 @@
 [![Backend](https://img.shields.io/badge/Backend-%E5%BE%AE%E4%BF%A1%E4%BA%91%E5%BC%80%E5%8F%91_CloudBase-368cff?style=flat-square)](https://developers.weixin.qq.com/miniprogram/dev/wxcloud/basis/getting-started.html)
 [![Language](https://img.shields.io/badge/Language-JavaScript-F7DF1E?style=flat-square&logo=javascript&logoColor=black)](https://developer.mozilla.org/zh-CN/docs/Web/JavaScript)
 [![Tests](https://img.shields.io/badge/Tests-Vitest%20%C2%B7%2062%20files%20%C2%B7%201.1k%2B%20cases-6e9f18?style=flat-square&logo=vitest&logoColor=white)](#-测试)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 员工在微信内零门槛参与，管理员在小程序内置后台完成活动运营——**无服务器、无域名、无部署流水线，千级用户单期活动近乎零成本**。
 
@@ -124,6 +125,10 @@ npm run verify:dist   # 校验云函数构建产物完整性
 | [邀请码机制](docs/邀请码机制.md) | 现行准入方案：一人一码，替代早期手机号 + 白名单设计 |
 | [技术架构设计](docs/技术架构设计.md) | 选型理由、云函数分层、数据模型、定时任务口径 |
 | [PRD · P0 MVP](docs/PRD-P0-健步走小程序MVP.md) | 产品需求基线 |
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 WUJinda
 
 ---
 
