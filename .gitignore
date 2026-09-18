@@ -48,3 +48,6 @@ assets/
 docs/用户使用说明书.md
 gen_notice.py
 docs/参考图/
+# === 敏感数据（含真实人员信息，严禁入库） ===
+docs/信息化院人员邀请码表.xlsx
+*.xlsx
