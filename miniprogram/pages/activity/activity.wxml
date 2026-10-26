@@ -58,7 +58,10 @@
     <view class="rules-text">{{activity.rules}}</view>
   </view>
 
-  <!-- CTA（四态：未开始置灰 / 进行中报名 / 进行中已报名我的步数 / 已结束查看战绩） -->
+  <!-- 补同步窗口提示（2026-10-26）：活动到期未终止，窗口开放中；已报名者下方 CTA 直达 home 同步入口 -->
+  <view class="catchup-tip" wx:if="{{catchupOpen}}">活动已结束，仍可补同步活动期内的步数，截止活动终止（微信运动仅保留近 30 天数据，建议尽快补同步）</view>
+
+  <!-- CTA（四态：未开始置灰 / 进行中报名 / 进行中已报名我的步数 / 已结束去补同步或查看战绩） -->
   <button
     class="cta-btn {{cta.disabled ? 'cta-disabled' : ''}}"
     bindtap="onCtaTap"

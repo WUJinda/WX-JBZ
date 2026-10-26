@@ -186,7 +186,8 @@ function formatDateTime(value) {
  *   - 未开始 → 置灰「活动未开始」；
  *   - 进行中 + 未报名 → 「报名参加」（跳 login）；
  *   - 进行中 + 已报名 → 「我的步数」（switchTab home）；
- *   - 已结束 → 「查看战绩」（跳 rank）。
+ *   - 已结束（2026-10-26 补同步窗口）→ 已报名「去补同步」（switchTab home，同步入口在 home 页）；
+ *     未报名「查看战绩」（跳 rank，活动结束后报名已截止无法参与补同步）。
  *
  * @param {string} status deriveStatus 结果
  * @param {string} joinStatus 'pending' | 'joined'
@@ -199,6 +200,12 @@ function deriveCta(status, joinStatus, signupEnded) {
     return { text: '活动未开始', action: 'none', disabled: true };
   }
   if (status === STATUS.ENDED) {
+    // 2026-10-26 补同步窗口：自然到期未终止（calcCountdown 对 terminated 单独返 TERMINATED）→
+    // 已报名者引导去 home 补同步（本页为启动落地页，仅靠 home 入口触达不足）；
+    // 未报名用户无法参与（活动结束后报名已截止），维持「查看战绩」。
+    if (joinStatus === 'joined') {
+      return { text: '去补同步', action: 'home', disabled: false };
+    }
     return { text: '查看战绩', action: 'rank', disabled: false };
   }
   // 已终止（手动终止）：与已结束同 CTA，可查看历史排名（终止前聚合的榜单冻结可看）。

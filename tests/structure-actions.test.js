@@ -1352,6 +1352,16 @@ describe('补同步窗口与终止结算（2026-10-26：到期可补同步，终
     expect(src).toMatch(/terminated:\s*activity\.terminated === true/);
   });
 
+  it('activity 落地页补同步触达：ENDED 已报名 CTA「去补同步」+ 窗口提示条', () => {
+    const calc = readSource('miniprogram/pages/activity/activityCalc.js');
+    expect(calc).toMatch(/去补同步/);
+    const wxml = readSource('miniprogram/pages/activity/activity.wxml');
+    expect(wxml).toMatch(/catchup-tip/);
+    expect(wxml).toMatch(/catchupOpen/);
+    const js = readSource('miniprogram/pages/activity/activity.js');
+    expect(js).toMatch(/catchupOpen = countdown\.status === STATUS\.ENDED/);
+  });
+
   it('rank / admin-activity 回写 currentActivity 同样携带 terminated（防冲掉终止标记）', () => {
     const rank = readSource('miniprogram/pages/rank/rank.js');
     expect(rank).toMatch(/terminated:\s*data\.terminated === true/);

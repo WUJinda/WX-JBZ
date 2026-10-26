@@ -184,8 +184,15 @@ describe('活动主页计算纯函数（C2）', () => {
       expect(cta.action).toBe('home');
     });
 
-    it('已结束 → 「查看战绩」（跳 rank）', () => {
+    it('已结束（补同步窗口）+ 已报名 → 「去补同步」（跳 home，2026-10-26）', () => {
       const cta = deriveCta(STATUS.ENDED, 'joined');
+      expect(cta.text).toBe('去补同步');
+      expect(cta.disabled).toBe(false);
+      expect(cta.action).toBe('home');
+    });
+
+    it('已结束 + 未报名 → 「查看战绩」（跳 rank，报名已截止无法参与补同步）', () => {
+      const cta = deriveCta(STATUS.ENDED, 'pending');
       expect(cta.text).toBe('查看战绩');
       expect(cta.disabled).toBe(false);
       expect(cta.action).toBe('rank');

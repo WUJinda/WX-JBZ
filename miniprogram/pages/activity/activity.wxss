@@ -158,6 +158,17 @@
   border-radius: 48rpx;
   font-size: 32rpx;
 }
+/* 2026-10-26 补同步窗口提示条（与 home.catchup-tip 同配色，跨页一致） */
+.catchup-tip {
+  margin: 24rpx 0 0;
+  padding: 20rpx 24rpx;
+  background: #fff7e8;
+  color: #b25e00;
+  font-size: 24rpx;
+  line-height: 1.6;
+  border-radius: 40rpx;
+  text-align: center;
+}
 .cta-disabled {
   background: #ccc !important;
   color: #fff;

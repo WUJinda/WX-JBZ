@@ -28,6 +28,8 @@ Page({
     countdown: null, // { label, days, hours, minutes }
     progress: null, // { daysElapsed, daysTotal, percent }
     cta: { text: '活动未开始', action: 'none', disabled: true },
+    // 2026-10-26 补同步窗口：自然到期未终止时为 true（提示条展示，已报名 CTA 变「去补同步」）。
+    catchupOpen: false,
     overview: { total_steps: 0, participant_count: 0 },
     // 比赛结束结算公告弹窗（2026-08-17）：活动结束结算后展示一次，用户可关闭；新活动顶替后自动取消。
     settlementVisible: false,
@@ -160,6 +162,9 @@ Page({
     // 报名截止：仅当活动设了 signup_deadline 且当前已过（不填=活动结束前可报，由 status=ENDED 兜底）
     const signupEnded = !!(a.signup_deadline && Date.now() > Date.parse(a.signup_deadline));
     const cta = deriveCta(countdown.status, this.data.joinStatus, signupEnded);
+    // 2026-10-26 补同步窗口提示：calcCountdown 对 terminated 单独返 TERMINATED，
+    // 故 status===ENDED 即「自然到期未终止」→ 全员展示窗口提示（已报名者 CTA 同时变「去补同步」）。
+    const catchupOpen = countdown.status === STATUS.ENDED;
     const statusText = {
       [STATUS.PENDING]: '未开始',
       [STATUS.ACTIVE]: '进行中',
@@ -172,6 +177,7 @@ Page({
       countdown,
       progress,
       cta,
+      catchupOpen,
       overview: (a.overview && { ...a.overview }) || { total_steps: 0, participant_count: 0 }
     });
   },
