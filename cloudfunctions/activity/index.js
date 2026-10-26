@@ -198,11 +198,21 @@ const handlers = {
           data: { action: 'pointSettle', activity_id: result.activity_id }
         });
         const envelope = (res && res.result) || null;
-        if (envelope && envelope.code === 0) {
+        // 写后读容错：tasks 读 Activity 副本可能仍是终止前旧文档（terminated 缺失）→ 闸门误判
+        // not-terminated（envelope.code=0 但 skipped）。与 stepsTriggerRankFresh 同思路，此类
+        // 结果也应重试而非接受；重试仍跳过则交由 10 分钟定时器兑底（幂等，届时副本必已同步）。
+        const staleSkipped = !!(
+          envelope && envelope.code === 0 && envelope.data && envelope.data.skipped === 'not-terminated'
+        );
+        if (envelope && envelope.code === 0 && !staleSkipped) {
           settle = envelope.data || null;
           break;
         }
-        console.error('[activity.terminate] pointSettle 返回失败(第' + attempt + '次)', JSON.stringify(envelope));
+        if (staleSkipped) {
+          console.warn('[activity.terminate] pointSettle 疑似副本延迟误判 not-terminated(第' + attempt + '次)，重试');
+        } else {
+          console.error('[activity.terminate] pointSettle 返回失败(第' + attempt + '次)', JSON.stringify(envelope));
+        }
       } catch (err) {
         console.error('[activity.terminate] 触发 pointSettle 异常(第' + attempt + '次)', (err && err.message) || err);
       }

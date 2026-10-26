@@ -165,6 +165,9 @@ Page({
             name: data.name || ga.name || '',
             start_time: data.start_time != null ? data.start_time : ga.start_time,
             end_time: data.end_time != null ? data.end_time : ga.end_time,
+            // 2026-10-26：与 activity/home 回写同口径补 terminated，否则提前终止后本页回写会冲掉
+            // 终止标记，home.canSyncSteps 误判回 active（同步入口横跳回归）。
+            terminated: data.terminated === true,
             status: data.status || ga.status || ''
           };
         }

@@ -164,6 +164,9 @@ Page({
             name: d.name || this.data.name || '',
             start_time: d.start_time != null ? d.start_time : this.data.start_time,
             end_time: d.end_time != null ? d.end_time : this.data.end_time,
+            // 2026-10-26：与 activity/home/rank 回写同口径补 terminated；save 投影未下发该字段
+            // 时为 false（刚保存的活动非终止态），_activityDirty 触发的 current 重拉会立即纠偏。
+            terminated: d.terminated === true,
             status: d.status || ''
           };
           app.globalData._activityDirty = true;

@@ -1351,6 +1351,18 @@ describe('补同步窗口与终止结算（2026-10-26：到期可补同步，终
     const src = readSource('miniprogram/pages/activity/activity.js');
     expect(src).toMatch(/terminated:\s*activity\.terminated === true/);
   });
+
+  it('rank / admin-activity 回写 currentActivity 同样携带 terminated（防冲掉终止标记）', () => {
+    const rank = readSource('miniprogram/pages/rank/rank.js');
+    expect(rank).toMatch(/terminated:\s*data\.terminated === true/);
+    const adminAct = readSource('miniprogram/pages/admin/activity/activity.js');
+    expect(adminAct).toMatch(/terminated:\s*d\.terminated === true/);
+  });
+
+  it('activity/index.js：terminate 内联结算对写后读副本延迟容错（not-terminated 也重试）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    expect(src).toMatch(/skipped === 'not-terminated'/);
+  });
 });
 
 
