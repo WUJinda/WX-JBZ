@@ -162,7 +162,8 @@ Page({
 
   /**
    * 立即结算：调 admin.settlePoints（转发 tasks.pointSettle，按最终榜单结算）。
-   * 活动未结束 / 已结算 / 榜单缺失均会被后端跳过，前端据返回态提示。
+   * 强制通道：活动到期未终止也可结算（2026-10-26 口径：自动结算随活动终止触发，手动可提前锁定）；
+   * 活动未到期 / 已结算 / 榜单缺失均会被后端跳过，前端据返回态提示。
    */
   onSettle() {
     if (this._settling) return; // 防重锁
@@ -180,7 +181,7 @@ Page({
     }
     wx.showModal({
       title: '积分结算',
-      content: '按当前最终榜单结算（个人榜前10名 +12/10/8/7/6/5/4/3/2/1，0步不发分；部门榜第1名部门成员每人 +2）。活动未结束将自动跳过。确定？',
+      content: '按当前最终榜单结算（个人榜前10名 +12/10/8/7/6/5/4/3/2/1，0步不发分；部门榜第1名部门成员每人 +2）。若活动尚未终止，结算后员工仍可补同步步数但不再计入积分；如需按最终成绩结算，请先在活动管理中终止活动。活动未到期将自动跳过。确定？',
       success: (res) => {
         if (!res.confirm) return;
         this._settling = true;
@@ -195,8 +196,10 @@ Page({
               this.loadPoints(true); // 结算后刷新台账
             } else if (d.alreadySettled) {
               wx.showToast({ title: '该活动积分已结算过', icon: 'none' });
+            } else if (d.skipped === 'not-terminated') {
+              wx.showToast({ title: '活动尚未终止，暂不自动结算；可终止活动后再结算', icon: 'none' });
             } else if (d.skipped === 'not-ended') {
-              wx.showToast({ title: '活动未结束，暂不结算', icon: 'none' });
+              wx.showToast({ title: '活动未到期，暂不结算', icon: 'none' });
             } else if (d.skipped === 'no-rankcache') {
               wx.showToast({ title: '榜单数据缺失，请先刷新排行榜', icon: 'none' });
             } else {

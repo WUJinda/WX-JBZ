@@ -1,5 +1,5 @@
 /**
- * steps.sync 业务纯函数单测（E2）：upsert 去重 / 异常阈值 / 频控 / 锁定不改值 / 活动结束禁同步。
+ * steps.sync 业务纯函数单测（E2）：upsert 去重 / 异常阈值 / 频控 / 锁定不改值 / 同步窗口（仅终止禁同步）。
  */
 const {
   syncSteps,
@@ -13,7 +13,6 @@ const {
   DEFAULT_CONFIG
 } = require('../../cloudfunctions/steps/stepsSync');
 const { CODE } = require('../../cloudfunctions/common/errors');
-const { STATUS } = require('../../cloudfunctions/activity/activityStatus');
 
 const OPENID = 'oU';
 const USER_ID = 'u_1';
@@ -248,19 +247,71 @@ describe('syncSteps 锁定不改值（架构 §6.4）', () => {
   });
 });
 
-describe('syncSteps 活动结束禁同步（R3.5）', () => {
-  it('活动 ended → sync 拒绝（STEP_ACTIVITY_CLOSED）', async () => {
-    const NOW_AFTER = new Date('2026-08-01T04:00:00Z'); // 活动已结束
+describe('syncSteps 同步窗口（R3.5，2026-10-26 起：到期可补同步，仅终止禁同步）', () => {
+  it('活动 ended 未终止 → 补同步窗口开放：仅活动期内步数入库、期外丢弃', async () => {
+    const NOW_AFTER = new Date('2026-08-01T04:00:00Z'); // 北京 08-01 12:00，活动（07-01~07-21）已到期未终止
+    const store = makeStore();
+    const out = await syncSteps({
+      store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
+      // 07-20（活动期内）/ 07-21（结束日，仍属活动期）/ 07-31（期外）/ 08-01（今日，期外）
+      stepInfoList: stepList([['2026-07-20', 8000], ['2026-07-21', 6000], ['2026-07-31', 9000], ['2026-08-01', 4000]]),
+      activity: mockActivity(), now: NOW_AFTER
+    });
+    // 仅活动期内两条入库；期外（含今日）丢弃
+    expect(store.StepRecord).toHaveLength(2);
+    const dates = store.StepRecord.map((r) => r.date).sort();
+    expect(dates).toEqual(['2026-07-20', '2026-07-21']);
+    // 补同步的历史日插入即锁（不可再覆盖）
+    expect(store.StepRecord.every((r) => r.locked === true)).toBe(true);
+    // total = 活动期内合计；today 已出活动期 → 0
+    expect(out.total).toBe(14000);
+    expect(out.today).toEqual({ date: '2026-08-01', steps: 0, abnormal: false });
+  });
+
+  it('活动 ended 未终止 → 已锁历史日不被补同步覆盖（锁定不改值）', async () => {
+    const NOW_AFTER = new Date('2026-08-01T04:00:00Z');
+    const store = makeStore([
+      {
+        user_id: USER_ID, _openid: OPENID, activity_id: ACTIVITY_ID,
+        date: '2026-07-10', steps: 5000, abnormal: false,
+        locked: true, synced_at: '2026-07-11T00:00:00Z', sync_count: 0
+      }
+    ]);
+    await syncSteps({
+      store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
+      stepInfoList: stepList([['2026-07-10', 9999]]),
+      activity: mockActivity(), now: NOW_AFTER
+    });
+    const d = store.StepRecord.find((r) => r.date === '2026-07-10');
+    expect(d.steps).toBe(5000); // 已锁不覆盖
+  });
+
+  it('活动 terminated（到期后终止）→ sync 拒绝（STEP_ACTIVITY_CLOSED）', async () => {
+    const NOW_AFTER = new Date('2026-08-01T04:00:00Z');
     const store = makeStore();
     await expect(
       syncSteps({
         store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
         stepInfoList: stepList([['2026-07-01', 8000]]),
-        activity: mockActivity(), now: NOW_AFTER
+        activity: Object.assign(mockActivity(), { terminated: true }),
+        now: NOW_AFTER
       })
     ).rejects.toMatchObject({ code: CODE.STEP_ACTIVITY_CLOSED });
     // 不落库
     expect(store.StepRecord).toHaveLength(0);
+  });
+
+  it('活动提前终止（时间窗仍在进行中）→ 同样拒绝', async () => {
+    const NOW_DURING = new Date('2026-07-05T04:00:00Z');
+    const store = makeStore();
+    await expect(
+      syncSteps({
+        store, openid: OPENID, userId: USER_ID, activityId: ACTIVITY_ID,
+        stepInfoList: stepList([['2026-07-05', 8000]]),
+        activity: Object.assign(mockActivity(), { terminated: true }),
+        now: NOW_DURING
+      })
+    ).rejects.toMatchObject({ code: CODE.STEP_ACTIVITY_CLOSED });
   });
 
   it('活动 active → sync 正常', async () => {

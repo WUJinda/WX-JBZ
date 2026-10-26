@@ -6,7 +6,9 @@
  *     锁定记录（locked=true）不覆盖（架构 §6.4）。
  *   - R3.6 异常阈值：单日 steps > 阈值（默认 40000）→ abnormal=true（仅标记不剔除），可配置。
  *   - sync_count 仍按日累加（追踪用），但不做次数上限拦截（已取消每日频控）。
- *   - R3.5 活动结束：activity 已 ended → sync 拒绝。
+ *   - R3.5 同步窗口（2026-10-26 调整）：活动到期（ended）后仍可补同步活动期内步数；
+ *     仅 activity.terminated===true（管理员终止）才拒绝同步（STEP_ACTIVITY_CLOSED）。
+ *     写入侧按 [startDate, endDate] 过滤，活动期外/未来日记录不入库，补同步天然只计入活动期内。
  *   - 记 synced_at。
  *
  * 红线：
@@ -20,7 +22,6 @@
  */
 
 const { CODE, BizError } = require('../common/errors');
-const { deriveStatus, STATUS } = require('../activity/activityStatus');
 
 /**
  * 默认配置（均可被 params.config 覆盖，便于单测与活动级配置）。
@@ -96,8 +97,9 @@ function activityEndDate(activity, offsetMinutes) {
  * → home「累计/参与天数/排名/趋势」进入即全 0（仅 sync 当下用 sync 返回值才正常）。
  *
  * 语义调整：`locked` 降级为 syncSteps 写入时「禁止覆盖」的标记（防活动后期篡改），不再是
- * 「是否有效」的前置。理由：步数解密自微信运动（真实不可伪造）+ 活动结束 sync 拒绝
- * （STEP_ACTIVITY_CLOSED）→ 活动期内允许 sync 用最新真实值刷新历史日，结束后自然固化。
+ * 「是否有效」的前置。理由：步数解密自微信运动（真实不可伪造）+ 活动终止后 sync 拒绝
+ * （STEP_ACTIVITY_CLOSED）→ 活动期内（含到期后补同步窗口）允许 sync 用最新真实值刷新
+ * 未锁定的历史日，终止后自然固化。
  *
  * @param {object} r StepRecord（须含 date 字符串）
  * @param {string} today YYYY-MM-DD（北京日）
@@ -167,7 +169,7 @@ function projectStep(rec) {
  * sync 主逻辑（纯函数 + 注入式 store/now/config）。
  *
  * 流程：
- *   1. 活动状态判定：ended → 拒绝（R3.5）。
+ *   1. 同步窗口判定（R3.5）：terminated → 拒绝；到期未终止 → 放行（补同步，仅活动期内 date）。
  *   2. 解密后的 stepInfoList 按日聚合（仅活动期内 date）。
  *   3. sync_count：当日累加（追踪用），无次数上限。
  *   4. 逐日 upsert（R3.2 去重）：
@@ -200,12 +202,11 @@ async function syncSteps(params) {
 
   const cfg = Object.assign({}, DEFAULT_CONFIG, config || {});
 
-  // R3.5：活动结束禁同步（复用阶段 C 的 deriveStatus）。
-  if (activity) {
-    const status = deriveStatus(activity, now === undefined ? undefined : now);
-    if (status === STATUS.ENDED) {
-      throw BizError(CODE.STEP_ACTIVITY_CLOSED, 'sync: activity ended, sync disabled');
-    }
+  // R3.5 同步窗口（2026-10-26 调整）：活动到期（ended）后仍可补同步活动期内步数，
+  // 仅管理员终止（terminated===true）才拒绝。到期后写入侧仍按 [startDate, endDate] 过滤，
+  // 活动期外/未来日记录不入库，故放行不会引入活动期外数据。
+  if (activity && activity.terminated === true) {
+    throw BizError(CODE.STEP_ACTIVITY_CLOSED, 'sync: activity terminated, sync disabled');
   }
 
   const nowDate = now instanceof Date ? now : new Date();

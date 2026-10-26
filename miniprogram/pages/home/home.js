@@ -7,7 +7,7 @@
 const { STATES, transition, shouldThrottle, isSyncFresh, classifyWerunAuth } = require('./homeSync');
 const { selectRange, normalizeBars, isEmptyTrend, computeBarsWidth, computeActivityDays } = require('./homeTrend');
 const { handleNotLoggedIn, isNotLoggedInError } = require('../../utils/authGuard');
-const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData } = require('./homeStatus');
+const { STATUS: ACT_STATUS, deriveHomeStatus, needsFetchStatus, shouldLoadData, canSyncSteps } = require('./homeStatus');
 
 Page({
   data: {
@@ -36,6 +36,10 @@ Page({
     // 活动状态感知（homeStatus 纯函数驱动）：unknown/active/ended/pending/none
     activityStatus: ACT_STATUS.UNKNOWN,
     activityName: '',
+    // 2026-10-26 补同步窗口：同步入口由 syncEnabled 驱动（active 或 ended-未终止），
+    // activityTerminated 供文案区分「已终止（禁同步）」与「已结束（可补同步）」。
+    syncEnabled: false,
+    activityTerminated: false,
     // 管理员快捷入口（仅 is_admin=true 显示）：顶部「管理后台」+ 空态「去创建活动」
     isAdmin: false,
     // 用户报名态（profile.join_status）：'pending' 未报名 / 'joined' 已报名 / 'unknown' 未查到。
@@ -123,7 +127,13 @@ Page({
     // 重算回 active（同步按钮反复横跳 → 再点再 3004）。
     if (this._forceEnded) {
       const ga0 = (app && app.globalData && app.globalData.currentActivity) || {};
-      this.setData({ activityStatus: ACT_STATUS.ENDED, activityName: ga0.name || this.data.activityName });
+      // 3004 现仅由 terminated 触发（到期未终止后端放行补同步），同步入口关闭至下拉刷新重探。
+      this.setData({
+        activityStatus: ACT_STATUS.ENDED,
+        activityName: ga0.name || this.data.activityName,
+        syncEnabled: false,
+        activityTerminated: true
+      });
       this.loadStats();
       this.loadTrend(this.data.trendRange);
       return;
@@ -131,7 +141,13 @@ Page({
     const ga = (app && app.globalData && app.globalData.currentActivity) || {};
     const status = deriveHomeStatus(ga, Date.now());
     const fullRange = computeActivityDays(ga);
-    this.setData({ activityStatus: status, activityName: ga.name || '', trendFullRange: fullRange });
+    this.setData({
+      activityStatus: status,
+      activityName: ga.name || '',
+      trendFullRange: fullRange,
+      syncEnabled: canSyncSteps(ga, Date.now()),
+      activityTerminated: ga.terminated === true
+    });
     if (needsFetchStatus(ga)) {
       this.fetchActivityStatus();
       return;
@@ -163,12 +179,20 @@ Page({
             name: d.name || '',
             start_time: d.start_time != null ? d.start_time : null,
             end_time: d.end_time != null ? d.end_time : null,
+            // 2026-10-26：与 activity.applyActivity 同步写入 terminated（canSyncSteps 依赖）。
+            terminated: d.terminated === true,
             status: d.status || ''
           };
         }
         const status = deriveHomeStatus(d, Date.now());
         const fullRange = computeActivityDays(d);
-        this.setData({ activityStatus: status, activityName: d.name || '', trendFullRange: fullRange });
+        this.setData({
+          activityStatus: status,
+          activityName: d.name || '',
+          trendFullRange: fullRange,
+          syncEnabled: canSyncSteps(d, Date.now()),
+          activityTerminated: d.terminated === true
+        });
         if (shouldLoadData(status)) {
           this.loadStats();
           this.loadTrend(this.data.trendRange);
@@ -176,7 +200,7 @@ Page({
       })
       .catch(() => {
         // current 游客可调、不抛 1002；失败统一空态（不阻断 home 渲染）。
-        this.setData({ activityStatus: ACT_STATUS.NONE });
+        this.setData({ activityStatus: ACT_STATUS.NONE, syncEnabled: false, activityTerminated: false });
       });
   },
 
@@ -382,12 +406,12 @@ Page({
         // 1002 未登录 → 守卫引导登录（sync 需登录态）。
         if (handleNotLoggedIn(err)) return;
         if (err && err.code === 3004) {
-          // STEP_ACTIVITY_CLOSED（R3.5）：活动已结束禁同步。状态过时仍点到同步的兜底。
+          // STEP_ACTIVITY_CLOSED（R3.5，2026-10-26 起仅由 terminated 触发）：活动已终止禁同步。
           // 置 _forceEnded：保持 ended 态到下次下拉刷新，避免 onShow 用 globalData 旧
           // 时间窗口回滚到 active（同步按钮反复横跳 → 再点再 3004）。
           this._forceEnded = true;
-          this.apply({ type: 'CLOUD_FAIL', payload: { message: '活动已结束，无法同步' } });
-          this.setData({ activityStatus: ACT_STATUS.ENDED });
+          this.apply({ type: 'CLOUD_FAIL', payload: { message: '活动已终止，无法同步' } });
+          this.setData({ activityStatus: ACT_STATUS.ENDED, syncEnabled: false, activityTerminated: true });
         } else if (err && err.code === 1004) {
           // AUTH_JOIN_STATUS_DENIED：未报名（pending）。预判未拦截到（冷启动 joinStatus 未就绪）时的兜底。
           // 回 IDLE（RESET 不清 today/total，不显示失败文案，弹窗引导更清晰）+ 引导去 activity 页报名。

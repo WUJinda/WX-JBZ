@@ -3,7 +3,7 @@
  * 0      成功
  * 1xxx   鉴权类（openid 无对应用户、非管理员、报名状态不符）
  * 2xxx   业务类（邀请码、活动未开始/已结束、部门不存在）
- * 3xxx   步数类（授权失败、解密失败、超同步次数、活动已结束禁止同步）
+ * 3xxx   步数类（授权失败、解密失败、超同步次数、活动已终止禁止同步）
  * 5xxx   系统类（数据库/外部接口异常）
  */
 const CODE = {
@@ -32,7 +32,7 @@ const CODE = {
   STEP_AUTH_FAILED: 3001,      // getWeRunData 授权失败
   STEP_DECRYPT_FAILED: 3002,   // 解密失败
   STEP_SYNC_LIMIT: 3003,       // 超同步次数
-  STEP_ACTIVITY_CLOSED: 3004,  // 活动已结束禁止同步
+  STEP_ACTIVITY_CLOSED: 3004,  // 活动已终止禁止同步（2026-10-26 起：到期后仍可补同步活动期内步数，仅终止后拒绝）
 
   // 系统类 5xxx
   SYS_DB_ERROR: 5001,

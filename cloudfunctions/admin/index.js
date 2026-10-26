@@ -298,13 +298,18 @@ const handlers = {
     return result;
   },
 
-  // 手动触发积分结算（转发 tasks.pointSettle，过 assertAdmin）。场景：活动刚结束想立即结算不等定时任务。
+  // 手动触发积分结算（转发 tasks.pointSettle，过 assertAdmin）。强制通道：allow_ended=true——
+  // 活动到期未终止也可结算（提前锁定积分，后续补同步不再计入；前端确认弹窗已加强提醒）。
   settlePoints: async (event, context) => {
     const store = { User: await loadByWhere(cloud, 'User') };
     assertAdmin(store, context.openid);
     const res = await cloud.callFunction({
       name: 'tasks',
-      data: { action: 'pointSettle', activity_id: event && event.activity_id }
+      data: {
+        action: 'pointSettle',
+        activity_id: event && event.activity_id,
+        allow_ended: true
+      }
     });
     // callFunction 返回 { result: { code, message, data } }；透传 data（含 settled/awards 等）。
     const result = (res && res.result) || {};

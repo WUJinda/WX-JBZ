@@ -1,6 +1,7 @@
 /**
  * home 活动状态感知纯函数单测。
- * 覆盖 deriveStatusFromTime / deriveHomeStatus（时间推算 + 无时间退化）/ needsFetchStatus / shouldLoadData。
+ * 覆盖 deriveStatusFromTime / deriveHomeStatus（时间推算 + 无时间退化 + terminated 优先）/ needsFetchStatus /
+ * shouldLoadData / canSyncSteps（2026-10-26 补同步窗口）。
  *
  * 核心回归：时间窗口优先于 status 字符串快照——活动跨 end_time 后 status 仍='pending' 时，
  * 用时间实时推算应得 ended（修复登录后「活动未开始」一闪而过 →「活动已结束」的竞态）。
@@ -10,7 +11,8 @@ const {
   deriveHomeStatus,
   deriveStatusFromTime,
   needsFetchStatus,
-  shouldLoadData
+  shouldLoadData,
+  canSyncSteps
 } = require('../../miniprogram/pages/home/homeStatus');
 
 // 固定时间窗口 + 三个探测时间点（与后端 deriveStatus 同口径：Date.parse 字符串）。
@@ -91,6 +93,27 @@ describe('homeStatus 活动状态感知', () => {
       });
     });
 
+    describe('terminated 优先（与后端 deriveStatus 同口径：手动终止不可恢复）', () => {
+      it('terminated=true + 时间窗仍在进行中 → ended（提前终止不误判 active）', () => {
+        expect(
+          deriveHomeStatus({ activity_id: 'a1', start_time: START, end_time: END, terminated: true }, NOW)
+        ).toBe(STATUS.ENDED);
+      });
+
+      it('terminated=true + 未到开始时间 → ended', () => {
+        expect(
+          deriveHomeStatus({ activity_id: 'a1', start_time: START, end_time: END, terminated: true }, PAST)
+        ).toBe(STATUS.ENDED);
+      });
+
+      it('terminated=false/缺失 → 按时间窗推算（不受影响）', () => {
+        expect(deriveHomeStatus({ activity_id: 'a1', start_time: START, end_time: END }, NOW)).toBe(STATUS.ACTIVE);
+        expect(deriveHomeStatus({ activity_id: 'a1', start_time: START, end_time: END, terminated: false }, NOW)).toBe(
+          STATUS.ACTIVE
+        );
+      });
+    });
+
     describe('无时间窗口 → 退化 status 字符串（兼容冷启动 / 旧 mock）', () => {
       it('status=active → active', () => {
         expect(deriveHomeStatus({ activity_id: 'a1', status: 'active' })).toBe(STATUS.ACTIVE);
@@ -158,6 +181,34 @@ describe('homeStatus 活动状态感知', () => {
 
     it('入参 null → true', () => {
       expect(needsFetchStatus(null)).toBe(true);
+    });
+  });
+
+  describe('canSyncSteps（2026-10-26 补同步窗口，与后端 stepsSync R3.5 同口径）', () => {
+    it('active → true（常规同步）', () => {
+      expect(canSyncSteps({ activity_id: 'a1', start_time: START, end_time: END }, NOW)).toBe(true);
+    });
+
+    it('ended 未终止 → true（补同步窗口开放：仍可同步活动期内步数）', () => {
+      expect(canSyncSteps({ activity_id: 'a1', start_time: START, end_time: END }, FUTURE)).toBe(true);
+    });
+
+    it('terminated → false（终止后禁同步，含提前终止）', () => {
+      expect(canSyncSteps({ activity_id: 'a1', start_time: START, end_time: END, terminated: true }, NOW)).toBe(false);
+      expect(canSyncSteps({ activity_id: 'a1', start_time: START, end_time: END, terminated: true }, FUTURE)).toBe(false);
+    });
+
+    it('pending → false（未开始）', () => {
+      expect(canSyncSteps({ activity_id: 'a1', start_time: START, end_time: END }, PAST)).toBe(false);
+    });
+
+    it('none → false（无活动）', () => {
+      expect(canSyncSteps({ activity_id: '', start_time: START, end_time: END }, PAST)).toBe(false);
+    });
+
+    it('unknown（无时间无 status）→ false（等补调结果）', () => {
+      expect(canSyncSteps({}, NOW)).toBe(false);
+      expect(canSyncSteps(null)).toBe(false);
     });
   });
 

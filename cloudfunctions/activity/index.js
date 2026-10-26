@@ -185,10 +185,32 @@ const handlers = {
     const now = (event && event.now) || new Date().toISOString();
     const result = terminateActivity(store, { activity_id: activityId, now });
     await upsertActivityToCloud(cloud, store.Activity, result.activity_id, now);
+    // 2026-10-26：终止即结算——先于报名重置触发 tasks.pointSettle（自动路径，terminated 已落库故闸门放行）。
+    // 顺序关键：部门奖按 join_status==='joined' 全口径发奖，若先重置报名再结算，成员已变 pending
+    // 会导致部门奖全员落空（旧「提前终止→定时器结算」即存在此 bug）。结算幂等（points_settled），
+    // 失败重试一次；仍失败仅告警（报名重置优先，保障新活动报名链路），由 10 分钟定时器兑底重试
+    // （届时报名已重置，部门奖可能落空——遗留边缘，与改造前风险一致，概率极低）。
+    let settle = null;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        const res = await cloud.callFunction({
+          name: 'tasks',
+          data: { action: 'pointSettle', activity_id: result.activity_id }
+        });
+        const envelope = (res && res.result) || null;
+        if (envelope && envelope.code === 0) {
+          settle = envelope.data || null;
+          break;
+        }
+        console.error('[activity.terminate] pointSettle 返回失败(第' + attempt + '次)', JSON.stringify(envelope));
+      } catch (err) {
+        console.error('[activity.terminate] 触发 pointSettle 异常(第' + attempt + '次)', (err && err.message) || err);
+      }
+    }
     // 终止活动 = 当前活动结束：重置所有用户报名状态（joined → pending），
     // 用户需重新报名参加新活动。
     await resetUserJoinStatusToCloud(cloud, now);
-    return result;
+    return Object.assign({}, result, { settle });
   },
 
   // 硬删除活动（不可恢复，连带清理 StepRecord/RankCache）：管理员（assertAdmin）。

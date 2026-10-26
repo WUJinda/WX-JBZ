@@ -107,6 +107,9 @@ Page({
         // 易与在途的 fetchActivityStatus 竞态（pending 一闪 → ended）。
         start_time: activity.start_time != null ? activity.start_time : null,
         end_time: activity.end_time != null ? activity.end_time : null,
+        // 2026-10-26：同步写入 terminated——home.canSyncSteps 据此区分「已终止（禁同步）」与
+        // 「到期未终止（补同步窗口开放）」，与后端 deriveStatus 优先判 terminated 同口径。
+        terminated: activity.terminated === true,
         status: activity.status || ''
       };
     }

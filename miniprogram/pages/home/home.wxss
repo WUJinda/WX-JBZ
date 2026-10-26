@@ -69,6 +69,18 @@
   margin-bottom: 16rpx;
 }
 
+/* 2026-10-26 补同步窗口提示条：活动已到期未终止，仍可同步活动期内步数 */
+.catchup-tip {
+  text-align: center;
+  font-size: 24rpx;
+  color: #b25e00;
+  padding: 20rpx 24rpx;
+  background: #fff7e8;
+  border-radius: 40rpx;
+  margin-bottom: 16rpx;
+  line-height: 1.6;
+}
+
 /* F4：参与天数 / 活动进度 */
 .days-block { display: flex; justify-content: space-between; margin-top: 32rpx; margin-bottom: 16rpx; }
 .days-card {

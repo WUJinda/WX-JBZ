@@ -3,7 +3,9 @@
  *
  * home 是个人主页（tabBar），需按当前活动状态切换显示模式：
  *   - active   进行中：完整展示（步数 / 同步 / 趋势 / 排名）
- *   - ended    已结束：战绩归档（最终累计 + 趋势 + 排名，禁同步）
+ *   - ended    已结束：战绩归档（最终累计 + 趋势 + 排名）；
+ *              2026-10-26 起：到期未终止 = 补同步窗口开放（canSyncSteps=true，仍可同步活动期内步数），
+ *              仅 terminated（已终止）才禁同步
  *   - pending  未开始（有活动）：空态预告
  *   - none     无活动（activity_id 空）：空态
  *   - unknown  状态未知（globalData 尚未写入）：触发补调 activity.current
@@ -74,12 +76,16 @@ function deriveStatusFromTime(start_time, end_time, now) {
 /**
  * 从 globalData.currentActivity 推导 home 显示态。
  * 优先用 start_time/end_time 实时推算（注入 now）；无时间窗口才退化到 status 字符串。
- * @param {object} [activity] { activity_id?, start_time?, end_time?, status? }
+ * terminated===true 优先判 ended（与后端 deriveStatus 同口径：手动终止不可恢复，忽略时间窗）。
+ * @param {object} [activity] { activity_id?, start_time?, end_time?, terminated?, status? }
  * @param {Date|number} [now] 当前时间（实时推算用；测试注入固定值）
  * @returns {string} STATUS.*
  */
 function deriveHomeStatus(activity, now) {
   const a = activity || {};
+  // 手动终止优先（提前终止时时间窗仍是 active/pending，须以 terminated 为准）：
+  // 与后端 activityStatus.deriveStatus 同口径，homeStatus 需 terminated 字段（activity.applyActivity 已写入）。
+  if (a.terminated === true) return STATUS.ENDED;
   const hasTime = a.start_time != null || a.end_time != null;
   if (hasTime) {
     const s = deriveStatusFromTime(a.start_time, a.end_time, now);
@@ -121,10 +127,32 @@ function shouldLoadData(status) {
   return status === STATUS.ACTIVE || status === STATUS.ENDED;
 }
 
+/**
+ * 是否允许同步步数（2026-10-26 补同步窗口，与后端 stepsSync R3.5 闸门同口径）。
+ *
+ * 口径：
+ *   - terminated（管理员终止）→ false：同步关闭，步数固化；
+ *   - active（进行中）→ true：常规同步；
+ *   - ended（到期未终止）→ true：补同步窗口开放，仍可同步活动期内步数
+ *     （后端写入侧按活动期过滤，活动期外/未来日不入库；微信运动仅保留近 30 天日步数）；
+ *   - pending / none / unknown → false。
+ *
+ * @param {object} [activity] globalData.currentActivity（含 terminated）
+ * @param {Date|number} [now] 当前时间（测试注入固定值）
+ * @returns {boolean}
+ */
+function canSyncSteps(activity, now) {
+  const a = activity || {};
+  if (a.terminated === true) return false;
+  const status = deriveHomeStatus(a, now);
+  return status === STATUS.ACTIVE || status === STATUS.ENDED;
+}
+
 module.exports = {
   STATUS,
   deriveHomeStatus,
   deriveStatusFromTime,
   needsFetchStatus,
-  shouldLoadData
+  shouldLoadData,
+  canSyncSteps
 };

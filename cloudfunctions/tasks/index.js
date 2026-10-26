@@ -11,7 +11,6 @@ const { ok, fail } = require('../common/response');
 const { CODE, BizError, notImplemented } = require('../common/errors');
 const { loadByWhere } = require('../common/db');
 const { getActiveActivityId, getActivityById } = require('../activity/activityResolver');
-const { deriveStatus } = require('../activity/activityStatus');
 const { aggregateRanking } = require('./rankAggregate');
 const { lockYesterday, computeYesterdayDate, LOCK_DEFAULT_CONFIG } = require('./dailyLock');
 const { settleActivityPoints } = require('./pointSettle');
@@ -81,9 +80,11 @@ const handlers = {
     return result;
   },
 
-  // G4: 活动结束积分结算（个人榜前10名平缓曲线 +12/10/8/7/6/5/4/3/2/1（0步跳过不递补），部门榜第1名部门参赛人员每人 +2）。
+  // G4: 活动终止后积分结算（个人榜前10名平缓曲线 +12/10/8/7/6/5/4/3/2/1（0步跳过不递补），部门榜第1名部门参赛人员每人 +2）。
   // 系统级不鉴权（与 rankAggregate/dailyLock 同）。结算幂等：纯函数判 points_settled + handler CAS 占位防并发重发。
   // 结算成功同时写 settlement 摘要（部门冠军+前十名单）到 Activity，供 activity.current 下发给活动页弹窗。
+  // 2026-10-26 时机调整：自动路径仅「已终止」活动结算（活动到期后仍可补同步，终止才固化成绩）；
+  //   event.allow_ended=true 为管理端「立即结算」强制通道（到期未终止也可结算）。
   pointSettle: async (event) => {
     const activityId = (event && event.activity_id) || await getActiveActivityId(cloud);
     const activity = await getActivityById(cloud, activityId);
@@ -92,7 +93,10 @@ const handlers = {
       User: await loadByWhere(cloud, 'User', {}, USER_FIELDS_SETTLE),
       RankCache: await loadByWhere(cloud, 'RankCache', { activity_id: activityId })
     };
-    const result = await settleActivityPoints({ store, activityId, activity, now });
+    const result = await settleActivityPoints({
+      store, activityId, activity, now,
+      allowEnded: (event && event.allow_ended) === true
+    });
     if (!result.settled) return result; // 未结束 / 已结算 / 无 RankCache → 跳过
     // CAS 占位（防并发重发）：未结算 = points_settled 显式 false 或字段缺失（新建活动不落库该字段，
     //   schema default 仅是文档规范；等值 where(false) 不匹配缺失文档，曾致 CAS 永不命中 →
@@ -249,25 +253,28 @@ async function awardPointsToCloud(cloudSdk, awards, now) {
 }
 
 /**
- * 定时任务子步骤：遍历所有「已结束且未结算积分」的活动，逐个触发 pointSettle handler。
+ * 定时任务子步骤：遍历所有「已终止且未结算积分」的活动，逐个触发 pointSettle handler。
  *
  * 排在 rankAggregate 之后（同周期），保证结算读到本周期刚刷新的最终 RankCache。
  * 每个活动 try/catch 隔离（单活动失败不影响其他），失败仅 log 不抛（下次定时幂等重跑）。
  *
+ * 2026-10-26 时机调整：过滤条件由「deriveStatus ended」改为「terminated===true」——
+ * 活动到期后仍可补同步活动期内步数（补同步窗口），到期未终止不自动结算，避免丢弃
+ * 后续补同步步数；终止入口（activity.terminate）会即时触发结算，此处作定时兑底。
  * 注意：rankAggregate 只处理「当前活动」，而活动结束后不再是当前活动（pickCurrentActivity 选下一个），
- *   故结算必须遍历所有活动（按 deriveStatus 过滤 ended），不能复用 rankAggregate 的当前活动选择。
+ *   故结算必须遍历所有活动，不能复用 rankAggregate 的当前活动选择。
  *
  * @returns {Promise<object>} { settled: [{activityId, settled, alreadySettled?, skipped?}], errors: number }
  */
 async function settleEndedActivities() {
-  const now = new Date();
   const activities = await loadByWhere(cloud, 'Activity');
   const settled = [];
   let errors = 0;
   for (const a of activities) {
     if (!a || !a.activity_id) continue;
-    // 仅 ended（含 terminated）且未结算的活动才尝试结算（避免对 active/pending 活动拉库）。
-    if (deriveStatus(a, now) !== 'ended') continue;
+    // 仅已终止且未结算的活动才尝试结算（到期未终止 = 补同步窗口开放中，不自动结算；
+    // 管理员想提前锁定积分走 admin.settlePoints 强制通道）。
+    if (a.terminated !== true) continue;
     if (a.points_settled === true) continue;
     try {
       const r = await handlers.pointSettle({ activity_id: a.activity_id });

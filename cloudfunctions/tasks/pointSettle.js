@@ -1,7 +1,9 @@
 /**
  * tasks.settleActivityPoints 业务纯函数（个人积分规则结算部分）。
  *
- * 职责：活动结束后，按【最终累计榜单】一次性结算积分（2026-08-17 规则调整，对标 F1 名次分制）：
+ * 职责：活动终止后，按【最终累计榜单】一次性结算积分（2026-08-17 规则调整，对标 F1 名次分制；
+ *   2026-10-26 结算时机调整：自动结算由「活动到期」改为「活动终止」——活动到期后仍可补同步
+ *   活动期内步数（见 stepsSync R3.5），终止才禁同步并结算，保证补同步步数计入最终成绩）：
  *   - 个人榜前 10 名（PERSONAL_AWARDS 平缓曲线）分别 +12/+10/+8/+7/+6/+5/+4/+3/+2/+1；
  *   - 0 步门槛（F1「完赛才计分」）：total_steps<=0 的名次跳过且【不递补】——
  *     有效步数人数不足 10 时宁缺毋滥，防 0 步/未同步用户滑进前十得分；
@@ -11,7 +13,7 @@
  *   - 生成结算公告摘要 settlement（活动页「比赛结束」弹窗用）：部门冠军 + 前十名得分名单。
  *
  * 结算数据来源：读 store.RankCache（已被 tasks.rankAggregate 聚合的最终榜），不重算。
- *   end_time 后 steps.sync 被拒（STEP_ACTIVITY_CLOSED），步数固化，RankCache 即最终值；
+ *   terminated 后 steps.sync 被拒（STEP_ACTIVITY_CLOSED），步数固化，RankCache 即最终值；
  *   stepsSync.isValidStepRecord 不依赖 locked，故无需等次日 dailyLock。
  *
  * 幂等：activity.points_settled===true → 跳过（返回 alreadySettled）。
@@ -47,11 +49,13 @@ const DEPT_WINNER_MEMBER_AWARD = 2;
  *   User 需含 _openid/dept_id/join_status/points；RankCache 需含 personal/dept 两文档（rankAggregate 产出）。
  * @param {string} params.activityId 活动 id
  * @param {object} [params.activity] 活动文档（含 end_time/terminated/points_settled）
+ * @param {boolean} [params.allowEnded] 手动强制结算通道（admin.settlePoints 传 true）：
+ *   到期未终止的活动也可结算（提前锁定积分，后续补同步不再计入）；默认 false（自动路径仅终止后结算）
  * @param {Date} [params.now=new Date()] 注入时间（便于单测）
  * @returns {Promise<object>} {
  *   activityId, settled: boolean,
  *   alreadySettled?: boolean,        // activity.points_settled===true → 跳过
- *   skipped?: 'not-ended'|'no-rankcache',
+ *   skipped?: 'not-terminated'|'not-ended'|'no-rankcache',
  *   awards?: [{ userId, openid, delta, reason }],  // reason: 'personal-rank-N'(N=1~10) | 'dept-winner-member'
  *   settlement?: {                  // 结算公告摘要（活动页弹窗），就地写 activity.settlement 随 handler CAS 落库
  *     settled_at: string(ISO),
@@ -82,10 +86,18 @@ async function settleActivityPoints(params) {
     return { activityId, settled: false, alreadySettled: true, settledAt };
   }
 
-  // 仅活动结束后结算（terminated 也归 ended）。
-  const status = deriveStatus(activity || {}, nowDate);
-  if (status !== 'ended') {
-    return { activityId, settled: false, skipped: 'not-ended', settledAt };
+  // 结算窗口判定（2026-10-26 调整）：自动路径（定时器/终止钩子）仅活动终止后结算——
+  // 到期未终止 = 补同步窗口开放中，此时结算会丢弃后续补同步步数，故跳过（not-terminated）；
+  // allowEnded=true（管理端「立即结算」强制通道）对到期未终止活动也可结算，但仍要求已到期。
+  if (activity && activity.terminated === true) {
+    // 已终止（含提前终止）→ 可结算（自动/手动均可）
+  } else if (p.allowEnded !== true) {
+    return { activityId, settled: false, skipped: 'not-terminated', settledAt };
+  } else {
+    const status = deriveStatus(activity || {}, nowDate);
+    if (status !== 'ended') {
+      return { activityId, settled: false, skipped: 'not-ended', settledAt };
+    }
   }
 
   // 读最终榜单：personal 取前 PERSONAL_AWARDS.length 名，dept 取第 1 名。

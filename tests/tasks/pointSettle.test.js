@@ -6,7 +6,8 @@
  *   - 部门榜第1名部门参赛人员（joined 含0步）每人 +2；
  *   - 个人+部门叠加（12+2=14）；
  *   - settlement 结算公告摘要（部门冠军 + 前十名单）；
- *   - 幂等（已结算跳过）/ 未结束跳过 / terminated 视为 ended / RankCache 缺失跳过；
+ *   - 幂等（已结算跳过）/ 未终止跳过（自动通道 not-terminated）/ 进行中跳过（手动通道 not-ended）/
+ *     terminated 可结算（2026-10-26 时机调整：自动仅终止后结算，allowEnded 手动通道到期可结算）/ RankCache 缺失跳过；
  *   - 就地标记 activity + 返回结构；
  *   - 缺参/store 校验。
  */
@@ -26,7 +27,10 @@ function activity(extra) {
       activity_id: ACTIVITY_ID,
       name: '健步走',
       start_time: '2026-07-01T00:00:00+08:00',
-      end_time: '2026-07-21T23:59:59+08:00'
+      end_time: '2026-07-21T23:59:59+08:00',
+      // 2026-10-26 起自动结算仅针对已终止活动：默认夹具即已终止（到期后终止）；
+      // 需「未终止」场景的用例显式传 terminated:false 覆盖。
+      terminated: true
     },
     extra || {}
   );
@@ -227,15 +231,55 @@ describe('settleActivityPoints 幂等与跳过', () => {
     expect(act.points_settled).toBe(true); // 就地标记（handler 据此 CAS 落库）
   });
 
-  it('活动未结束（active）→ skipped:not-ended', async () => {
+  it('活动进行中且未终止（自动通道）→ skipped:not-terminated（补同步窗口与结算部未到）', async () => {
     const store = { User: [user('u1', 'op1', 'd1')], RankCache: [personalDoc([]), deptDoc([])] };
     const NOW_ACTIVE = new Date('2026-07-10T04:00:00Z');
-    const r = await settleActivityPoints({ store, activityId: ACTIVITY_ID, activity: activity(), now: NOW_ACTIVE });
+    const r = await settleActivityPoints({
+      store, activityId: ACTIVITY_ID, activity: activity({ terminated: false }), now: NOW_ACTIVE
+    });
+    expect(r.settled).toBe(false);
+    expect(r.skipped).toBe('not-terminated');
+  });
+
+  it('活动进行中且未终止 + allowEnded（手动强制）→ skipped:not-ended（到期是底线）', async () => {
+    const store = { User: [user('u1', 'op1', 'd1')], RankCache: [personalDoc([]), deptDoc([])] };
+    const NOW_ACTIVE = new Date('2026-07-10T04:00:00Z');
+    const r = await settleActivityPoints({
+      store, activityId: ACTIVITY_ID,
+      activity: activity({ terminated: false }),
+      allowEnded: true,
+      now: NOW_ACTIVE
+    });
     expect(r.settled).toBe(false);
     expect(r.skipped).toBe('not-ended');
   });
 
-  it('terminated 活动视为 ended → 可结算', async () => {
+  it('活动到期未终止（自动通道）→ skipped:not-terminated（补同步窗口开放中不结算）', async () => {
+    const store = { User: [user('u1', 'op1', 'd1')], RankCache: [personalDoc([]), deptDoc([])] };
+    const r = await settleActivityPoints({
+      store, activityId: ACTIVITY_ID, activity: activity({ terminated: false }), now: NOW
+    });
+    expect(r.settled).toBe(false);
+    expect(r.skipped).toBe('not-terminated');
+    expect(store.User[0].points).toBe(0); // 未发奖
+  });
+
+  it('活动到期未终止 + allowEnded（手动强制通道）→ 可结算（提前锁定积分）', async () => {
+    const store = {
+      User: [user('u1', 'op1', 'd1')],
+      RankCache: [personalDoc([{ rank: 1, user_id: 'op1', total_steps: 100 }]), deptDoc([])]
+    };
+    const r = await settleActivityPoints({
+      store, activityId: ACTIVITY_ID,
+      activity: activity({ terminated: false }),
+      allowEnded: true,
+      now: NOW
+    });
+    expect(r.settled).toBe(true);
+    expect(store.User[0].points).toBe(12);
+  });
+
+  it('terminated 活动视为可结算 → 发奖（含提前终止：end 在未来但 terminated）', async () => {
     const store = {
       User: [user('u1', 'op1', 'd1')],
       RankCache: [personalDoc([{ rank: 1, user_id: 'op1', total_steps: 100 }]), deptDoc([])]

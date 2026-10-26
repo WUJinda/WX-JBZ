@@ -8,20 +8,20 @@
   <view class="activity-entry" bindtap="onActivityEntry">
     <view class="activity-entry-info">
       <text class="activity-entry-title">{{activityName || '查看活动'}}</text>
-      <text class="activity-entry-status">{{activityStatus === 'active' ? '进行中 · 去同步步数' : (activityStatus === 'ended' ? '已结束 · 查看战绩' : (activityStatus === 'pending' ? '未开始 · 查看详情' : '查看当前活动'))}}</text>
+      <text class="activity-entry-status">{{activityStatus === 'active' ? '进行中 · 去同步步数' : (activityStatus === 'ended' ? (activityTerminated ? '已终止 · 查看战绩' : '已结束 · 可补同步') : (activityStatus === 'pending' ? '未开始 · 查看详情' : '查看当前活动'))}}</text>
     </view>
     <text class="activity-entry-arrow">›</text>
   </view>
 
   <!-- 状态横幅（非 active 态显示；对齐 activity 页 status-badge 配色） -->
-  <view class="status-badge status-{{activityStatus}}" wx:if="{{activityStatus === 'ended' || activityStatus === 'pending' || activityStatus === 'none'}}">{{activityStatus === 'ended' ? '活动已结束' : (activityStatus === 'pending' ? '活动未开始' : '暂无活动')}}</view>
+  <view class="status-badge status-{{activityStatus}}" wx:if="{{activityStatus === 'ended' || activityStatus === 'pending' || activityStatus === 'none'}}">{{activityStatus === 'ended' ? (activityTerminated ? '活动已终止' : '活动已结束') : (activityStatus === 'pending' ? '活动未开始' : '暂无活动')}}</view>
 
   <!-- 进行中 / 已结束：有数据可展示 -->
   <block wx:if="{{activityStatus === 'active' || activityStatus === 'ended'}}">
     <!-- 游客态引导卡片（未登录用户）：展示活动概况 + 登录参与入口，不强制弹框跳转 -->
     <view class="guest-card" wx:if="{{!isLoggedIn}}">
       <view class="guest-title">{{activityName || '健步走活动'}}</view>
-      <view class="guest-desc">{{activityStatus === 'active' ? '活动进行中，登录后即可同步步数、查看排名' : '活动已结束，登录后查看你的步数战绩'}}</view>
+      <view class="guest-desc">{{activityStatus === 'active' ? '活动进行中，登录后即可同步步数、查看排名' : (activityTerminated ? '活动已终止，登录后查看你的步数战绩' : '活动已结束，登录后可补同步活动期内步数')}}</view>
       <button class="guest-login-btn" bindtap="onGuestLoginTap">登录参与</button>
     </view>
 
@@ -45,8 +45,10 @@
       </view>
     </view>
 
-    <!-- 同步入口：仅 active 态显示 -->
-    <block wx:if="{{activityStatus === 'active'}}">
+    <!-- 同步入口：active 或 ended-未终止（2026-10-26 补同步窗口）显示，由 syncEnabled 驱动 -->
+    <block wx:if="{{syncEnabled}}">
+      <!-- 补同步提示：活动已到期但未终止，仍可同步活动期内步数 -->
+      <view class="catchup-tip" wx:if="{{activityStatus === 'ended'}}">活动已结束，仍可补同步活动期内的步数（截止活动终止）；微信运动仅保留近 30 天数据，建议尽快补同步</view>
       <!-- 同步按钮（idle / failed 状态可点；syncing 中禁用） -->
       <button
         class="sync-btn {{syncState === 'syncing' || syncState === 'authing' ? 'sync-btn-loading' : ''}}"
@@ -73,8 +75,8 @@
       </view>
     </block>
 
-    <!-- ended 态：归档提示替代同步入口 -->
-    <view class="archived-tip" wx:else>活动已结束，步数已归档</view>
+    <!-- ended 且不可同步（已终止）：归档提示替代同步入口 -->
+    <view class="archived-tip" wx:else>{{activityTerminated ? '活动已终止，步数已归档' : '活动已结束，步数已归档'}}</view>
 
     <!-- F4：参与天数 / 活动进度（active + ended 共用） -->
     <view class="days-block">

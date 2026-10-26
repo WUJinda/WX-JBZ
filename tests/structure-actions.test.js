@@ -1299,4 +1299,58 @@ describe('用户注册向导 + 账号管理（user.update/cancel + login 向导 
 // 「手机号手动填写保底路径」整套（user.setPhone + profile onManualPhone + userPhone.js +
 // BIZ_PHONE_TAKEN:2007）已随手机号机制彻底移除，对应测试一并删除。准入改走「一人一码邀请码」。
 
+describe('补同步窗口与终止结算（2026-10-26：到期可补同步，终止才禁同步并结算）', () => {
+  it('stepsSync：仅 terminated 拒绝同步，不再按时间窗 ended 拒绝', () => {
+    const src = readSource('cloudfunctions/steps/stepsSync.js');
+    expect(src).toMatch(/activity && activity\.terminated === true/);
+    expect(src).toMatch(/STEP_ACTIVITY_CLOSED/);
+    // 旧时间窗闸门已移除（不再 require deriveStatus）
+    expect(src).not.toMatch(/deriveStatus/);
+  });
+
+  it('pointSettle：自动通道仅 terminated 可结算，allowEnded 手动强道到期可结算', () => {
+    const src = readSource('cloudfunctions/tasks/pointSettle.js');
+    expect(src).toMatch(/p\.allowEnded !== true/);
+    expect(src).toMatch(/'not-terminated'/);
+  });
+
+  it('tasks/index.js：settleEndedActivities 仅遍历已终止未结算活动，透传 allow_ended', () => {
+    const src = readSource('cloudfunctions/tasks/index.js');
+    expect(src).toMatch(/a\.terminated !== true\) continue/);
+    expect(src).toMatch(/allowEnded:\s*\(event && event\.allow_ended\) === true/);
+  });
+
+  it('activity/index.js：terminate 先触发 pointSettle 再重置报名（部门奖按 joined 发放保真）', () => {
+    const src = readSource('cloudfunctions/activity/index.js');
+    const settleIdx = src.indexOf("name: 'tasks'");
+    const resetIdx = src.indexOf('resetUserJoinStatusToCloud(cloud, now)');
+    // terminate handler 内：结算触发在报名重置之前（allowEnded 不传 = 自动通道）
+    expect(settleIdx).toBeGreaterThan(-1);
+    expect(resetIdx).toBeGreaterThan(settleIdx);
+  });
+
+  it('admin/index.js：settlePoints 强制通道携带 allow_ended: true', () => {
+    const src = readSource('cloudfunctions/admin/index.js');
+    expect(src).toMatch(/allow_ended:\s*true/);
+  });
+
+  it('home 前端：同步入口由 syncEnabled 驱动，含补同步提示与终止文案', () => {
+    const wxml = readSource('miniprogram/pages/home/home.wxml');
+    expect(wxml).toMatch(/\{\{syncEnabled\}\}/);
+    expect(wxml).toMatch(/catchup-tip/);
+    expect(wxml).toMatch(/可补同步/);
+    expect(wxml).toMatch(/活动已终止，步数已归档/);
+    const js = readSource('miniprogram/pages/home/home.js');
+    expect(js).toMatch(/canSyncSteps/);
+    expect(js).toMatch(/活动已终止，无法同步/);
+    const status = readSource('miniprogram/pages/home/homeStatus.js');
+    expect(status).toMatch(/canSyncSteps/);
+  });
+
+  it('activity 页：globalData.currentActivity 写入 terminated（canSyncSteps 依据）', () => {
+    const src = readSource('miniprogram/pages/activity/activity.js');
+    expect(src).toMatch(/terminated:\s*activity\.terminated === true/);
+  });
+});
+
 
