@@ -1336,7 +1336,7 @@ describe('补同步窗口与终止结算（2026-10-26：到期可补同步，终
 
   it('home 前端：同步入口由 syncEnabled 驱动，含补同步提示与终止文案', () => {
     const wxml = readSource('miniprogram/pages/home/home.wxml');
-    expect(wxml).toMatch(/\{\{syncEnabled\}\}/);
+    expect(wxml).toMatch(/syncEnabled/);
     expect(wxml).toMatch(/catchup-tip/);
     expect(wxml).toMatch(/可补同步/);
     expect(wxml).toMatch(/活动已终止，步数已归档/);
@@ -1362,6 +1362,16 @@ describe('补同步窗口与终止结算（2026-10-26：到期可补同步，终
   it('activity/index.js：terminate 内联结算对写后读副本延迟容错（not-terminated 也重试）', () => {
     const src = readSource('cloudfunctions/activity/index.js');
     expect(src).toMatch(/skipped === 'not-terminated'/);
+  });
+
+  it('home 同步入口联动报名态：ended 补同步仅非 pending 用户可见，guideToSignup ended 态不引导报名', () => {
+    const wxml = readSource('miniprogram/pages/home/home.wxml');
+    // active 态维持原漏斗（不受 joinStatus 影响）；ended 态仅非 pending 用户显示入口
+    expect(wxml).toMatch(/syncEnabled && \(activityStatus === 'active' \|\| joinStatus !== 'pending'\)/);
+    const js = readSource('miniprogram/pages/home/home.js');
+    // ended 态报名已截止，引导报名是死胡同 → 改为如实告知不跳转
+    expect(js).toMatch(/无法补同步/);
+    expect(js).toMatch(/this\.data\.activityStatus === 'ended'/);
   });
 });
 

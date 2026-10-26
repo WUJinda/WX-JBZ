@@ -426,6 +426,18 @@ Page({
   /** 未报名引导：弹窗提示 + 确认后跳 activity 页报名（activity 页 CTA 已登录直接调 user.join）。 */
   guideToSignup() {
     if (typeof wx === 'undefined' || !wx.showModal) return;
+    // 活动已结束（含终止，2026-10-26 补同步窗口联动）：后端报名已截止（signup_deadline ?? end_time），
+    // 跳活动页没有报名入口（CTA 为「查看战绩」），原引导是死胡同 → 仅如实告知，不跳转。
+    // 冷启动 joinStatus 未就绪时点同步被后端 1004 拦截也走此分支兑底。
+    if (this.data.activityStatus === 'ended') {
+      wx.showModal({
+        title: '无法补同步',
+        content: '活动已结束，未报名用户不能补同步步数（报名已于活动结束时截止）。',
+        showCancel: false,
+        confirmText: '我知道了'
+      });
+      return;
+    }
     wx.showModal({
       title: '尚未报名',
       content: '同步步数需先报名参加活动，是否前往报名？',

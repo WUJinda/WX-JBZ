@@ -45,8 +45,11 @@
       </view>
     </view>
 
-    <!-- 同步入口：active 或 ended-未终止（2026-10-26 补同步窗口）显示，由 syncEnabled 驱动 -->
-    <block wx:if="{{syncEnabled}}">
+    <!-- 同步入口：active 或 ended-未终止（2026-10-26 补同步窗口）显示，由 syncEnabled 驱动。
+         ended 态仅对非 pending 用户显示：活动结束后报名已截止（后端 signup_deadline ?? end_time），
+         未报名用户无法参与补同步，不展示入口避免「点同步→引导报名→无报名入口」死胡同；
+         active 态维持原行为（可见 + 点击引导报名漏斗）。 -->
+    <block wx:if="{{syncEnabled && (activityStatus === 'active' || joinStatus !== 'pending')}}">
       <!-- 补同步提示：活动已到期但未终止，仍可同步活动期内步数 -->
       <view class="catchup-tip" wx:if="{{activityStatus === 'ended'}}">活动已结束，仍可补同步活动期内的步数（截止活动终止）；微信运动仅保留近 30 天数据，建议尽快补同步</view>
       <!-- 同步按钮（idle / failed 状态可点；syncing 中禁用） -->
